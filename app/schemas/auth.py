@@ -7,6 +7,8 @@
 2. 使用者登入資料驗證
 3. Access Token 回傳格式
 4. 使用者公開資料格式
+5. 忘記密碼申請資料驗證
+6. 密碼重設資料驗證
 
 注意：
 不會將 password 或 password_hash 回傳給前端。
@@ -64,3 +66,23 @@ class UserPublic(BaseModel):
     display_name: str
 
     is_active: bool
+
+
+class ForgotPasswordRequest(BaseModel):
+    """忘記密碼申請請求"""
+
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    """重設密碼請求"""
+
+    token: str = Field(
+        min_length=32,
+        max_length=256,
+    )
+
+    new_password: str = Field(
+        min_length=8,
+        max_length=128,
+    )
