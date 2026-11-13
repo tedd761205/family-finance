@@ -3,8 +3,9 @@ from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
+    CheckConstraint,
     DateTime,
-    ForeignKey,
+    ForeignKeyConstraint,
     String,
     UniqueConstraint,
     func,
@@ -23,10 +24,15 @@ class RoleDataScope(Base):
             "resource",
             name="uq_role_data_scopes_role_resource",
         ),
-        UniqueConstraint(
-            "role_id",
-            "family_id",
-            name="uq_role_data_scopes_role_family",
+        ForeignKeyConstraint(
+            ["role_id", "family_id"],
+            ["roles.id", "roles.family_id"],
+            ondelete="CASCADE",
+            name="fk_role_data_scopes_role_family",
+        ),
+        CheckConstraint(
+            "scope IN ('own', 'family')",
+            name="ck_role_data_scopes_scope",
         ),
     )
 
@@ -38,14 +44,11 @@ class RoleDataScope(Base):
 
     role_id: Mapped[int] = mapped_column(
         BigInteger,
-        ForeignKey("roles.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
 
     family_id: Mapped[int] = mapped_column(
         BigInteger,
-        ForeignKey("families.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
