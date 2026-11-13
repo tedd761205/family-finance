@@ -4,6 +4,7 @@ from datetime import datetime
 from sqlalchemy import (
     BigInteger,
     DateTime,
+    ForeignKeyConstraint,
     ForeignKey,
     func
 )
@@ -17,21 +18,35 @@ class MemberRole(Base):
 
     __tablename__ = "member_roles"
 
-    # 家庭成員編號
+    __table_args__ = (
+        # 確保成員與角色屬於同一個家庭
+        ForeignKeyConstraint(
+            ["family_member_id", "family_id"],
+            ["family_members.id", "family_members.family_id"],
+            name="fk_member_roles_family_member"
+        ),
+        ForeignKeyConstraint(
+            ["role_id", "family_id"],
+            ["roles.id", "roles.family_id"],
+            name="fk_member_roles_role"
+        ),
+    )
+
     family_member_id: Mapped[int] = mapped_column(
         BigInteger,
-        ForeignKey("family_members.id", ondelete="CASCADE"),
         primary_key=True
     )
 
-    # 角色編號
     role_id: Mapped[int] = mapped_column(
         BigInteger,
-        ForeignKey("roles.id", ondelete="RESTRICT"),
         primary_key=True
     )
 
-    # 指派角色的時間
+    family_id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -42,5 +57,6 @@ class MemberRole(Base):
         return (
             f"<MemberRole("
             f"family_member_id={self.family_member_id}, "
-            f"role_id={self.role_id})>"
+            f"role_id={self.role_id}, "
+            f"family_id={self.family_id})>"
         )
