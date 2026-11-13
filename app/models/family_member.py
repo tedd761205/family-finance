@@ -20,13 +20,18 @@ class FamilyMember(Base):
     __tablename__ = "family_members"
 
     # 同一家庭與使用者只能建立一筆成員關係
-    __table_args__ = (
-        UniqueConstraint(
-            "family_id",
-            "user_id",
-            name="uq_family_members_family_user"
-        ),
-    )
+__table_args__ = (
+    UniqueConstraint(
+        "family_id",
+        "user_id",
+        name="uq_family_members_family_user"
+    ),
+    UniqueConstraint(
+        "id",
+        "family_id",
+        name="uq_family_members_id_family"
+    ),
+)
 
     id: Mapped[int] = mapped_column(
         BigInteger,
