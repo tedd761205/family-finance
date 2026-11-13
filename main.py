@@ -3,6 +3,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 
 from app.database import check_database_connection
+from app.routers.auth import router as auth_router
+
 
 app = FastAPI(
     title="家庭記帳系統",
@@ -10,6 +12,17 @@ app = FastAPI(
     version="1.0.0"
 )
 
+
+# =========================================================
+# API 路由
+# =========================================================
+
+app.include_router(auth_router)
+
+
+# =========================================================
+# 首頁
+# =========================================================
 
 @app.get("/", response_class=HTMLResponse)
 def home():
@@ -30,6 +43,10 @@ def home():
     """
 
 
+# =========================================================
+# 系統健康檢查
+# =========================================================
+
 @app.get("/health")
 def health():
     return {
@@ -38,14 +55,20 @@ def health():
     }
 
 
+# =========================================================
+# 資料庫健康檢查
+# =========================================================
+
 @app.get("/health/db")
 def database_health():
     try:
         check_database_connection()
+
         return {
             "status": "ok",
             "database": "connected"
         }
+
     except Exception:
         raise HTTPException(
             status_code=503,
