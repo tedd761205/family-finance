@@ -1,6 +1,6 @@
 
 """
-家庭記帳系統：使用者註冊、登入及個人資料 API
+家庭記帳系統：使用者註冊、登入、登出及個人資料 API
 
 功能：
 1. 使用者註冊
@@ -9,15 +9,20 @@
 4. 使用者登入
 5. 簽發 JWT Access Token
 6. 查詢目前登入者資料
+7. 撤銷目前登入 Token（登出）
 """
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
-from app.dependencies.auth import get_current_user
+from app.dependencies.auth import get_current_user, bearer_scheme
 from app.models.user import User
+from app.models.revoked_token import RevokedToken
 from app.schemas.auth import (
     UserRegister,
     UserLogin,
@@ -29,6 +34,7 @@ from app.security import (
     hash_password,
     verify_password,
     create_access_token,
+    decode_access_token,
     ACCESS_TOKEN_EXPIRE_MINUTES,
 )
 
@@ -186,3 +192,67 @@ def get_my_profile(
     """取得目前登入使用者的公開資料。"""
 
     return current_user
+
+
+# =========================================================
+# 使用者登出
+# =========================================================
+
+@router.post(
+    "/logout",
+    status_code=status.HTTP_200_OK,
+)
+def logout_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(
+        bearer_scheme
+    ),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """撤銷目前登入中的 JWT Access Token。"""
+
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="登入已失效，請重新登入",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    try:
+        # 取得已通過驗證的 JWT 資料
+        payload = decode_access_token(
+            credentials.credentials
+        )
+
+        jti = payload["jti"]
+        expires_at = datetime.fromtimestamp(
+            payload["exp"],
+            tz=timezone.utc,
+        )
+
+        # 建立 Token 撤銷紀錄
+        revoked_token = RevokedToken(
+            jti=jti,
+            user_id=current_user.id,
+            expires_at=expires_at,
+        )
+
+        db.add(revoked_token)
+        db.commit()
+
+    except IntegrityError:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="登入已失效，請重新登入",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    except Exception:
+        db.rollback()
+        raise
+
+    return {
+        "message": "已成功登出"
+    }
