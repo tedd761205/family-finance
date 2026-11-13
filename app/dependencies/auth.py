@@ -6,8 +6,9 @@
 1. 取得 HTTP Bearer Token。
 2. 驗證 JWT Access Token。
 3. 取得登入者 ID。
-4. 查詢資料庫中的使用者。
-5. 確認帳號仍然啟用。
+4. 檢查 Token 是否已撤銷。
+5. 查詢資料庫中的使用者。
+6. 確認帳號仍然啟用。
 """
 
 from fastapi import Depends, HTTPException, status
@@ -16,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.user import User
+from app.models.revoked_token import RevokedToken
 from app.security import decode_access_token
 
 
@@ -66,15 +68,32 @@ def get_current_user(
         payload = decode_access_token(token)
 
         user_id = int(payload["sub"])
+        jti = payload["jti"]
 
         if user_id <= 0:
             raise ValueError("Invalid user ID")
+
+        if not isinstance(jti, str) or not jti.strip():
+            raise ValueError("Invalid token ID")
 
     except Exception:
         raise unauthorized_exception
 
     # -----------------------------------------------------
-    # 3. 查詢使用者
+    # 3. 檢查 Token 是否已撤銷
+    # -----------------------------------------------------
+
+    revoked_token = (
+        db.query(RevokedToken)
+        .filter(RevokedToken.jti == jti)
+        .first()
+    )
+
+    if revoked_token is not None:
+        raise unauthorized_exception
+
+    # -----------------------------------------------------
+    # 4. 查詢使用者
     # -----------------------------------------------------
 
     user = (
@@ -87,7 +106,7 @@ def get_current_user(
         raise unauthorized_exception
 
     # -----------------------------------------------------
-    # 4. 確認帳號啟用狀態
+    # 5. 確認帳號啟用狀態
     # -----------------------------------------------------
 
     if not user.is_active:
