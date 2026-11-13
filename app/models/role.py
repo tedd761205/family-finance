@@ -21,13 +21,18 @@ class Role(Base):
     __tablename__ = "roles"
 
     # 同一家庭內角色名稱不可重複
-    __table_args__ = (
-        UniqueConstraint(
-            "family_id",
-            "name",
-            name="uq_roles_family_name"
-        ),
-    )
+__table_args__ = (
+    UniqueConstraint(
+        "family_id",
+        "name",
+        name="uq_roles_family_name"
+    ),
+    UniqueConstraint(
+        "id",
+        "family_id",
+        name="uq_roles_id_family"
+    ),
+)
 
     id: Mapped[int] = mapped_column(
         BigInteger,
