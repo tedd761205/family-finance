@@ -10,25 +10,29 @@
 5. 簽發 JWT Access Token
 6. 查詢目前登入者資料
 7. 撤銷目前登入 Token（登出）
-8. 重設使用者密碼
+8. 忘記密碼申請
+9. 重設使用者密碼
 """
+
+import logging
 
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
 from app.dependencies.auth import get_current_user, bearer_scheme
-from app.models.user import User
-from app.models.revoked_token import RevokedToken
+from app.models import User, RevokedToken, PasswordResetToken
 from app.schemas.auth import (
     UserRegister,
     UserLogin,
     UserPublic,
     TokenResponse,
+    ForgotPasswordRequest,
     ResetPasswordRequest,
 )
 from app.security import (
@@ -39,7 +43,19 @@ from app.security import (
     decode_access_token,
     ACCESS_TOKEN_EXPIRE_MINUTES,
 )
-from app.services.password_reset import reset_user_password
+from app.services.password_reset import (
+    create_password_reset_token,
+    reset_user_password,
+    hash_reset_token,
+    get_utc_now,
+)
+from app.services.email import (
+    get_smtp_settings,
+    send_password_reset_email,
+)
+
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(
@@ -207,19 +223,103 @@ def logout(
     }
 
 
+@router.post("/forgot-password")
+def forgot_password(
+    data: ForgotPasswordRequest,
+    db: Session = Depends(get_db),
+):
+    """申請密碼重設並寄送 Email。"""
+
+    # 先檢查 SMTP 設定，避免帳號是否存在影響回應
+    try:
+        get_smtp_settings()
+
+    except RuntimeError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="密碼重設郵件服務尚未設定，請稍後再試",
+        )
+
+    email = normalize_email(str(data.email))
+
+    user = db.execute(
+        select(User).where(
+            User.email == email,
+            User.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+
+    # 不存在或已停用的帳號不執行任何動作
+    if user is None:
+        return {
+            "message": "如果此 Email 已註冊且可以使用，系統將寄送密碼重設指示"
+        }
+
+    raw_token = None
+    token_hash = None
+
+    try:
+        raw_token = create_password_reset_token(
+            db=db,
+            user_id=user.id,
+        )
+
+        token_hash = hash_reset_token(raw_token)
+
+        # 先儲存 Token，確保寄出的連結可以被驗證
+        db.commit()
+
+    except Exception:
+        db.rollback()
+        logger.exception("建立密碼重設 Token 失敗")
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="目前無法處理密碼重設申請",
+        )
+
+    try:
+        send_password_reset_email(
+            to_email=user.email,
+            raw_token=raw_token,
+        )
+
+    except Exception:
+        logger.exception("密碼重設 Email 寄送失敗")
+
+        # 寄送失敗時，立即讓剛建立的 Token 失效
+        try:
+            reset_token = db.execute(
+                select(PasswordResetToken).where(
+                    PasswordResetToken.token_hash == token_hash,
+                    PasswordResetToken.used_at.is_(None),
+                )
+            ).scalar_one_or_none()
+
+            if reset_token is not None:
+                reset_token.used_at = get_utc_now()
+                db.commit()
+
+        except Exception:
+            db.rollback()
+            logger.exception("作廢失敗的密碼重設 Token 時發生錯誤")
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="目前無法寄送密碼重設郵件，請稍後再試",
+        )
+
+    return {
+        "message": "如果此 Email 已註冊且可以使用，系統將寄送密碼重設指示"
+    }
+
+
 @router.post("/reset-password")
 def reset_password(
     data: ResetPasswordRequest,
     db: Session = Depends(get_db),
 ):
-    """
-    使用密碼重設 Token 更新密碼。
-
-    成功後：
-    1. 更新密碼雜湊值。
-    2. 將重設 Token 標記為已使用。
-    3. 遞增 token_version，使舊登入 Token 失效。
-    """
+    """使用密碼重設 Token 更新密碼。"""
 
     try:
         success = reset_user_password(
