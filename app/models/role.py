@@ -7,6 +7,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     String,
+    Text,
     UniqueConstraint,
     func
 )
@@ -16,23 +17,20 @@ from app.database import Base
 
 
 class Role(Base):
-    """家庭角色設定"""
-
     __tablename__ = "roles"
 
-    # 同一家庭內角色名稱不可重複
-__table_args__ = (
-    UniqueConstraint(
-        "family_id",
-        "name",
-        name="uq_roles_family_name"
-    ),
-    UniqueConstraint(
-        "id",
-        "family_id",
-        name="uq_roles_id_family"
-    ),
-)
+    __table_args__ = (
+        UniqueConstraint(
+            "family_id",
+            "name",
+            name="uq_roles_family_name"
+        ),
+        UniqueConstraint(
+            "id",
+            "family_id",
+            name="uq_roles_id_family"
+        ),
+    )
 
     id: Mapped[int] = mapped_column(
         BigInteger,
@@ -40,7 +38,6 @@ __table_args__ = (
         autoincrement=True
     )
 
-    # 所屬家庭
     family_id: Mapped[int] = mapped_column(
         BigInteger,
         ForeignKey("families.id", ondelete="RESTRICT"),
@@ -48,19 +45,16 @@ __table_args__ = (
         index=True
     )
 
-    # 角色名稱
     name: Mapped[str] = mapped_column(
-        String(50),
+        String(100),
         nullable=False
     )
 
-    # 角色說明
     description: Mapped[str | None] = mapped_column(
-        String(255),
+        Text,
         nullable=True
     )
 
-    # 是否為系統預設角色
     is_system: Mapped[bool] = mapped_column(
         Boolean,
         default=False,
@@ -68,7 +62,6 @@ __table_args__ = (
         nullable=False
     )
 
-    # 是否啟用
     is_active: Mapped[bool] = mapped_column(
         Boolean,
         default=True,
@@ -90,9 +83,4 @@ __table_args__ = (
     )
 
     def __repr__(self):
-        return (
-            f"<Role("
-            f"id={self.id}, "
-            f"family_id={self.family_id}, "
-            f"name={self.name})>"
-        )
+        return f"<Role(id={self.id}, name={self.name})>"
