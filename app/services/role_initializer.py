@@ -6,7 +6,7 @@
 1. 為指定家庭建立五種預設角色。
 2. 建立角色與功能權限的關聯。
 3. 建立角色的資料範圍設定。
-4. 支援重複執行及同步更新。
+4. 避免重複初始化覆蓋既有自訂設定。
 
 注意：
 本服務不自行 commit，由呼叫端負責交易提交。
@@ -28,7 +28,10 @@ def initialize_family_roles(
     family_id: int,
 ) -> dict:
     """
-    初始化指定家庭的五種預設角色。
+    為指定家庭建立五種預設角色。
+
+    已存在的系統角色不會被重新覆蓋，
+    以保留家庭管理員自行調整的權限設定。
 
     Args:
         db: SQLAlchemy 資料庫 Session
@@ -83,12 +86,11 @@ def initialize_family_roles(
         "scopes_created": 0,
     }
 
-    # 5. 逐一建立或更新五種預設角色
+    # 5. 建立五種預設角色
     for role_config in DEFAULT_ROLES:
 
         role_name = role_config["name"]
 
-        # 檢查同一家庭是否已有相同角色
         role = (
             db.query(Role)
             .filter(
@@ -98,114 +100,66 @@ def initialize_family_roles(
             .first()
         )
 
-        if role is None:
-            role = Role(
-                family_id=family_id,
-                name=role_name,
-                description=role_config["description"],
-                is_system=True,
-                is_active=True,
-            )
+        # 已有角色時，不覆蓋既有設定
+        if role is not None:
 
-            db.add(role)
-            db.flush()
-
-            result["roles_created"] += 1
-
-        else:
-            # 更新系統角色基本資料
-            role.description = role_config["description"]
-            role.is_system = True
-            role.is_active = True
-
-            result["roles_existing"] += 1
-
-        # 6. 同步角色功能權限
-        desired_permission_ids = {
-            permission_map[code].id
-            for code in role_config["permissions"]
-        }
-
-        existing_role_permissions = (
-            db.query(RolePermission)
-            .filter(
-                RolePermission.role_id == role.id
-            )
-            .all()
-        )
-
-        existing_permission_ids = {
-            item.permission_id
-            for item in existing_role_permissions
-        }
-
-        # 移除已不在預設清單中的權限
-        for item in existing_role_permissions:
-            if item.permission_id not in desired_permission_ids:
-                db.delete(item)
-
-        # 新增缺少的權限關聯
-        for permission_id in desired_permission_ids:
-            if permission_id not in existing_permission_ids:
-                db.add(
-                    RolePermission(
-                        role_id=role.id,
-                        permission_id=permission_id,
-                    )
+            if not role.is_system:
+                raise ValueError(
+                    f"角色名稱衝突：{role_name} "
+                    "已被自訂角色使用，請先處理名稱衝突。"
                 )
 
-                result["permissions_created"] += 1
+            result["roles_existing"] += 1
+            continue
 
-        # 7. 同步角色資料範圍
-        desired_scopes = role_config["data_scopes"]
-
-        existing_scopes = (
-            db.query(RoleDataScope)
-            .filter(
-                RoleDataScope.role_id == role.id,
-                RoleDataScope.family_id == family_id,
-            )
-            .all()
+        # 6. 建立新角色
+        role = Role(
+            family_id=family_id,
+            name=role_name,
+            description=role_config["description"],
+            is_system=True,
+            is_active=True,
         )
 
-        existing_scope_map = {
-            item.resource: item
-            for item in existing_scopes
-        }
+        db.add(role)
+        db.flush()
 
-        # 移除已不在設定清單中的資料範圍
-        for item in existing_scopes:
-            if item.resource not in desired_scopes:
-                db.delete(item)
+        result["roles_created"] += 1
 
-        # 新增或更新資料範圍
-        for resource, scope in desired_scopes.items():
+        # 7. 建立角色功能權限
+        for code in role_config["permissions"]:
+
+            permission = permission_map[code]
+
+            db.add(
+                RolePermission(
+                    role_id=role.id,
+                    permission_id=permission.id,
+                )
+            )
+
+            result["permissions_created"] += 1
+
+        # 8. 建立角色資料範圍
+        for resource, scope in role_config["data_scopes"].items():
 
             if scope not in ("own", "family"):
                 raise ValueError(
                     f"不合法的資料範圍：{resource}={scope}"
                 )
 
-            existing_scope = existing_scope_map.get(
-                resource
+            db.add(
+                RoleDataScope(
+                    role_id=role.id,
+                    family_id=family_id,
+                    resource=resource,
+                    scope=scope,
+                )
             )
 
-            if existing_scope is None:
-                db.add(
-                    RoleDataScope(
-                        role_id=role.id,
-                        family_id=family_id,
-                        resource=resource,
-                        scope=scope,
-                    )
-                )
+            result["scopes_created"] += 1
 
-                result["scopes_created"] += 1
-
-            else:
-                existing_scope.scope = scope
-
-    # 8. 將變更送入目前交易，但不自行 commit
+    # 9. 將變更送入目前交易，但不自行 commit
     db.flush()
 
     return result
