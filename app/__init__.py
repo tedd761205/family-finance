@@ -1,12 +1,4 @@
-from flask import Flask
-from config import Config
-
-
-def create_app():
-    app = Flask(__name__)
-    app.config.from_object(Config)
-
-    from app.routes import main
-    app.register_blueprint(main)
-
-    return app
+"""
+家庭記帳系統應用程式套件
+使用 FastAPI 作為 Web Framework。
+"""
