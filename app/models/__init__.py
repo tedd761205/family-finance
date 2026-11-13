@@ -11,6 +11,7 @@ from app.models.permission import Permission
 from app.models.role_permission import RolePermission
 from app.models.member_role import MemberRole
 from app.models.audit_log import AuditLog
+from app.models.role_data_scope import RoleDataScope
 
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "RolePermission",
     "MemberRole",
     "AuditLog",
+    "RoleDataScope",
 ]
