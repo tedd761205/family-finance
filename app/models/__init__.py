@@ -12,6 +12,7 @@ from app.models.role_permission import RolePermission
 from app.models.member_role import MemberRole
 from app.models.audit_log import AuditLog
 from app.models.role_data_scope import RoleDataScope
+from app.models.revoked_token import RevokedToken
 
 
 __all__ = [
@@ -24,4 +25,5 @@ __all__ = [
     "MemberRole",
     "AuditLog",
     "RoleDataScope",
+    "RevokedToken",
 ]
