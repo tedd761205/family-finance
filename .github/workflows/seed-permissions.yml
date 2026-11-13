@@ -1,0 +1,74 @@
+
+name: Seed System Permissions
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  seed-permissions:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Check Python syntax
+        run: |
+          python -m compileall -q app
+
+      - name: Seed system permissions
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          python -m app.seed_permissions
+
+      - name: Verify permission records
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          python - <<'PY'
+          from app.database import SessionLocal
+          from app.models.permission import Permission
+          from app.permission_catalog import PERMISSION_CATALOG
+
+          db = SessionLocal()
+
+          try:
+              total = db.query(Permission).count()
+
+              expected = len(PERMISSION_CATALOG)
+
+              print(f"資料庫權限總數：{total}")
+              print(f"本系統定義權限數：{expected}")
+
+              missing = [
+                  item["code"]
+                  for item in PERMISSION_CATALOG
+                  if db.query(Permission)
+                  .filter(Permission.code == item["code"])
+                  .first() is None
+              ]
+
+              if missing:
+                  raise RuntimeError(
+                      f"以下權限尚未寫入：{missing}"
+                  )
+
+              print("權限資料驗證成功！")
+
+          finally:
+              db.close()
+          PY
