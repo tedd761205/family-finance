@@ -6,12 +6,13 @@
 1. 使用 Argon2id 雜湊及驗證密碼。
 2. 電子郵件格式驗證與標準化。
 3. 建立及驗證 JWT Access Token。
+4. 支援伺服器端 Token 撤銷識別。
 
 注意：
 - 不儲存明文密碼。
 - JWT Secret 從環境變數讀取，不寫死在程式碼。
 - Access Token 預設有效期限為 20 分鐘。
-- 本模組尚未實作伺服器端 Token 撤銷機制。
+- Token 撤銷紀錄由資料庫認證層管理。
 """
 
 import os
@@ -33,25 +34,24 @@ password_hasher = PasswordHash.recommended()
 
 
 def hash_password(password: str) -> str:
-    """
-    將明文密碼轉換成安全雜湊。
-
-    回傳：
-        Argon2id password hash
-    """
+    """將明文密碼轉換成安全雜湊。"""
 
     if not isinstance(password, str) or not password:
         raise ValueError("密碼不可為空")
+
+    if len(password) > 128:
+        raise ValueError("密碼長度不可超過 128 個字元")
 
     return password_hasher.hash(password)
 
 
 def verify_password(password: str, hashed_password: str) -> bool:
-    """
-    驗證使用者輸入的密碼是否正確。
-    """
+    """驗證使用者輸入的密碼是否正確。"""
 
     if not isinstance(password, str) or not password:
+        return False
+
+    if len(password) > 128:
         return False
 
     if not isinstance(hashed_password, str) or not hashed_password:
@@ -68,11 +68,7 @@ def verify_password(password: str, hashed_password: str) -> bool:
 # =========================================================
 
 def normalize_email(email: str) -> str:
-    """
-    驗證電子郵件格式並統一為小寫。
-
-    不進行實際寄信或信箱存在性驗證。
-    """
+    """驗證電子郵件格式並統一為小寫。"""
 
     if not isinstance(email, str):
         raise ValueError("電子郵件格式不正確")
@@ -104,15 +100,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 20
 
 
 def _get_jwt_secret() -> str:
-    """
-    從環境變數取得 JWT 金鑰。
-
-    優先使用 JWT_SECRET_KEY；
-    若尚未設定，暫時使用既有 SECRET_KEY。
-
-    不在模組載入時讀取，避免影響 GitHub Actions
-    的程式匯入及語法驗證。
-    """
+    """從環境變數取得 JWT 金鑰。"""
 
     secret = (
         os.getenv("JWT_SECRET_KEY")
@@ -140,19 +128,18 @@ def create_access_token(
     subject: int | str,
     expires_delta: timedelta | None = None,
 ) -> str:
-    """
-    建立 JWT Access Token。
-
-    Payload 包含：
-    - sub：使用者 ID
-    - iat：簽發時間
-    - exp：到期時間
-    - jti：Token 唯一識別碼
-    - type：Token 類型
-    """
+    """建立 JWT Access Token。"""
 
     if subject is None or not str(subject).strip():
         raise ValueError("使用者 ID 不可為空")
+
+    try:
+        user_id = int(subject)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("使用者 ID 必須為正整數") from exc
+
+    if user_id <= 0:
+        raise ValueError("使用者 ID 必須為正整數")
 
     if expires_delta is None:
         expires_delta = timedelta(
@@ -166,20 +153,18 @@ def create_access_token(
     expire = now + expires_delta
 
     payload = {
-        "sub": str(subject),
+        "sub": str(user_id),
         "iat": int(now.timestamp()),
         "exp": int(expire.timestamp()),
         "jti": secrets.token_urlsafe(16),
         "type": "access",
     }
 
-    token = jwt.encode(
+    return jwt.encode(
         payload,
         _get_jwt_secret(),
         algorithm=JWT_ALGORITHM,
     )
-
-    return token
 
 
 # =========================================================
@@ -187,18 +172,7 @@ def create_access_token(
 # =========================================================
 
 def decode_access_token(token: str) -> dict:
-    """
-    驗證 JWT Access Token。
-
-    驗證項目：
-    1. 簽章是否正確。
-    2. Token 是否過期。
-    3. 必要欄位是否存在。
-    4. Token 類型是否為 access。
-
-    驗證失敗會拋出例外，
-    後續由 FastAPI 認證層統一處理。
-    """
+    """驗證 JWT Access Token。"""
 
     if not isinstance(token, str) or not token.strip():
         raise ValueError("Token 不可為空")
@@ -221,13 +195,22 @@ def decode_access_token(token: str) -> dict:
     if payload.get("type") != "access":
         raise ValueError("Token 類型不正確")
 
-    if not isinstance(payload.get("sub"), str):
+    subject = payload.get("sub")
+
+    if not isinstance(subject, str) or not subject.strip():
         raise ValueError("Token 使用者識別資料不正確")
 
-    if not payload["sub"].strip():
-        raise ValueError("Token 使用者識別資料不可為空")
+    try:
+        user_id = int(subject)
+    except ValueError as exc:
+        raise ValueError("Token 使用者 ID 不正確") from exc
 
-    if not isinstance(payload.get("jti"), str):
+    if user_id <= 0 or str(user_id) != subject:
+        raise ValueError("Token 使用者 ID 不正確")
+
+    jti = payload.get("jti")
+
+    if not isinstance(jti, str) or not jti.strip():
         raise ValueError("Token 識別碼不正確")
 
     return payload
