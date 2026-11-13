@@ -9,6 +9,7 @@
 4. 檢查 Token 是否已撤銷。
 5. 查詢資料庫中的使用者。
 6. 確認帳號仍然啟用。
+7. 比對 Token 版本，讓舊 Token 失效。
 """
 
 from fastapi import Depends, HTTPException, status
@@ -69,12 +70,20 @@ def get_current_user(
 
         user_id = int(payload["sub"])
         jti = payload["jti"]
+        token_version = payload["token_version"]
 
         if user_id <= 0:
             raise ValueError("Invalid user ID")
 
         if not isinstance(jti, str) or not jti.strip():
             raise ValueError("Invalid token ID")
+
+        if (
+            isinstance(token_version, bool)
+            or not isinstance(token_version, int)
+            or token_version < 0
+        ):
+            raise ValueError("Invalid token version")
 
     except Exception:
         raise unauthorized_exception
@@ -110,6 +119,13 @@ def get_current_user(
     # -----------------------------------------------------
 
     if not user.is_active:
+        raise unauthorized_exception
+
+    # -----------------------------------------------------
+    # 6. 比對 Token 版本
+    # -----------------------------------------------------
+
+    if token_version != user.token_version:
         raise unauthorized_exception
 
     return user
