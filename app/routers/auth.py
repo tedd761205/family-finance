@@ -12,6 +12,12 @@
 7. 撤銷目前登入 Token（登出）
 8. 忘記密碼申請
 9. 重設使用者密碼
+
+安全原則：
+- 不回傳密碼或密碼雜湊。
+- 不回傳原始密碼重設 Token。
+- 不透露 Email 是否已註冊。
+- 密碼重設成功後，使舊登入 Token 失效。
 """
 
 import logging
@@ -228,16 +234,23 @@ def forgot_password(
     data: ForgotPasswordRequest,
     db: Session = Depends(get_db),
 ):
-    """申請密碼重設並寄送 Email。"""
+    """
+    申請密碼重設並寄送 Email。
 
-    # 先檢查 SMTP 設定，避免帳號是否存在影響回應
+    安全原則：
+    - 不透露 Email 是否已註冊。
+    - 不回傳原始重設 Token。
+    - 寄送失敗時作廢剛建立的 Token。
+    """
+
+    # 確認 SMTP 設定完整
     try:
         get_smtp_settings()
 
     except RuntimeError:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="密碼重設郵件服務尚未設定，請稍後再試",
+            detail="密碼重設郵件服務尚未完成設定，請稍後再試",
         )
 
     email = normalize_email(str(data.email))
@@ -249,7 +262,8 @@ def forgot_password(
         )
     ).scalar_one_or_none()
 
-    # 不存在或已停用的帳號不執行任何動作
+    # Email 不存在或帳號停用時，
+    # 不透露帳號是否存在
     if user is None:
         return {
             "message": "如果此 Email 已註冊且可以使用，系統將寄送密碼重設指示"
@@ -258,6 +272,7 @@ def forgot_password(
     raw_token = None
     token_hash = None
 
+    # 建立密碼重設 Token
     try:
         raw_token = create_password_reset_token(
             db=db,
@@ -266,18 +281,21 @@ def forgot_password(
 
         token_hash = hash_reset_token(raw_token)
 
-        # 先儲存 Token，確保寄出的連結可以被驗證
         db.commit()
 
     except Exception:
         db.rollback()
-        logger.exception("建立密碼重設 Token 失敗")
+
+        logger.exception(
+            "建立密碼重設 Token 失敗"
+        )
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="目前無法處理密碼重設申請",
         )
 
+    # 寄送密碼重設 Email
     try:
         send_password_reset_email(
             to_email=user.email,
@@ -285,9 +303,11 @@ def forgot_password(
         )
 
     except Exception:
-        logger.exception("密碼重設 Email 寄送失敗")
+        logger.exception(
+            "密碼重設 Email 寄送失敗"
+        )
 
-        # 寄送失敗時，立即讓剛建立的 Token 失效
+        # 寄送失敗時，讓剛建立的 Token 立即失效
         try:
             reset_token = db.execute(
                 select(PasswordResetToken).where(
@@ -302,12 +322,15 @@ def forgot_password(
 
         except Exception:
             db.rollback()
-            logger.exception("作廢失敗的密碼重設 Token 時發生錯誤")
 
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="目前無法寄送密碼重設郵件，請稍後再試",
-        )
+            logger.exception(
+                "作廢失敗的密碼重設 Token 時發生錯誤"
+            )
+
+        # 與 Email 不存在時回傳相同訊息
+        return {
+            "message": "如果此 Email 已註冊且可以使用，系統將寄送密碼重設指示"
+        }
 
     return {
         "message": "如果此 Email 已註冊且可以使用，系統將寄送密碼重設指示"
