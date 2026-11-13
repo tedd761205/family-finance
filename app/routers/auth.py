@@ -1,15 +1,16 @@
 
 """
-家庭記帳系統：使用者註冊、登入、登出及個人資料 API
+家庭記帳系統：使用者認證 API
 
 功能：
 1. 使用者註冊
 2. Email 重複檢查
 3. Argon2id 密碼雜湊
 4. 使用者登入
-5. 簽發含 Token 版本的 JWT Access Token
+5. 簽發 JWT Access Token
 6. 查詢目前登入者資料
 7. 撤銷目前登入 Token（登出）
+8. 重設使用者密碼
 """
 
 from datetime import datetime, timezone
@@ -28,6 +29,7 @@ from app.schemas.auth import (
     UserLogin,
     UserPublic,
     TokenResponse,
+    ResetPasswordRequest,
 )
 from app.security import (
     normalize_email,
@@ -37,6 +39,7 @@ from app.security import (
     decode_access_token,
     ACCESS_TOKEN_EXPIRE_MINUTES,
 )
+from app.services.password_reset import reset_user_password
 
 
 router = APIRouter(
@@ -45,29 +48,18 @@ router = APIRouter(
 )
 
 
-# =========================================================
-# 使用者註冊
-# =========================================================
-
 @router.post(
     "/register",
     response_model=UserPublic,
     status_code=status.HTTP_201_CREATED,
 )
-def register_user(
+def register(
     data: UserRegister,
     db: Session = Depends(get_db),
 ):
-    """建立新的使用者帳號。"""
+    """註冊新使用者。"""
 
-    try:
-        email = normalize_email(str(data.email))
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="電子郵件格式不正確",
-        )
-
+    email = normalize_email(str(data.email))
     display_name = data.display_name.strip()
 
     if not display_name:
@@ -85,14 +77,13 @@ def register_user(
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="此電子郵件已經註冊",
+            detail="此 Email 已經註冊",
         )
 
     user = User(
         email=email,
         password_hash=hash_password(data.password),
         display_name=display_name,
-        is_active=True,
     )
 
     try:
@@ -105,38 +96,23 @@ def register_user(
 
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="此電子郵件已經註冊",
+            detail="此 Email 已經註冊",
         )
-
-    except Exception:
-        db.rollback()
-        raise
 
     return user
 
-
-# =========================================================
-# 使用者登入
-# =========================================================
 
 @router.post(
     "/login",
     response_model=TokenResponse,
 )
-def login_user(
+def login(
     data: UserLogin,
     db: Session = Depends(get_db),
 ):
-    """驗證使用者帳號密碼並簽發 JWT。"""
+    """使用 Email 和密碼登入。"""
 
-    try:
-        email = normalize_email(str(data.email))
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="電子郵件或密碼錯誤",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    email = normalize_email(str(data.email))
 
     user = (
         db.query(User)
@@ -144,30 +120,22 @@ def login_user(
         .first()
     )
 
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="電子郵件或密碼錯誤",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    if not verify_password(
+    if user is None or not verify_password(
         data.password,
         user.password_hash,
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="電子郵件或密碼錯誤",
+            detail="Email 或密碼錯誤",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="此帳號目前已停用",
+            detail="此帳號已停用",
         )
 
-    # 使用資料庫目前的 Token 版本簽發 JWT
     access_token = create_access_token(
         subject=user.id,
         token_version=user.token_version,
@@ -180,10 +148,6 @@ def login_user(
     )
 
 
-# =========================================================
-# 取得目前登入者資料
-# =========================================================
-
 @router.get(
     "/me",
     response_model=UserPublic,
@@ -191,52 +155,34 @@ def login_user(
 def get_my_profile(
     current_user: User = Depends(get_current_user),
 ):
-    """取得目前登入使用者的公開資料。"""
+    """取得目前登入者的個人資料。"""
 
     return current_user
 
 
-# =========================================================
-# 使用者登出
-# =========================================================
-
-@router.post(
-    "/logout",
-    status_code=status.HTTP_200_OK,
-)
-def logout_user(
-    credentials: HTTPAuthorizationCredentials | None = Depends(
+@router.post("/logout")
+def logout(
+    credentials: HTTPAuthorizationCredentials = Depends(
         bearer_scheme
     ),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """撤銷目前登入中的 JWT Access Token。"""
-
-    if credentials is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="登入已失效，請重新登入",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    """撤銷目前使用中的 Access Token。"""
 
     try:
-        # 取得已通過驗證的 JWT 資料
         payload = decode_access_token(
             credentials.credentials
         )
-
-        jti = payload["jti"]
 
         expires_at = datetime.fromtimestamp(
             payload["exp"],
             tz=timezone.utc,
         )
 
-        # 建立 Token 撤銷紀錄
         revoked_token = RevokedToken(
-            jti=jti,
             user_id=current_user.id,
+            jti=payload["jti"],
             expires_at=expires_at,
         )
 
@@ -248,7 +194,7 @@ def logout_user(
 
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="登入已失效，請重新登入",
+            detail="Token 已失效",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -258,4 +204,55 @@ def logout_user(
 
     return {
         "message": "已成功登出"
+    }
+
+
+@router.post("/reset-password")
+def reset_password(
+    data: ResetPasswordRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    使用密碼重設 Token 更新密碼。
+
+    成功後：
+    1. 更新密碼雜湊值。
+    2. 將重設 Token 標記為已使用。
+    3. 遞增 token_version，使舊登入 Token 失效。
+    """
+
+    try:
+        success = reset_user_password(
+            db=db,
+            raw_token=data.token,
+            new_password=data.new_password,
+        )
+
+        if not success:
+            db.rollback()
+
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="密碼重設連結無效、已使用或已過期",
+            )
+
+        db.commit()
+
+    except HTTPException:
+        raise
+
+    except ValueError as exc:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        )
+
+    except Exception:
+        db.rollback()
+        raise
+
+    return {
+        "message": "密碼已成功重設，請使用新密碼重新登入"
     }
