@@ -1,6 +1,8 @@
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
+
+from app.database import check_database_connection
 
 app = FastAPI(
     title="家庭記帳系統",
@@ -34,3 +36,18 @@ def health():
         "status": "ok",
         "framework": "FastAPI"
     }
+
+
+@app.get("/health/db")
+def database_health():
+    try:
+        check_database_connection()
+        return {
+            "status": "ok",
+            "database": "connected"
+        }
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail="Database connection failed"
+        )
