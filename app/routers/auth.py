@@ -7,7 +7,7 @@
 2. Email 重複檢查
 3. Argon2id 密碼雜湊
 4. 使用者登入
-5. 簽發 JWT Access Token
+5. 簽發含 Token 版本的 JWT Access Token
 6. 查詢目前登入者資料
 7. 撤銷目前登入 Token（登出）
 """
@@ -167,8 +167,10 @@ def login_user(
             detail="此帳號目前已停用",
         )
 
+    # 使用資料庫目前的 Token 版本簽發 JWT
     access_token = create_access_token(
         subject=user.id,
+        token_version=user.token_version,
     )
 
     return TokenResponse(
@@ -225,6 +227,7 @@ def logout_user(
         )
 
         jti = payload["jti"]
+
         expires_at = datetime.fromtimestamp(
             payload["exp"],
             tz=timezone.utc,
