@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   validate:
-    name: Validate Role Configuration
+    name: Validate Application Configuration
     runs-on: ubuntu-latest
 
     steps:
@@ -32,8 +32,15 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
       - name: Check Python syntax
         run: python -m compileall -q app
 
       - name: Validate role catalog
         run: python -m app.validate_role_catalog
+
+      - name: Import family initializer
+        run: |
+          python -c "from app.services.family_initializer import create_family_with_admin; print('Family initializer import successful')"
