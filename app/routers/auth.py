@@ -1,6 +1,6 @@
 
 """
-家庭記帳系統：使用者註冊與登入 API
+家庭記帳系統：使用者註冊、登入及個人資料 API
 
 功能：
 1. 使用者註冊
@@ -8,6 +8,7 @@
 3. Argon2id 密碼雜湊
 4. 使用者登入
 5. 簽發 JWT Access Token
+6. 查詢目前登入者資料
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -15,6 +16,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
+from app.dependencies.auth import get_current_user
 from app.models.user import User
 from app.schemas.auth import (
     UserRegister,
@@ -68,7 +70,6 @@ def register_user(
             detail="顯示名稱不可為空",
         )
 
-    # 檢查 Email 是否已註冊
     existing_user = (
         db.query(User)
         .filter(User.email == email)
@@ -81,7 +82,6 @@ def register_user(
             detail="此電子郵件已經註冊",
         )
 
-    # 建立使用者
     user = User(
         email=email,
         password_hash=hash_password(data.password),
@@ -132,14 +132,12 @@ def login_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # 查詢使用者
     user = (
         db.query(User)
         .filter(User.email == email)
         .first()
     )
 
-    # 不透露帳號是否存在
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -147,7 +145,6 @@ def login_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # 驗證密碼
     if not verify_password(
         data.password,
         user.password_hash,
@@ -158,14 +155,12 @@ def login_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # 檢查帳號狀態
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="此帳號目前已停用",
         )
 
-    # 建立 Access Token
     access_token = create_access_token(
         subject=user.id,
     )
@@ -175,3 +170,19 @@ def login_user(
         token_type="bearer",
         expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
+
+
+# =========================================================
+# 取得目前登入者資料
+# =========================================================
+
+@router.get(
+    "/me",
+    response_model=UserPublic,
+)
+def get_my_profile(
+    current_user: User = Depends(get_current_user),
+):
+    """取得目前登入使用者的公開資料。"""
+
+    return current_user
