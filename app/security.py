@@ -7,12 +7,14 @@
 2. 電子郵件格式驗證與標準化。
 3. 建立及驗證 JWT Access Token。
 4. 支援伺服器端 Token 撤銷識別。
+5. 支援 Token 版本控制，使舊登入 Token 失效。
 
 注意：
 - 不儲存明文密碼。
 - JWT Secret 從環境變數讀取，不寫死在程式碼。
 - Access Token 預設有效期限為 20 分鐘。
 - Token 撤銷紀錄由資料庫認證層管理。
+- Token 版本比對由認證依賴層管理。
 """
 
 import os
@@ -121,12 +123,31 @@ def _get_jwt_secret() -> str:
 
 
 # =========================================================
+# Token 版本驗證
+# =========================================================
+
+def _validate_token_version(token_version: int) -> int:
+    """驗證 Token 版本必須為非負整數。"""
+
+    if (
+        isinstance(token_version, bool)
+        or not isinstance(token_version, int)
+        or token_version < 0
+    ):
+        raise ValueError("Token 版本必須為非負整數")
+
+    return token_version
+
+
+# =========================================================
 # 建立 Access Token
 # =========================================================
 
 def create_access_token(
     subject: int | str,
     expires_delta: timedelta | None = None,
+    *,
+    token_version: int = 0,
 ) -> str:
     """建立 JWT Access Token。"""
 
@@ -140,6 +161,8 @@ def create_access_token(
 
     if user_id <= 0:
         raise ValueError("使用者 ID 必須為正整數")
+
+    token_version = _validate_token_version(token_version)
 
     if expires_delta is None:
         expires_delta = timedelta(
@@ -158,6 +181,7 @@ def create_access_token(
         "exp": int(expire.timestamp()),
         "jti": secrets.token_urlsafe(16),
         "type": "access",
+        "token_version": token_version,
     }
 
     return jwt.encode(
@@ -188,6 +212,7 @@ def decode_access_token(token: str) -> dict:
                 "exp",
                 "jti",
                 "type",
+                "token_version",
             ]
         },
     )
@@ -212,5 +237,7 @@ def decode_access_token(token: str) -> dict:
 
     if not isinstance(jti, str) or not jti.strip():
         raise ValueError("Token 識別碼不正確")
+
+    _validate_token_version(payload.get("token_version"))
 
     return payload
