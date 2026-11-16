@@ -9,8 +9,8 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     String,
-    UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -35,12 +35,26 @@ class Category(Base):
             "ix_categories_parent_id",
             "parent_id",
         ),
-        UniqueConstraint(
+
+        # 系統分類：全系統相同類型不可有重複名稱
+        Index(
+            "uq_categories_system_type_name",
+            "category_type",
+            "name",
+            unique=True,
+            postgresql_where=text("family_id IS NULL"),
+        ),
+
+        # 家庭分類：同一家庭、相同類型不可有重複名稱
+        Index(
+            "uq_categories_family_type_name",
             "family_id",
             "category_type",
             "name",
-            name="uq_categories_family_type_name",
+            unique=True,
+            postgresql_where=text("family_id IS NOT NULL"),
         ),
+
         CheckConstraint(
             "category_type IN ('income', 'expense')",
             name="ck_categories_type",
@@ -53,7 +67,6 @@ class Category(Base):
         autoincrement=True,
     )
 
-    # NULL 代表系統共用分類
     family_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("families.id", ondelete="CASCADE"),
