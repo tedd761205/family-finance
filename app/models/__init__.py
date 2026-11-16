@@ -12,6 +12,7 @@ from app.models.revoked_token import RevokedToken
 from app.models.password_reset_token import PasswordResetToken
 from app.models.user_identity import UserIdentity
 from app.models.account import Account
+from app.models.transaction import Transaction
 
 
 __all__ = [
@@ -28,4 +29,5 @@ __all__ = [
     "PasswordResetToken",
     "UserIdentity",
     "Account",
+    "Transaction",
 ]
