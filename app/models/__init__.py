@@ -1,8 +1,4 @@
 
-"""
-家庭記帳系統 SQLAlchemy 資料模型
-"""
-
 from app.models.user import User
 from app.models.family import Family
 from app.models.family_member import FamilyMember
@@ -14,6 +10,7 @@ from app.models.audit_log import AuditLog
 from app.models.role_data_scope import RoleDataScope
 from app.models.revoked_token import RevokedToken
 from app.models.password_reset_token import PasswordResetToken
+from app.models.user_identity import UserIdentity
 
 
 __all__ = [
@@ -28,4 +25,5 @@ __all__ = [
     "RoleDataScope",
     "RevokedToken",
     "PasswordResetToken",
+    "UserIdentity",
 ]
