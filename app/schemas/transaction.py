@@ -158,6 +158,9 @@ class TransactionResponse(TransactionBase):
     transfer_id: int | None = None
     related_transaction_id: int | None = None
 
+    # 信用卡繳款主檔 ID
+    credit_card_payment_id: int | None = None
+
     is_voided: bool
     voided_at: datetime | None = None
 
