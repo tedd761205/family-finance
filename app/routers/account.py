@@ -8,6 +8,8 @@
 3. 查詢單一帳戶明細。
 4. 修改帳戶資料。
 5. 作廢帳戶（軟刪除）。
+6. 查詢家庭所有帳戶餘額。
+7. 查詢單一帳戶餘額。
 
 安全機制：
 - JWT 登入驗證。
@@ -46,6 +48,15 @@ from app.schemas.account import (
     AccountResponse,
     AccountListResponse,
     AccountMessageResponse,
+)
+
+from app.schemas.account_balance import (
+    AccountBalanceResponse,
+    AccountBalanceListResponse,
+)
+
+from app.services.account_balance import (
+    calculate_account_balance,
 )
 
 
@@ -326,7 +337,116 @@ def get_accounts(
 
 
 # =========================================================
-# 3. 查詢單一帳戶
+# 3. 查詢家庭所有帳戶餘額
+# =========================================================
+
+@router.get(
+    "/balances",
+    response_model=AccountBalanceListResponse,
+)
+def get_account_balances(
+    family_id: int = Query(..., gt=0),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """查詢指定家庭所有有效帳戶的餘額。"""
+
+    _, roles = check_family_permission(
+        db=db,
+        user_id=current_user.id,
+        family_id=family_id,
+        permission_code="accounts.view",
+    )
+
+    scope = check_account_scope(
+        db=db,
+        roles=roles,
+        family_id=family_id,
+    )
+
+    query = db.query(Account).filter(
+        Account.family_id == family_id,
+        Account.is_active.is_(True),
+    )
+
+    if scope == "own":
+        query = query.filter(
+            Account.created_by == current_user.id,
+        )
+
+    accounts = (
+        query
+        .order_by(
+            Account.created_at.desc(),
+            Account.id.desc(),
+        )
+        .all()
+    )
+
+    balances = [
+        AccountBalanceResponse(
+            **calculate_account_balance(db, account)
+        )
+        for account in accounts
+    ]
+
+    return AccountBalanceListResponse(
+        success=True,
+        total=len(balances),
+        balances=balances,
+    )
+
+
+# =========================================================
+# 4. 查詢單一帳戶餘額
+# =========================================================
+
+@router.get(
+    "/{account_id}/balance",
+    response_model=AccountBalanceResponse,
+)
+def get_single_account_balance(
+    account_id: int,
+    family_id: int = Query(..., gt=0),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """查詢單一有效帳戶的目前餘額。"""
+
+    _, roles = check_family_permission(
+        db=db,
+        user_id=current_user.id,
+        family_id=family_id,
+        permission_code="accounts.view",
+    )
+
+    scope = check_account_scope(
+        db=db,
+        roles=roles,
+        family_id=family_id,
+    )
+
+    account = get_family_account(
+        db=db,
+        account_id=account_id,
+        family_id=family_id,
+    )
+
+    check_account_owner(
+        account=account,
+        current_user=current_user,
+        scope=scope,
+    )
+
+    check_account_active(account)
+
+    return AccountBalanceResponse(
+        **calculate_account_balance(db, account)
+    )
+
+
+# =========================================================
+# 5. 查詢單一帳戶
 # =========================================================
 
 @router.get(
@@ -372,7 +492,7 @@ def get_account(
 
 
 # =========================================================
-# 4. 修改帳戶
+# 6. 修改帳戶
 # =========================================================
 
 @router.patch(
@@ -498,7 +618,7 @@ def update_account(
 
 
 # =========================================================
-# 5. 作廢帳戶（軟刪除）
+# 7. 作廢帳戶（軟刪除）
 # =========================================================
 
 @router.delete(
