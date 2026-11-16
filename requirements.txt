@@ -14,4 +14,4 @@ PyJWT>=2.10,<3.0
 email-validator>=2.2,<3.0
 
 # Google OAuth 身分驗證
-google-auth>=2.38,<3.0
+google-auth[requests]>=2.38,<3.0
