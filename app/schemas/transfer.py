@@ -34,7 +34,7 @@ class TransferBase(BaseModel):
 
     description: str = Field(
         min_length=1,
-        max_length=255,
+        max_length=200,
     )
 
     fee_amount: Decimal = Field(
@@ -103,7 +103,7 @@ class TransferUpdate(BaseModel):
     description: str | None = Field(
         default=None,
         min_length=1,
-        max_length=255,
+        max_length=200,
     )
 
     fee_amount: Decimal | None = Field(
