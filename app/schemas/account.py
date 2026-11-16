@@ -17,7 +17,13 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 
 AccountType = Literal[
@@ -95,8 +101,6 @@ class AccountBase(BaseModel):
     @field_validator("currency_code")
     @classmethod
     def normalize_currency_code(cls, value: str) -> str:
-        """幣別統一轉換為大寫"""
-
         value = value.strip().upper()
 
         if not value.isalpha():
@@ -107,8 +111,6 @@ class AccountBase(BaseModel):
     @field_validator("name")
     @classmethod
     def validate_name(cls, value: str) -> str:
-        """帳戶名稱不可為空白"""
-
         value = value.strip()
 
         if not value:
@@ -122,14 +124,32 @@ class AccountBase(BaseModel):
         cls,
         value: str | None,
     ) -> str | None:
-        """整理選填文字"""
-
         if value is None:
             return None
 
         value = value.strip()
-
         return value or None
+
+    @model_validator(mode="after")
+    def validate_credit_card_fields(self):
+        has_credit_card_fields = any(
+            value is not None
+            for value in (
+                self.credit_limit,
+                self.statement_day,
+                self.payment_due_day,
+            )
+        )
+
+        if (
+            has_credit_card_fields
+            and self.account_type != "credit_card"
+        ):
+            raise ValueError(
+                "信用卡額度、結帳日及繳款日只能用於信用卡帳戶"
+            )
+
+        return self
 
 
 class AccountCreate(AccountBase):
@@ -140,6 +160,10 @@ class AccountCreate(AccountBase):
 
 class AccountUpdate(BaseModel):
     """修改帳戶請求"""
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
 
     name: str | None = Field(
         default=None,
@@ -193,12 +217,23 @@ class AccountUpdate(BaseModel):
 
     is_active: bool | None = None
 
+    @field_validator(
+        "name",
+        "account_type",
+        "currency_code",
+        "is_active",
+        mode="before",
+    )
+    @classmethod
+    def reject_null_required_fields(cls, value):
+        if value is None:
+            raise ValueError("此欄位不可為 null")
+
+        return value
+
     @field_validator("name")
     @classmethod
-    def validate_name(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-
+    def validate_name(cls, value: str) -> str:
         value = value.strip()
 
         if not value:
@@ -208,13 +243,7 @@ class AccountUpdate(BaseModel):
 
     @field_validator("currency_code")
     @classmethod
-    def normalize_currency_code(
-        cls,
-        value: str | None,
-    ) -> str | None:
-        if value is None:
-            return None
-
+    def normalize_currency_code(cls, value: str) -> str:
         value = value.strip().upper()
 
         if not value.isalpha():
@@ -232,8 +261,32 @@ class AccountUpdate(BaseModel):
             return None
 
         value = value.strip()
-
         return value or None
+
+    @model_validator(mode="after")
+    def validate_update_fields(self):
+        if not self.model_fields_set:
+            raise ValueError("至少需要提供一個修改欄位")
+
+        has_credit_card_fields = any(
+            value is not None
+            for value in (
+                self.credit_limit,
+                self.statement_day,
+                self.payment_due_day,
+            )
+        )
+
+        if (
+            has_credit_card_fields
+            and self.account_type is not None
+            and self.account_type != "credit_card"
+        ):
+            raise ValueError(
+                "信用卡專用欄位不能搭配非信用卡帳戶類型"
+            )
+
+        return self
 
 
 class AccountResponse(BaseModel):
