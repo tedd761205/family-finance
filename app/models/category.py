@@ -4,6 +4,7 @@ from datetime import datetime
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -30,11 +31,19 @@ class Category(Base):
             "ix_categories_type",
             "category_type",
         ),
+        Index(
+            "ix_categories_parent_id",
+            "parent_id",
+        ),
         UniqueConstraint(
             "family_id",
             "category_type",
             "name",
             name="uq_categories_family_type_name",
+        ),
+        CheckConstraint(
+            "category_type IN ('income', 'expense')",
+            name="ck_categories_type",
         ),
     )
 
@@ -44,45 +53,39 @@ class Category(Base):
         autoincrement=True,
     )
 
-    # 所屬家庭；NULL 代表系統共用分類
+    # NULL 代表系統共用分類
     family_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("families.id", ondelete="CASCADE"),
         nullable=True,
     )
 
-    # income / expense
     category_type: Mapped[str] = mapped_column(
         String(20),
         nullable=False,
     )
 
-    # 分類名稱
     name: Mapped[str] = mapped_column(
         String(100),
         nullable=False,
     )
 
-    # 上層分類 ID，支援多層分類
     parent_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("categories.id", ondelete="RESTRICT"),
         nullable=True,
     )
 
-    # 分類圖示
     icon: Mapped[str | None] = mapped_column(
         String(50),
         nullable=True,
     )
 
-    # 分類顯示顏色
     color: Mapped[str | None] = mapped_column(
         String(20),
         nullable=True,
     )
 
-    # 是否為系統預設分類
     is_system: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
@@ -90,7 +93,6 @@ class Category(Base):
         server_default="false",
     )
 
-    # 是否啟用
     is_active: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
@@ -98,14 +100,12 @@ class Category(Base):
         server_default="true",
     )
 
-    # 排序
     sort_order: Mapped[int] = mapped_column(
         nullable=False,
         default=0,
         server_default="0",
     )
 
-    # 備註
     note: Mapped[str | None] = mapped_column(
         String(500),
         nullable=True,
