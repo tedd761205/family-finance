@@ -44,6 +44,10 @@ class Transfer(Base):
             "amount > 0",
             name="ck_transfers_amount_positive",
         ),
+        CheckConstraint(
+            "fee_amount >= 0",
+            name="ck_transfers_fee_nonnegative",
+        ),
     )
 
     id: Mapped[int] = mapped_column(
@@ -70,6 +74,7 @@ class Transfer(Base):
         nullable=False,
     )
 
+    # 轉帳本金
     amount: Mapped[Decimal] = mapped_column(
         Numeric(20, 4),
         nullable=False,
@@ -97,7 +102,7 @@ class Transfer(Base):
         nullable=True,
     )
 
-    # 手續費，獨立記錄，避免混入轉帳本金
+    # 轉帳手續費，獨立於本金
     fee_amount: Mapped[Decimal] = mapped_column(
         Numeric(20, 4),
         nullable=False,
@@ -112,7 +117,6 @@ class Transfer(Base):
         nullable=True,
     )
 
-    # 是否作廢
     is_voided: Mapped[bool] = mapped_column(
         nullable=False,
         default=False,
