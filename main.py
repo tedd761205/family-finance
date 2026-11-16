@@ -35,6 +35,10 @@ from app.routers.yearly_report import (
     router as yearly_report_router,
 )
 
+from app.routers.category_report import (
+    router as category_report_router,
+)
+
 
 # --------------------------------------------------
 # FastAPI Application
@@ -58,10 +62,12 @@ app.include_router(category_router)
 app.include_router(transaction_router)
 app.include_router(transfer_router)
 app.include_router(credit_card_payment_router)
+
 app.include_router(household_report_router)
 app.include_router(monthly_report_router)
 app.include_router(daily_report_router)
 app.include_router(yearly_report_router)
+app.include_router(category_report_router)
 
 
 # --------------------------------------------------
