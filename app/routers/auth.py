@@ -6,12 +6,13 @@
 1. 使用者註冊
 2. Email 重複檢查
 3. Argon2id 密碼雜湊
-4. 使用者登入
-5. 簽發 JWT Access Token
-6. 查詢目前登入者資料
-7. 撤銷目前登入 Token（登出）
-8. 忘記密碼申請
-9. 重設使用者密碼
+4. Email + 密碼登入
+5. Google 登入
+6. 簽發 JWT Access Token
+7. 查詢目前登入者資料
+8. 撤銷目前登入 Token（登出）
+9. 忘記密碼申請
+10. 重設使用者密碼
 
 安全原則：
 - 不回傳密碼或密碼雜湊。
@@ -20,6 +21,7 @@
 - 密碼重設成功後，使舊登入 Token 失效。
 - Google 專用帳號沒有密碼時，不允許使用密碼登入。
 - 不因 Email 相同而自動合併不同登入身分。
+- Google 使用 sub 作為外部身分唯一識別碼。
 """
 
 import logging
@@ -34,7 +36,14 @@ from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
 from app.dependencies.auth import get_current_user, bearer_scheme
-from app.models import User, RevokedToken, PasswordResetToken
+
+from app.models import (
+    User,
+    UserIdentity,
+    RevokedToken,
+    PasswordResetToken,
+)
+
 from app.schemas.auth import (
     UserRegister,
     UserLogin,
@@ -43,6 +52,9 @@ from app.schemas.auth import (
     ForgotPasswordRequest,
     ResetPasswordRequest,
 )
+
+from app.schemas.google_auth import GoogleLoginRequest
+
 from app.security import (
     normalize_email,
     hash_password,
@@ -51,15 +63,22 @@ from app.security import (
     decode_access_token,
     ACCESS_TOKEN_EXPIRE_MINUTES,
 )
+
 from app.services.password_reset import (
     create_password_reset_token,
     reset_user_password,
     hash_reset_token,
     get_utc_now,
 )
+
 from app.services.email import (
     get_smtp_settings,
     send_password_reset_email,
+)
+
+from app.services.google_oauth import (
+    verify_google_id_token,
+    GoogleOAuthError,
 )
 
 
@@ -70,6 +89,23 @@ router = APIRouter(
     prefix="/auth",
     tags=["Authentication"],
 )
+
+
+def create_user_token(user: User) -> TokenResponse:
+    """
+    為指定使用者簽發 JWT Access Token。
+    """
+
+    access_token = create_access_token(
+        subject=user.id,
+        token_version=user.token_version,
+    )
+
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )
 
 
 @router.post(
@@ -144,8 +180,8 @@ def login(
         .first()
     )
 
-    # Google 專用帳號的 password_hash 為 None。
-    # 這類帳號不能直接使用 Email + 密碼登入。
+    # Google 專用帳號沒有密碼，
+    # 不允許使用 Email + 密碼登入。
     if (
         user is None
         or user.password_hash is None
@@ -166,16 +202,165 @@ def login(
             detail="此帳號已停用",
         )
 
-    access_token = create_access_token(
-        subject=user.id,
-        token_version=user.token_version,
+    return create_user_token(user)
+
+
+@router.post(
+    "/google",
+    response_model=TokenResponse,
+)
+def google_login(
+    data: GoogleLoginRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    使用 Google ID Token 登入。
+
+    流程：
+    1. 驗證 Google ID Token。
+    2. 使用 Google sub 查詢既有外部身分。
+    3. 已綁定者直接登入。
+    4. 未綁定且 Email 尚未註冊者，建立新系統帳號。
+    5. 若 Email 已有帳號，不自動合併。
+    6. 簽發本系統 JWT。
+    """
+
+    # 第一步：驗證 Google 身分
+    try:
+        google_user = verify_google_id_token(
+            data.id_token
+        )
+
+    except RuntimeError:
+        logger.error(
+            "Google OAuth 尚未完成環境設定"
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google 登入服務尚未完成設定",
+        )
+
+    except GoogleOAuthError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Google 登入驗證失敗",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    google_sub = google_user["sub"]
+    google_email = normalize_email(
+        google_user["email"]
     )
 
-    return TokenResponse(
-        access_token=access_token,
-        token_type="bearer",
-        expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    # 第二步：透過 Google sub 查詢外部身分
+    identity = db.execute(
+        select(UserIdentity).where(
+            UserIdentity.provider == "google",
+            UserIdentity.provider_subject == google_sub,
+        )
+    ).scalar_one_or_none()
+
+    if identity is not None:
+
+        # 已綁定的 Google 身分
+        user = db.get(
+            User,
+            identity.user_id,
+        )
+
+        if user is None:
+            logger.error(
+                "Google 身分資料找不到對應使用者"
+            )
+
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Google 登入帳號無效",
+            )
+
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="此帳號已停用",
+            )
+
+        return create_user_token(user)
+
+    # 第三步：Google 身分尚未綁定
+    # 檢查 Email 是否已有系統帳號
+    existing_user = db.execute(
+        select(User).where(
+            User.email == google_email
+        )
+    ).scalar_one_or_none()
+
+    if existing_user is not None:
+
+        # 不可只因 Email 相同就自動合併。
+        # 未來需先登入既有帳號，再執行 Google 綁定流程。
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "此 Email 已有系統帳號。"
+                "請先使用原本的登入方式登入，"
+                "再進行 Google 帳號綁定。"
+            ),
+        )
+
+    # 第四步：首次 Google 登入
+    # 建立 Google 專用系統帳號
+    new_user = User(
+        email=google_email,
+        password_hash=None,
+        display_name=google_user["name"],
+        is_active=True,
+        token_version=0,
     )
+
+    try:
+        db.add(new_user)
+        db.flush()
+
+        # 建立 Google 外部身分
+        identity = UserIdentity(
+            user_id=new_user.id,
+            provider="google",
+            provider_subject=google_sub,
+            email=google_email,
+        )
+
+        db.add(identity)
+
+        db.commit()
+        db.refresh(new_user)
+
+    except IntegrityError:
+        db.rollback()
+
+        logger.warning(
+            "Google 帳號建立時發生唯一性衝突"
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Google 帳號建立發生衝突，請重新登入",
+        )
+
+    except Exception:
+        db.rollback()
+
+        logger.exception(
+            "Google 使用者建立失敗"
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Google 登入目前無法完成",
+        )
+
+    # 第五步：簽發本系統 JWT
+    return create_user_token(new_user)
 
 
 @router.get(
@@ -270,11 +455,12 @@ def forgot_password(
         )
     ).scalar_one_or_none()
 
-    # Email 不存在或帳號停用時，
-    # 不透露帳號是否存在
     if user is None:
         return {
-            "message": "如果此 Email 已註冊且可以使用，系統將寄送密碼重設指示"
+            "message": (
+                "如果此 Email 已註冊且可以使用，"
+                "系統將寄送密碼重設指示"
+            )
         }
 
     raw_token = None
@@ -335,13 +521,18 @@ def forgot_password(
                 "作廢失敗的密碼重設 Token 時發生錯誤"
             )
 
-        # 與 Email 不存在時回傳相同訊息
         return {
-            "message": "如果此 Email 已註冊且可以使用，系統將寄送密碼重設指示"
+            "message": (
+                "如果此 Email 已註冊且可以使用，"
+                "系統將寄送密碼重設指示"
+            )
         }
 
     return {
-        "message": "如果此 Email 已註冊且可以使用，系統將寄送密碼重設指示"
+        "message": (
+            "如果此 Email 已註冊且可以使用，"
+            "系統將寄送密碼重設指示"
+        )
     }
 
 
