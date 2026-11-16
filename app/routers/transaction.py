@@ -137,20 +137,29 @@ def check_transaction_active(
         )
 
 
-def check_transaction_not_transfer(
+def check_transaction_not_managed(
     transaction: Transaction,
 ):
     """
-    防止透過一般交易 API 修改或作廢轉帳交易。
+    防止透過一般交易 API 修改或作廢由專用 API 管理的交易。
 
-    只要 transfer_id 不為空，
-    就必須透過 /transfers 管理整筆轉帳。
+    1. transfer_id 不為空：
+       必須透過 /transfers 管理。
+
+    2. credit_card_payment_id 不為空：
+       必須透過 /credit-card-payments 管理。
     """
 
     if transaction.transfer_id is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="此交易屬於轉帳紀錄，請透過轉帳管理 API 操作",
+        )
+
+    if transaction.credit_card_payment_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="此交易屬於信用卡繳款紀錄，請透過信用卡繳款管理 API 操作",
         )
 
 
@@ -358,7 +367,6 @@ def create_transaction(
         transaction_type=transaction_type,
     )
 
-    # 期初餘額：每個帳戶只能有一筆有效紀錄
     if transaction_type == "opening_balance":
         check_opening_balance_exists(
             db=db,
@@ -591,7 +599,7 @@ def update_transaction(
 
     check_transaction_active(transaction)
 
-    check_transaction_not_transfer(transaction)
+    check_transaction_not_managed(transaction)
 
     if scope == "own":
         check_transaction_owner(
@@ -683,7 +691,7 @@ def void_transaction(
 
     check_transaction_active(transaction)
 
-    check_transaction_not_transfer(transaction)
+    check_transaction_not_managed(transaction)
 
     if scope == "own":
         check_transaction_owner(
