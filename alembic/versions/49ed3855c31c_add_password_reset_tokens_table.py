@@ -1,5 +1,5 @@
 
-"""add password reset tokens table
+"""create credit card payments table
 
 Revision ID: 49ed3855c31c
 Revises: 18c51cf1ba49
