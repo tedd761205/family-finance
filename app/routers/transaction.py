@@ -155,6 +155,55 @@ def check_transaction_not_transfer(
 
 
 # ============================================================
+# 期初餘額驗證
+# ============================================================
+
+def check_opening_balance_exists(
+    db: Session,
+    family_id: int,
+    account_id: int,
+):
+    """確認帳戶是否已有有效期初餘額"""
+
+    exists = (
+        db.query(Transaction.id)
+        .filter(
+            Transaction.family_id == family_id,
+            Transaction.account_id == account_id,
+            Transaction.transaction_type == "opening_balance",
+            Transaction.is_voided.is_(False),
+        )
+        .first()
+    )
+
+    if exists is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="此帳戶已存在有效的期初餘額，請勿重複新增",
+        )
+
+
+def is_opening_balance_unique_violation(
+    exc: IntegrityError,
+) -> bool:
+    """辨識期初餘額唯一索引衝突"""
+
+    original_error = getattr(exc, "orig", None)
+    diagnostic = getattr(original_error, "diag", None)
+
+    constraint_name = getattr(
+        diagnostic,
+        "constraint_name",
+        None,
+    )
+
+    return (
+        constraint_name
+        == "uq_transactions_active_opening_balance"
+    )
+
+
+# ============================================================
 # 交易類型轉換驗證
 # ============================================================
 
@@ -309,6 +358,14 @@ def create_transaction(
         transaction_type=transaction_type,
     )
 
+    # 期初餘額：每個帳戶只能有一筆有效紀錄
+    if transaction_type == "opening_balance":
+        check_opening_balance_exists(
+            db=db,
+            family_id=family_id,
+            account_id=payload.account_id,
+        )
+
     transaction = Transaction(
         family_id=family_id,
         account_id=payload.account_id,
@@ -330,9 +387,15 @@ def create_transaction(
 
         return transaction
 
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
         logger.exception("新增交易時發生資料完整性錯誤")
+
+        if is_opening_balance_unique_violation(exc):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="此帳戶已存在有效的期初餘額，請勿重複新增",
+            )
 
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
