@@ -1,5 +1,4 @@
 
-
 """
 家庭記帳系統：帳戶管理 API
 
@@ -151,6 +150,43 @@ def check_account_owner(
         )
 
 
+def check_account_active(account: Account):
+    """一般操作不允許使用已作廢帳戶。"""
+
+    if not account.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="此帳戶已作廢，無法進行此操作",
+        )
+
+
+def validate_account_type_fields(
+    account_type: str,
+    credit_limit,
+    statement_day,
+    payment_due_day,
+):
+    """檢查信用卡專用欄位是否與帳戶類型一致。"""
+
+    has_credit_card_fields = any(
+        value is not None
+        for value in (
+            credit_limit,
+            statement_day,
+            payment_due_day,
+        )
+    )
+
+    if (
+        has_credit_card_fields
+        and account_type != "credit_card"
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="信用卡額度、結帳日及繳款日只能用於信用卡帳戶",
+        )
+
+
 # =========================================================
 # 1. 新增帳戶
 # =========================================================
@@ -179,6 +215,13 @@ def create_account(
         db=db,
         roles=roles,
         family_id=family_id,
+    )
+
+    validate_account_type_fields(
+        account_type=data.account_type,
+        credit_limit=data.credit_limit,
+        statement_day=data.statement_day,
+        payment_due_day=data.payment_due_day,
     )
 
     try:
@@ -296,7 +339,7 @@ def get_account(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """查詢單一帳戶明細。"""
+    """查詢單一有效帳戶明細。"""
 
     _, roles = check_family_permission(
         db=db,
@@ -322,6 +365,8 @@ def get_account(
         current_user=current_user,
         scope=scope,
     )
+
+    check_account_active(account)
 
     return account
 
@@ -368,18 +413,59 @@ def update_account(
         scope=scope,
     )
 
+    check_account_active(account)
+
     changes = data.model_dump(
         exclude_unset=True,
     )
 
-    # 作廢帳戶必須另外具備 accounts.void 權限
-    if changes.get("is_active") is False:
-        check_family_permission(
-            db=db,
-            user_id=current_user.id,
-            family_id=family_id,
-            permission_code="accounts.void",
+    # 作廢只能透過 DELETE API 執行
+    if "is_active" in changes:
+        if changes["is_active"] is False:
+            check_family_permission(
+                db=db,
+                user_id=current_user.id,
+                family_id=family_id,
+                permission_code="accounts.void",
+            )
+
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="請使用 DELETE API 作廢帳戶",
+            )
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="目前不開放透過修改 API 重新啟用帳戶",
         )
+
+    # 使用修改後的完整資料進行驗證
+    new_account_type = changes.get(
+        "account_type",
+        account.account_type,
+    )
+
+    new_credit_limit = changes.get(
+        "credit_limit",
+        account.credit_limit,
+    )
+
+    new_statement_day = changes.get(
+        "statement_day",
+        account.statement_day,
+    )
+
+    new_payment_due_day = changes.get(
+        "payment_due_day",
+        account.payment_due_day,
+    )
+
+    validate_account_type_fields(
+        account_type=new_account_type,
+        credit_limit=new_credit_limit,
+        statement_day=new_statement_day,
+        payment_due_day=new_payment_due_day,
+    )
 
     try:
         for field, value in changes.items():
@@ -462,6 +548,7 @@ def deactivate_account(
         account.is_active = False
 
         db.commit()
+        db.refresh(account)
 
         return AccountMessageResponse(
             success=True,
