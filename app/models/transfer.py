@@ -74,6 +74,10 @@ class Transfer(Base):
             "fee_amount >= 0",
             name="ck_transfers_fee_nonnegative",
         ),
+        CheckConstraint(
+            "fee_amount = 0 OR fee_account_id IS NOT NULL",
+            name="ck_transfers_fee_account_required",
+        ),
     )
 
     id: Mapped[int] = mapped_column(
