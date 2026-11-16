@@ -17,7 +17,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
@@ -28,38 +28,30 @@ class Transaction(Base):
     __tablename__ = "transactions"
 
     __table_args__ = (
-        # 帳戶必須屬於同一家庭
         ForeignKeyConstraint(
             ["family_id", "account_id"],
             ["accounts.family_id", "accounts.id"],
             name="fk_transactions_family_account",
             ondelete="RESTRICT",
         ),
-
-        # 轉帳必須屬於同一家庭
         ForeignKeyConstraint(
             ["family_id", "transfer_id"],
             ["transfers.family_id", "transfers.id"],
             name="fk_transactions_family_transfer",
             ondelete="RESTRICT",
         ),
-
-        # 相關交易必須屬於同一家庭
         ForeignKeyConstraint(
             ["family_id", "related_transaction_id"],
             ["transactions.family_id", "transactions.id"],
             name="fk_transactions_family_related_transaction",
             ondelete="RESTRICT",
         ),
-
-        # 信用卡繳款必須屬於同一家庭
         ForeignKeyConstraint(
             ["family_id", "credit_card_payment_id"],
             ["credit_card_payments.family_id", "credit_card_payments.id"],
             name="fk_transactions_family_credit_card_payment",
             ondelete="RESTRICT",
         ),
-
         Index(
             "ix_transactions_family_account_date",
             "family_id",
@@ -82,8 +74,6 @@ class Transaction(Base):
             "ix_transactions_credit_card_payment_id",
             "credit_card_payment_id",
         ),
-
-        # 每個帳戶只能有一筆有效期初餘額
         Index(
             "uq_transactions_active_opening_balance",
             "family_id",
@@ -94,7 +84,6 @@ class Transaction(Base):
                 "AND is_voided = false"
             ),
         ),
-
         UniqueConstraint(
             "family_id",
             "id",
@@ -166,7 +155,6 @@ class Transaction(Base):
         nullable=True,
     )
 
-    # 信用卡繳款主檔 ID，由系統自動維護
     credit_card_payment_id: Mapped[int | None] = mapped_column(
         BigInteger,
         nullable=True,
@@ -211,4 +199,11 @@ class Transaction(Base):
         nullable=False,
         server_default=func.now(),
         onupdate=func.now(),
+    )
+
+    # 所屬帳戶
+    account = relationship(
+        "Account",
+        foreign_keys=[family_id, account_id],
+        viewonly=True,
     )
