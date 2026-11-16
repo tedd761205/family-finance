@@ -13,6 +13,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -26,30 +27,29 @@ class Transfer(Base):
     __tablename__ = "transfers"
 
     __table_args__ = (
-        # 確保轉出帳戶屬於同一家庭
         ForeignKeyConstraint(
             ["family_id", "from_account_id"],
             ["accounts.family_id", "accounts.id"],
             name="fk_transfers_family_from_account",
             ondelete="RESTRICT",
         ),
-
-        # 確保轉入帳戶屬於同一家庭
         ForeignKeyConstraint(
             ["family_id", "to_account_id"],
             ["accounts.family_id", "accounts.id"],
             name="fk_transfers_family_to_account",
             ondelete="RESTRICT",
         ),
-
-        # 確保手續費帳戶屬於同一家庭
         ForeignKeyConstraint(
             ["family_id", "fee_account_id"],
             ["accounts.family_id", "accounts.id"],
             name="fk_transfers_family_fee_account",
             ondelete="RESTRICT",
         ),
-
+        UniqueConstraint(
+            "family_id",
+            "id",
+            name="uq_transfers_family_id_id",
+        ),
         Index(
             "ix_transfers_family_id",
             "family_id",
