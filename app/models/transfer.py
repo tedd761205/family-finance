@@ -4,9 +4,11 @@ from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Numeric,
     String,
@@ -24,6 +26,30 @@ class Transfer(Base):
     __tablename__ = "transfers"
 
     __table_args__ = (
+        # 確保轉出帳戶屬於同一家庭
+        ForeignKeyConstraint(
+            ["family_id", "from_account_id"],
+            ["accounts.family_id", "accounts.id"],
+            name="fk_transfers_family_from_account",
+            ondelete="RESTRICT",
+        ),
+
+        # 確保轉入帳戶屬於同一家庭
+        ForeignKeyConstraint(
+            ["family_id", "to_account_id"],
+            ["accounts.family_id", "accounts.id"],
+            name="fk_transfers_family_to_account",
+            ondelete="RESTRICT",
+        ),
+
+        # 確保手續費帳戶屬於同一家庭
+        ForeignKeyConstraint(
+            ["family_id", "fee_account_id"],
+            ["accounts.family_id", "accounts.id"],
+            name="fk_transfers_family_fee_account",
+            ondelete="RESTRICT",
+        ),
+
         Index(
             "ix_transfers_family_id",
             "family_id",
@@ -64,17 +90,14 @@ class Transfer(Base):
 
     from_account_id: Mapped[int] = mapped_column(
         BigInteger,
-        ForeignKey("accounts.id", ondelete="RESTRICT"),
         nullable=False,
     )
 
     to_account_id: Mapped[int] = mapped_column(
         BigInteger,
-        ForeignKey("accounts.id", ondelete="RESTRICT"),
         nullable=False,
     )
 
-    # 轉帳本金
     amount: Mapped[Decimal] = mapped_column(
         Numeric(20, 4),
         nullable=False,
@@ -102,7 +125,6 @@ class Transfer(Base):
         nullable=True,
     )
 
-    # 轉帳手續費，獨立於本金
     fee_amount: Mapped[Decimal] = mapped_column(
         Numeric(20, 4),
         nullable=False,
@@ -110,14 +132,13 @@ class Transfer(Base):
         server_default="0",
     )
 
-    # 手續費扣款帳戶
     fee_account_id: Mapped[int | None] = mapped_column(
         BigInteger,
-        ForeignKey("accounts.id", ondelete="RESTRICT"),
         nullable=True,
     )
 
     is_voided: Mapped[bool] = mapped_column(
+        Boolean,
         nullable=False,
         default=False,
         server_default="false",
