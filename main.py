@@ -14,11 +14,17 @@ from app.routers.account import router as account_router
 from app.routers.category import router as category_router
 from app.routers.transaction import router as transaction_router
 from app.routers.transfer import router as transfer_router
+
 from app.routers.credit_card_payment import (
     router as credit_card_payment_router,
 )
+
 from app.routers.household_report import (
     router as household_report_router,
+)
+
+from app.routers.monthly_report import (
+    router as monthly_report_router,
 )
 
 
@@ -45,6 +51,7 @@ app.include_router(transaction_router)
 app.include_router(transfer_router)
 app.include_router(credit_card_payment_router)
 app.include_router(household_report_router)
+app.include_router(monthly_report_router)
 
 
 # --------------------------------------------------
