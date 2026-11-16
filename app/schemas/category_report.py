@@ -9,6 +9,20 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class CategoryReportAmount(BaseModel):
+    currency_code: str = Field(
+        ...,
+        min_length=3,
+        max_length=3,
+        description="幣別代碼",
+    )
+
+    amount: Decimal = Field(
+        ...,
+        description="統計金額",
+    )
+
+
 class CategoryReportItem(BaseModel):
     category_id: int | None = Field(
         default=None,
@@ -23,6 +37,13 @@ class CategoryReportItem(BaseModel):
     category_type: Literal["income", "expense"] = Field(
         ...,
         description="分類類型",
+    )
+
+    currency_code: str = Field(
+        ...,
+        min_length=3,
+        max_length=3,
+        description="幣別代碼",
     )
 
     total_amount: Decimal = Field(
@@ -40,17 +61,14 @@ class CategoryReportItem(BaseModel):
         ...,
         ge=0,
         le=100,
-        description="該類型總金額中的占比百分比",
+        description="同幣別、同收支類型中的占比百分比",
     )
 
 
 class CategoryReportResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    family_id: int = Field(
-        ...,
-        gt=0,
-    )
+    family_id: int = Field(..., gt=0)
 
     start_date: str | None = Field(
         default=None,
@@ -72,29 +90,29 @@ class CategoryReportResponse(BaseModel):
         description="分類統計明細",
     )
 
-    total_income: Decimal = Field(
-        ...,
-        description="總收入",
+    total_income: list[CategoryReportAmount] = Field(
+        default_factory=list,
+        description="各幣別總收入",
     )
 
-    total_expense: Decimal = Field(
-        ...,
-        description="總支出",
+    total_expense: list[CategoryReportAmount] = Field(
+        default_factory=list,
+        description="各幣別總支出",
     )
 
-    net_amount: Decimal = Field(
-        ...,
-        description="淨收支",
+    net_amount: list[CategoryReportAmount] = Field(
+        default_factory=list,
+        description="各幣別淨收支",
     )
 
     income_transaction_count: int = Field(
-        ...,
+        default=0,
         ge=0,
         description="收入交易筆數",
     )
 
     expense_transaction_count: int = Field(
-        ...,
+        default=0,
         ge=0,
         description="支出交易筆數",
     )
