@@ -1,7 +1,6 @@
 
 import logging
 from datetime import datetime, timezone
-from decimal import Decimal
 
 from fastapi import (
     APIRouter,
@@ -135,6 +134,23 @@ def check_transaction_active(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="此交易已作廢，無法再修改",
+        )
+
+
+def check_transaction_not_transfer(
+    transaction: Transaction,
+):
+    """
+    防止透過一般交易 API 修改或作廢轉帳交易。
+
+    只要 transfer_id 不為空，
+    就必須透過 /transfers 管理整筆轉帳。
+    """
+
+    if transaction.transfer_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="此交易屬於轉帳紀錄，請透過轉帳管理 API 操作",
         )
 
 
@@ -512,6 +528,8 @@ def update_transaction(
 
     check_transaction_active(transaction)
 
+    check_transaction_not_transfer(transaction)
+
     if scope == "own":
         check_transaction_owner(
             transaction=transaction,
@@ -528,8 +546,6 @@ def update_transaction(
     if hasattr(new_type, "value"):
         new_type = new_type.value
 
-    # 期初餘額不可轉換成一般收入或支出，
-    # 一般收入或支出也不可轉換成期初餘額。
     validate_transaction_type_transition(
         old_type=transaction.transaction_type,
         new_type=new_type,
@@ -603,6 +619,8 @@ def void_transaction(
     )
 
     check_transaction_active(transaction)
+
+    check_transaction_not_transfer(transaction)
 
     if scope == "own":
         check_transaction_owner(
