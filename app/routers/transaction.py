@@ -1,6 +1,6 @@
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import (
@@ -135,6 +135,29 @@ def check_transaction_active(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="此交易已作廢，無法再修改",
+        )
+
+
+# ============================================================
+# 交易類型轉換驗證
+# ============================================================
+
+def validate_transaction_type_transition(
+    old_type: str,
+    new_type: str,
+):
+    """防止期初餘額與一般收入、支出互相轉換"""
+
+    if old_type == new_type:
+        return
+
+    if (
+        old_type == "opening_balance"
+        or new_type == "opening_balance"
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="期初餘額不可與一般收入或支出交易互相轉換",
         )
 
 
@@ -505,6 +528,13 @@ def update_transaction(
     if hasattr(new_type, "value"):
         new_type = new_type.value
 
+    # 期初餘額不可轉換成一般收入或支出，
+    # 一般收入或支出也不可轉換成期初餘額。
+    validate_transaction_type_transition(
+        old_type=transaction.transaction_type,
+        new_type=new_type,
+    )
+
     new_category_id = changes.get(
         "category_id",
         transaction.category_id,
@@ -581,7 +611,7 @@ def void_transaction(
         )
 
     transaction.is_voided = True
-    transaction.voided_at = datetime.utcnow()
+    transaction.voided_at = datetime.now(timezone.utc)
 
     try:
         db.commit()
