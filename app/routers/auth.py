@@ -13,6 +13,9 @@
 8. 撤銷目前登入 Token（登出）
 9. 忘記密碼申請
 10. 重設使用者密碼
+11. 綁定 Google 帳號
+12. 查詢已綁定登入方式
+13. 解除 Google 帳號綁定
 
 安全原則：
 - 不回傳密碼或密碼雜湊。
@@ -22,6 +25,8 @@
 - Google 專用帳號沒有密碼時，不允許使用密碼登入。
 - 不因 Email 相同而自動合併不同登入身分。
 - Google 使用 sub 作為外部身分唯一識別碼。
+- 不允許同一個 Google 身分綁定不同系統使用者。
+- 不允許解除帳號最後一種可用登入方式。
 """
 
 import logging
@@ -53,7 +58,12 @@ from app.schemas.auth import (
     ResetPasswordRequest,
 )
 
-from app.schemas.google_auth import GoogleLoginRequest
+from app.schemas.google_auth import (
+    GoogleLoginRequest,
+    GoogleLinkRequest,
+    IdentityItem,
+    IdentityListResponse,
+)
 
 from app.security import (
     normalize_email,
@@ -106,6 +116,35 @@ def create_user_token(user: User) -> TokenResponse:
         token_type="bearer",
         expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
+
+
+def verify_google_token_or_raise(id_token: str) -> dict:
+    """
+    驗證 Google ID Token。
+
+    此函式只負責呼叫既有 Google OAuth Service，
+    不會記錄或回傳原始 ID Token。
+    """
+
+    try:
+        return verify_google_id_token(id_token)
+
+    except RuntimeError:
+        logger.error(
+            "Google OAuth 尚未完成環境設定"
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google 登入服務尚未完成設定",
+        )
+
+    except GoogleOAuthError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Google 身分驗證失敗",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 
 @router.post(
@@ -226,27 +265,9 @@ def google_login(
     """
 
     # 第一步：驗證 Google 身分
-    try:
-        google_user = verify_google_id_token(
-            data.id_token
-        )
-
-    except RuntimeError:
-        logger.error(
-            "Google OAuth 尚未完成環境設定"
-        )
-
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Google 登入服務尚未完成設定",
-        )
-
-    except GoogleOAuthError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Google 登入驗證失敗",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    google_user = verify_google_token_or_raise(
+        data.id_token
+    )
 
     google_sub = google_user["sub"]
     google_email = normalize_email(
@@ -298,7 +319,7 @@ def google_login(
     if existing_user is not None:
 
         # 不可只因 Email 相同就自動合併。
-        # 未來需先登入既有帳號，再執行 Google 綁定流程。
+        # 必須先登入既有帳號，再執行 Google 綁定流程。
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
@@ -313,7 +334,7 @@ def google_login(
     new_user = User(
         email=google_email,
         password_hash=None,
-        display_name=google_user["name"],
+        display_name=google_user.get("name") or google_email,
         is_active=True,
         token_version=0,
     )
@@ -361,6 +382,225 @@ def google_login(
 
     # 第五步：簽發本系統 JWT
     return create_user_token(new_user)
+
+
+@router.post(
+    "/google/link",
+    status_code=status.HTTP_200_OK,
+)
+def link_google_account(
+    data: GoogleLinkRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    將 Google 帳號綁定到目前登入的系統帳號。
+
+    安全原則：
+    1. 必須先登入目前系統帳號。
+    2. 必須重新驗證 Google ID Token。
+    3. 使用 Google sub 判斷唯一身分。
+    4. 不因 Email 相同而自動合併帳號。
+    5. 不允許 Google 身分綁定其他使用者。
+    """
+
+    if not current_user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="此帳號已停用",
+        )
+
+    # 第一步：驗證 Google 身分
+    google_user = verify_google_token_or_raise(
+        data.id_token
+    )
+
+    google_sub = google_user["sub"]
+    google_email = normalize_email(
+        google_user["email"]
+    )
+
+    # 第二步：檢查 Google 身分是否已存在
+    existing_identity = db.execute(
+        select(UserIdentity).where(
+            UserIdentity.provider == "google",
+            UserIdentity.provider_subject == google_sub,
+        )
+    ).scalar_one_or_none()
+
+    if existing_identity is not None:
+
+        # 同一個使用者已經綁定過
+        if existing_identity.user_id == current_user.id:
+            return {
+                "success": True,
+                "message": "此 Google 帳號已經綁定",
+                "provider": "google",
+                "email": existing_identity.email,
+            }
+
+        # Google 身分已被其他系統帳號使用
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="此 Google 帳號已綁定其他系統帳號",
+        )
+
+    # 第三步：建立 Google 外部身分
+    # 使用 current_user.id，不接受前端傳入 user_id。
+    identity = UserIdentity(
+        user_id=current_user.id,
+        provider="google",
+        provider_subject=google_sub,
+        email=google_email,
+    )
+
+    try:
+        db.add(identity)
+        db.commit()
+        db.refresh(identity)
+
+    except IntegrityError:
+        db.rollback()
+
+        logger.warning(
+            "Google 帳號綁定發生唯一性衝突"
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="此 Google 帳號可能已被其他帳號綁定，請重新查詢",
+        )
+
+    except Exception:
+        db.rollback()
+
+        logger.exception(
+            "Google 帳號綁定失敗"
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Google 帳號綁定目前無法完成",
+        )
+
+    return {
+        "success": True,
+        "message": "Google 帳號綁定成功",
+        "provider": "google",
+        "email": google_email,
+    }
+
+
+@router.get(
+    "/identities",
+    response_model=IdentityListResponse,
+)
+def get_my_identities(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    查詢目前登入者已綁定的登入方式。
+
+    只回傳目前登入者自己的外部登入身分。
+    不回傳 provider_subject 或其他敏感識別資料。
+    """
+
+    identities = db.execute(
+        select(UserIdentity).where(
+            UserIdentity.user_id == current_user.id
+        ).order_by(UserIdentity.created_at.asc())
+    ).scalars().all()
+
+    identity_items = [
+        IdentityItem(
+            provider=identity.provider,
+            email=identity.email,
+        )
+        for identity in identities
+    ]
+
+    return IdentityListResponse(
+        success=True,
+        total=len(identity_items),
+        identities=identity_items,
+        has_password=current_user.password_hash is not None,
+    )
+
+
+@router.delete(
+    "/google/link",
+    status_code=status.HTTP_200_OK,
+)
+def unlink_google_account(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    解除目前登入者的 Google 帳號綁定。
+
+    安全原則：
+    1. 只能解除自己的 Google 身分。
+    2. 如果沒有密碼且 Google 是唯一登入方式，不允許解除。
+    3. 不刪除系統使用者帳號。
+    """
+
+    # 查詢目前使用者的 Google 身分
+    google_identity = db.execute(
+        select(UserIdentity).where(
+            UserIdentity.user_id == current_user.id,
+            UserIdentity.provider == "google",
+        )
+    ).scalar_one_or_none()
+
+    if google_identity is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="目前帳號尚未綁定 Google",
+        )
+
+    # 查詢目前使用者所有外部登入身分
+    all_identities = db.execute(
+        select(UserIdentity).where(
+            UserIdentity.user_id == current_user.id
+        )
+    ).scalars().all()
+
+    has_password = current_user.password_hash is not None
+
+    # 如果沒有密碼，而且 Google 是唯一外部登入方式，
+    # 就不能解除，避免使用者失去所有登入方式。
+    if not has_password and len(all_identities) <= 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "目前帳號沒有設定密碼，"
+                "且 Google 是唯一登入方式。"
+                "請先建立其他登入方式，再解除 Google 綁定。"
+            ),
+        )
+
+    try:
+        db.delete(google_identity)
+        db.commit()
+
+    except Exception:
+        db.rollback()
+
+        logger.exception(
+            "解除 Google 帳號綁定失敗"
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="目前無法解除 Google 帳號綁定",
+        )
+
+    return {
+        "success": True,
+        "message": "Google 帳號已成功解除綁定",
+        "provider": "google",
+    }
 
 
 @router.get(
