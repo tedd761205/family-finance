@@ -52,6 +52,14 @@ class Transaction(Base):
             ondelete="RESTRICT",
         ),
 
+        # 信用卡繳款必須屬於同一家庭
+        ForeignKeyConstraint(
+            ["family_id", "credit_card_payment_id"],
+            ["credit_card_payments.family_id", "credit_card_payments.id"],
+            name="fk_transactions_family_credit_card_payment",
+            ondelete="RESTRICT",
+        ),
+
         Index(
             "ix_transactions_family_account_date",
             "family_id",
@@ -69,6 +77,10 @@ class Transaction(Base):
         Index(
             "ix_transactions_related_transaction_id",
             "related_transaction_id",
+        ),
+        Index(
+            "ix_transactions_credit_card_payment_id",
+            "credit_card_payment_id",
         ),
 
         # 每個帳戶只能有一筆有效期初餘額
@@ -150,6 +162,12 @@ class Transaction(Base):
     )
 
     related_transaction_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        nullable=True,
+    )
+
+    # 信用卡繳款主檔 ID，由系統自動維護
+    credit_card_payment_id: Mapped[int | None] = mapped_column(
         BigInteger,
         nullable=True,
     )
