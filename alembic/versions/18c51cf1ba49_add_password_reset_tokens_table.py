@@ -1,5 +1,5 @@
 
-"""add password reset tokens table
+"""add unique active opening balance index
 
 Revision ID: 18c51cf1ba49
 Revises: 66b1e3d6c67a
