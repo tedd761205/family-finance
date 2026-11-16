@@ -18,6 +18,8 @@
 - 不回傳原始密碼重設 Token。
 - 不透露 Email 是否已註冊。
 - 密碼重設成功後，使舊登入 Token 失效。
+- Google 專用帳號沒有密碼時，不允許使用密碼登入。
+- 不因 Email 相同而自動合併不同登入身分。
 """
 
 import logging
@@ -142,9 +144,15 @@ def login(
         .first()
     )
 
-    if user is None or not verify_password(
-        data.password,
-        user.password_hash,
+    # Google 專用帳號的 password_hash 為 None。
+    # 這類帳號不能直接使用 Email + 密碼登入。
+    if (
+        user is None
+        or user.password_hash is None
+        or not verify_password(
+            data.password,
+            user.password_hash,
+        )
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
