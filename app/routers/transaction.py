@@ -1,0 +1,603 @@
+
+import logging
+from datetime import datetime
+from decimal import Decimal
+
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    status,
+)
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.dependencies.auth import get_current_user
+from app.dependencies.permissions import (
+    require_permission,
+    require_data_scope,
+)
+from app.models.user import User
+from app.models.account import Account
+from app.models.category import Category
+from app.models.transaction import Transaction
+from app.schemas.transaction import (
+    TransactionCreate,
+    TransactionUpdate,
+    TransactionResponse,
+)
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(
+    prefix="/transactions",
+    tags=["Transactions"],
+)
+
+
+# ============================================================
+# 權限檢查
+# ============================================================
+
+def check_family_permission(
+    db: Session,
+    user_id: int,
+    family_id: int,
+    permission_code: str,
+):
+    """確認使用者具有指定家庭的功能權限"""
+
+    try:
+        return require_permission(
+            db=db,
+            user_id=user_id,
+            family_id=family_id,
+            permission_code=permission_code,
+        )
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        )
+
+
+def check_transaction_scope(
+    db: Session,
+    roles: list,
+    family_id: int,
+):
+    """取得交易資料範圍：own 或 family"""
+
+    try:
+        return require_data_scope(
+            db=db,
+            roles=roles,
+            family_id=family_id,
+            resource="transactions",
+        )
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        )
+
+
+# ============================================================
+# 交易資料查詢
+# ============================================================
+
+def get_family_transaction(
+    db: Session,
+    transaction_id: int,
+    family_id: int,
+):
+    """取得指定家庭的交易，防止跨家庭存取"""
+
+    transaction = (
+        db.query(Transaction)
+        .filter(
+            Transaction.id == transaction_id,
+            Transaction.family_id == family_id,
+        )
+        .first()
+    )
+
+    if transaction is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="找不到此交易紀錄",
+        )
+
+    return transaction
+
+
+def check_transaction_owner(
+    transaction: Transaction,
+    user_id: int,
+):
+    """own 資料範圍只能操作自己建立的交易"""
+
+    if transaction.created_by != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="無權操作其他成員建立的交易",
+        )
+
+
+def check_transaction_active(
+    transaction: Transaction,
+):
+    """確認交易尚未作廢"""
+
+    if transaction.is_voided:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="此交易已作廢，無法再修改",
+        )
+
+
+# ============================================================
+# 帳戶及分類驗證
+# ============================================================
+
+def validate_account(
+    db: Session,
+    account_id: int,
+    family_id: int,
+    currency_code: str,
+):
+    """確認帳戶存在、屬於同一家庭且仍啟用"""
+
+    account = (
+        db.query(Account)
+        .filter(
+            Account.id == account_id,
+            Account.family_id == family_id,
+        )
+        .first()
+    )
+
+    if account is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="找不到此家庭帳戶",
+        )
+
+    if not account.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="此帳戶已停用",
+        )
+
+    if account.currency_code != currency_code:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="交易幣別必須與帳戶幣別一致",
+        )
+
+    return account
+
+
+def validate_category(
+    db: Session,
+    category_id: int | None,
+    family_id: int,
+    transaction_type: str,
+):
+    """確認分類存在、啟用且屬於同一家庭"""
+
+    if category_id is None:
+        return None
+
+    if transaction_type == "opening_balance":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="期初餘額不可指定收入或支出分類",
+        )
+
+    category = (
+        db.query(Category)
+        .filter(
+            Category.id == category_id,
+            Category.is_active.is_(True),
+            (
+                (Category.family_id == family_id)
+                | (Category.family_id.is_(None))
+            ),
+        )
+        .first()
+    )
+
+    if category is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="找不到此家庭可使用的啟用中分類",
+        )
+
+    if category.category_type != transaction_type:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="分類類型與交易類型不一致",
+        )
+
+    return category
+
+
+# ============================================================
+# 新增交易
+# ============================================================
+
+@router.post(
+    "",
+    response_model=TransactionResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="新增交易",
+)
+def create_transaction(
+    payload: TransactionCreate,
+    family_id: int = Query(..., gt=0),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _, roles = check_family_permission(
+        db=db,
+        user_id=current_user.id,
+        family_id=family_id,
+        permission_code="transactions.create",
+    )
+
+    check_transaction_scope(
+        db=db,
+        roles=roles,
+        family_id=family_id,
+    )
+
+    transaction_type = payload.transaction_type.value
+
+    validate_account(
+        db=db,
+        account_id=payload.account_id,
+        family_id=family_id,
+        currency_code=payload.currency_code,
+    )
+
+    validate_category(
+        db=db,
+        category_id=payload.category_id,
+        family_id=family_id,
+        transaction_type=transaction_type,
+    )
+
+    transaction = Transaction(
+        family_id=family_id,
+        account_id=payload.account_id,
+        transaction_type=transaction_type,
+        amount=payload.amount,
+        currency_code=payload.currency_code,
+        transaction_date=payload.transaction_date,
+        description=payload.description,
+        category_id=payload.category_id,
+        external_reference=payload.external_reference,
+        note=payload.note,
+        created_by=current_user.id,
+    )
+
+    try:
+        db.add(transaction)
+        db.commit()
+        db.refresh(transaction)
+
+        return transaction
+
+    except IntegrityError:
+        db.rollback()
+        logger.exception("新增交易時發生資料完整性錯誤")
+
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="交易資料關聯不合法或違反資料庫限制",
+        )
+
+
+# ============================================================
+# 查詢交易列表
+# ============================================================
+
+@router.get(
+    "",
+    summary="查詢交易列表",
+)
+def get_transactions(
+    family_id: int = Query(..., gt=0),
+    account_id: int | None = Query(default=None, gt=0),
+    category_id: int | None = Query(default=None, gt=0),
+    transaction_type: str | None = Query(
+        default=None,
+        pattern="^(income|expense|opening_balance)$",
+    ),
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+    include_voided: bool = False,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _, roles = check_family_permission(
+        db=db,
+        user_id=current_user.id,
+        family_id=family_id,
+        permission_code="transactions.view",
+    )
+
+    scope = check_transaction_scope(
+        db=db,
+        roles=roles,
+        family_id=family_id,
+    )
+
+    query = db.query(Transaction).filter(
+        Transaction.family_id == family_id,
+    )
+
+    if scope == "own":
+        query = query.filter(
+            Transaction.created_by == current_user.id,
+        )
+
+    if not include_voided:
+        query = query.filter(
+            Transaction.is_voided.is_(False),
+        )
+
+    if account_id is not None:
+        query = query.filter(
+            Transaction.account_id == account_id,
+        )
+
+    if category_id is not None:
+        query = query.filter(
+            Transaction.category_id == category_id,
+        )
+
+    if transaction_type is not None:
+        query = query.filter(
+            Transaction.transaction_type == transaction_type,
+        )
+
+    if start_date is not None:
+        query = query.filter(
+            Transaction.transaction_date >= start_date,
+        )
+
+    if end_date is not None:
+        query = query.filter(
+            Transaction.transaction_date <= end_date,
+        )
+
+    if (
+        start_date is not None
+        and end_date is not None
+        and start_date > end_date
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="開始日期不可晚於結束日期",
+        )
+
+    total = query.count()
+
+    transactions = (
+        query
+        .order_by(
+            Transaction.transaction_date.desc(),
+            Transaction.id.desc(),
+        )
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+    return {
+        "success": True,
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+        "transactions": transactions,
+    }
+
+
+# ============================================================
+# 查詢單筆交易
+# ============================================================
+
+@router.get(
+    "/{transaction_id}",
+    response_model=TransactionResponse,
+    summary="查詢單筆交易",
+)
+def get_transaction(
+    transaction_id: int,
+    family_id: int = Query(..., gt=0),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _, roles = check_family_permission(
+        db=db,
+        user_id=current_user.id,
+        family_id=family_id,
+        permission_code="transactions.view",
+    )
+
+    scope = check_transaction_scope(
+        db=db,
+        roles=roles,
+        family_id=family_id,
+    )
+
+    transaction = get_family_transaction(
+        db=db,
+        transaction_id=transaction_id,
+        family_id=family_id,
+    )
+
+    if scope == "own":
+        check_transaction_owner(
+            transaction=transaction,
+            user_id=current_user.id,
+        )
+
+    return transaction
+
+
+# ============================================================
+# 修改交易
+# ============================================================
+
+@router.patch(
+    "/{transaction_id}",
+    response_model=TransactionResponse,
+    summary="修改交易",
+)
+def update_transaction(
+    transaction_id: int,
+    payload: TransactionUpdate,
+    family_id: int = Query(..., gt=0),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _, roles = check_family_permission(
+        db=db,
+        user_id=current_user.id,
+        family_id=family_id,
+        permission_code="transactions.update",
+    )
+
+    scope = check_transaction_scope(
+        db=db,
+        roles=roles,
+        family_id=family_id,
+    )
+
+    transaction = get_family_transaction(
+        db=db,
+        transaction_id=transaction_id,
+        family_id=family_id,
+    )
+
+    check_transaction_active(transaction)
+
+    if scope == "own":
+        check_transaction_owner(
+            transaction=transaction,
+            user_id=current_user.id,
+        )
+
+    changes = payload.model_dump(exclude_unset=True)
+
+    new_type = changes.get(
+        "transaction_type",
+        transaction.transaction_type,
+    )
+
+    if hasattr(new_type, "value"):
+        new_type = new_type.value
+
+    new_category_id = changes.get(
+        "category_id",
+        transaction.category_id,
+    )
+
+    validate_category(
+        db=db,
+        category_id=new_category_id,
+        family_id=family_id,
+        transaction_type=new_type,
+    )
+
+    if "transaction_type" in changes:
+        changes["transaction_type"] = new_type
+
+    for field, value in changes.items():
+        setattr(transaction, field, value)
+
+    try:
+        db.commit()
+        db.refresh(transaction)
+
+        return transaction
+
+    except IntegrityError:
+        db.rollback()
+        logger.exception("修改交易時發生資料完整性錯誤")
+
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="交易資料修改失敗，可能違反資料關聯或限制",
+        )
+
+
+# ============================================================
+# 作廢交易
+# ============================================================
+
+@router.delete(
+    "/{transaction_id}",
+    summary="作廢交易",
+)
+def void_transaction(
+    transaction_id: int,
+    family_id: int = Query(..., gt=0),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _, roles = check_family_permission(
+        db=db,
+        user_id=current_user.id,
+        family_id=family_id,
+        permission_code="transactions.void",
+    )
+
+    scope = check_transaction_scope(
+        db=db,
+        roles=roles,
+        family_id=family_id,
+    )
+
+    transaction = get_family_transaction(
+        db=db,
+        transaction_id=transaction_id,
+        family_id=family_id,
+    )
+
+    check_transaction_active(transaction)
+
+    if scope == "own":
+        check_transaction_owner(
+            transaction=transaction,
+            user_id=current_user.id,
+        )
+
+    transaction.is_voided = True
+    transaction.voided_at = datetime.utcnow()
+
+    try:
+        db.commit()
+        db.refresh(transaction)
+
+        return {
+            "success": True,
+            "message": "交易已成功作廢",
+            "transaction": transaction,
+        }
+
+    except IntegrityError:
+        db.rollback()
+        logger.exception("作廢交易時發生資料完整性錯誤")
+
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="交易作廢失敗",
+        )
