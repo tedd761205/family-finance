@@ -15,6 +15,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -69,6 +70,19 @@ class Transaction(Base):
             "ix_transactions_related_transaction_id",
             "related_transaction_id",
         ),
+
+        # 每個帳戶只能有一筆有效期初餘額
+        Index(
+            "uq_transactions_active_opening_balance",
+            "family_id",
+            "account_id",
+            unique=True,
+            postgresql_where=text(
+                "transaction_type = 'opening_balance' "
+                "AND is_voided = false"
+            ),
+        ),
+
         UniqueConstraint(
             "family_id",
             "id",
