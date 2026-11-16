@@ -8,6 +8,7 @@ from app.routers.auth import router as auth_router
 from app.routers.family import router as family_router
 from app.routers.account import router as account_router
 from app.routers.category import router as category_router
+from app.routers.transaction import router as transaction_router
 
 
 app = FastAPI(
@@ -25,6 +26,7 @@ app.include_router(auth_router)
 app.include_router(family_router)
 app.include_router(account_router)
 app.include_router(category_router)
+app.include_router(transaction_router)
 
 
 # =========================================================
