@@ -6,14 +6,17 @@
 1. 驗證建立家庭的請求資料。
 2. 定義家庭建立成功後的回傳格式。
 3. 定義使用者家庭清單的回傳格式。
+4. 驗證邀請家庭成員的請求資料。
+5. 定義家庭成員加入成功後的回傳格式。
 
 安全原則：
 - 不接受前端傳入 user_id。
 - 建立者身分由後端 JWT 驗證取得。
 - 家庭清單由目前登入者的身分查詢。
+- 邀請成員使用 Email，由後端查找使用者。
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, EmailStr
 
 
 class FamilyCreate(BaseModel):
@@ -65,3 +68,25 @@ class FamilyListResponse(BaseModel):
     success: bool
     total: int
     families: list[FamilyListItem]
+
+
+class FamilyMemberInvite(BaseModel):
+    """邀請家庭成員請求"""
+
+    email: EmailStr = Field(
+        description="已註冊的使用者 Email",
+    )
+
+
+class FamilyMemberInviteResponse(BaseModel):
+    """家庭成員加入成功回傳"""
+
+    success: bool
+    family_id: int
+    family_member_id: int
+    user_id: int
+    email: str
+    display_name: str | None = None
+    role_id: int
+    role_name: str
+    status: str
