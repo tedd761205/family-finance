@@ -119,6 +119,28 @@ def check_account_scope(
         )
 
 
+def check_transaction_scope(
+    db: Session,
+    roles: list,
+    family_id: int,
+):
+    """取得交易資料範圍；帳戶餘額必須依交易範圍計算。"""
+
+    try:
+        return require_data_scope(
+            db=db,
+            roles=roles,
+            family_id=family_id,
+            resource="transactions",
+        )
+
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        )
+
+
 def get_family_account(
     db: Session,
     account_id: int,
@@ -358,7 +380,15 @@ def get_account_balances(
         permission_code="accounts.view",
     )
 
-    scope = check_account_scope(
+    # 帳戶列表使用 accounts 資料範圍
+    account_scope = check_account_scope(
+        db=db,
+        roles=roles,
+        family_id=family_id,
+    )
+
+    # 餘額計算使用 transactions 資料範圍
+    transaction_scope = check_transaction_scope(
         db=db,
         roles=roles,
         family_id=family_id,
@@ -369,7 +399,7 @@ def get_account_balances(
         Account.is_active.is_(True),
     )
 
-    if scope == "own":
+    if account_scope == "own":
         query = query.filter(
             Account.created_by == current_user.id,
         )
@@ -390,7 +420,7 @@ def get_account_balances(
                 account,
                 created_by=(
                     current_user.id
-                    if scope == "own"
+                    if transaction_scope == "own"
                     else None
                 ),
             )
@@ -428,7 +458,15 @@ def get_single_account_balance(
         permission_code="accounts.view",
     )
 
-    scope = check_account_scope(
+    # 帳戶本身的查看權限
+    account_scope = check_account_scope(
+        db=db,
+        roles=roles,
+        family_id=family_id,
+    )
+
+    # 餘額內的交易資料範圍
+    transaction_scope = check_transaction_scope(
         db=db,
         roles=roles,
         family_id=family_id,
@@ -443,7 +481,7 @@ def get_single_account_balance(
     check_account_owner(
         account=account,
         current_user=current_user,
-        scope=scope,
+        scope=account_scope,
     )
 
     check_account_active(account)
@@ -454,7 +492,7 @@ def get_single_account_balance(
             account,
             created_by=(
                 current_user.id
-                if scope == "own"
+                if transaction_scope == "own"
                 else None
             ),
         )
