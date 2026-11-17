@@ -8,6 +8,7 @@
 3. 支援銀行、現金、電子支付及信用卡。
 4. 支援期初餘額。
 5. 信用卡正數代表欠款。
+6. 支援 own / family 資料範圍。
 
 計算規則：
 
@@ -22,9 +23,11 @@
 - 只使用有效交易即時計算。
 - 轉帳及信用卡繳款透過其關聯交易反映帳戶餘額。
 - 不同幣別由不同帳戶分別計算。
+- created_by=None 時計算全部有效交易。
 """
 
 from decimal import Decimal
+from typing import Optional
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -39,6 +42,7 @@ ZERO = Decimal("0.0000")
 def calculate_account_balance(
     db: Session,
     account: Account,
+    created_by: Optional[int] = None,
 ) -> dict:
     """
     計算單一帳戶餘額。
@@ -46,25 +50,38 @@ def calculate_account_balance(
     Args:
         db: SQLAlchemy Session
         account: 已確認家庭歸屬的帳戶
+        created_by: 指定交易建立者；None 代表不限制
 
     Returns:
         dict: 餘額及交易統計資料
     """
 
-    rows = (
+    query = (
         db.query(
             Transaction.transaction_type,
             func.coalesce(
                 func.sum(Transaction.amount),
                 0,
             ).label("total_amount"),
-            func.count(Transaction.id).label("transaction_count"),
+            func.count(Transaction.id).label(
+                "transaction_count"
+            ),
         )
         .filter(
             Transaction.family_id == account.family_id,
             Transaction.account_id == account.id,
             Transaction.is_voided.is_(False),
         )
+    )
+
+    # own 資料範圍：只計算指定成員建立的交易
+    if created_by is not None:
+        query = query.filter(
+            Transaction.created_by == created_by
+        )
+
+    rows = (
+        query
         .group_by(
             Transaction.transaction_type,
         )
@@ -102,7 +119,6 @@ def calculate_account_balance(
             + total_expense
             - total_income
         )
-
     else:
         # 銀行、現金、電子支付：正數代表資產
         balance = (
