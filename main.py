@@ -47,6 +47,10 @@ from app.routers.account_transaction import (
     router as account_transaction_router,
 )
 
+from app.routers.account_overview import (
+    router as account_overview_router,
+)
+
 
 # --------------------------------------------------
 # FastAPI Application
@@ -78,6 +82,7 @@ app.include_router(yearly_report_router)
 app.include_router(category_report_router)
 app.include_router(account_report_router)
 app.include_router(account_transaction_router)
+app.include_router(account_overview_router)
 
 
 # --------------------------------------------------
