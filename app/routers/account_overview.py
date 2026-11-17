@@ -1,5 +1,15 @@
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+"""
+家庭記帳系統：帳戶總覽 API
+"""
+
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+)
+
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -24,22 +34,23 @@ router = APIRouter(
 @router.get(
     "/account-overview",
     response_model=AccountOverviewResponse,
+    summary="查詢家庭帳戶總覽",
 )
 def get_account_overview(
     family_id: int = Query(..., gt=0),
     active_only: bool = Query(True),
-    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """
     查詢家庭帳戶總覽。
 
-    功能：
-    1. 查詢家庭帳戶。
-    2. 計算各帳戶目前餘額。
-    3. 區分資產與信用卡負債。
-    4. 依幣別分組統計。
-    5. 支援啟用帳戶篩選。
+    權限：
+    - reports.view
+
+    資料範圍：
+    - family：使用家庭全部有效交易計算餘額。
+    - own：只使用目前登入者建立的有效交易計算餘額。
     """
 
     try:
@@ -49,24 +60,39 @@ def get_account_overview(
             family_id=family_id,
             permission_code="reports.view",
         )
-
-        scope = require_data_scope(
-            db=db,
-            roles=roles,
-            family_id=family_id,
-            resource="transactions",
-        )
-
     except PermissionError as exc:
         raise HTTPException(
             status_code=403,
             detail=str(exc),
         )
 
-    result = calculate_account_overview(
-        db=db,
-        family_id=family_id,
-        active_only=active_only,
-    )
+    try:
+        scope = require_data_scope(
+            db=db,
+            roles=roles,
+            family_id=family_id,
+            resource="transactions",
+        )
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail=str(exc),
+        )
 
-    return result
+    try:
+        result = calculate_account_overview(
+            db=db,
+            family_id=family_id,
+            active_only=active_only,
+            created_by=(
+                current_user.id if scope == "own" else None
+            ),
+        )
+
+        return result
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=str(exc),
+        )
