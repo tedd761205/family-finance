@@ -385,7 +385,15 @@ def get_account_balances(
 
     balances = [
         AccountBalanceResponse(
-            **calculate_account_balance(db, account)
+            **calculate_account_balance(
+                db,
+                account,
+                created_by=(
+                    current_user.id
+                    if scope == "own"
+                    else None
+                ),
+            )
         )
         for account in accounts
     ]
@@ -441,7 +449,15 @@ def get_single_account_balance(
     check_account_active(account)
 
     return AccountBalanceResponse(
-        **calculate_account_balance(db, account)
+        **calculate_account_balance(
+            db,
+            account,
+            created_by=(
+                current_user.id
+                if scope == "own"
+                else None
+            ),
+        )
     )
 
 
