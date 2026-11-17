@@ -1,6 +1,6 @@
 
 """
-家庭記帳系統：帳戶收支統計 Service
+家庭記帳系統：帳戶收支統計與明細 Service
 
 功能：
 1. 依帳戶統計收入及支出。
@@ -9,7 +9,9 @@
 4. 獨立統計信用卡退款。
 5. 支援台灣日期區間查詢。
 6. 支援 own 資料範圍。
-7. 排除作廢交易及期初餘額。
+7. 排除作廢交易及期初餘額（收支統計）。
+8. 查詢帳戶交易明細。
+9. 支援交易明細分頁。
 """
 
 from datetime import date, datetime, time, timedelta, timezone
@@ -26,32 +28,18 @@ TAIWAN_TIMEZONE = ZoneInfo("Asia/Taipei")
 ZERO = Decimal("0")
 
 
-def calculate_account_summary(
+def get_account_or_raise(
     db: Session,
     family_id: int,
     account_id: int,
-    start_date: date | None = None,
-    end_date: date | None = None,
-    created_by: int | None = None,
-) -> dict:
-    """
-    計算指定帳戶的收支統計。
-
-    日期使用台灣當地日期，資料庫使用 UTC。
-
-    created_by:
-        None：統計整個家庭
-        整數：只統計指定使用者建立的交易
-    """
+) -> Account:
+    """取得指定家庭的有效帳戶。"""
 
     if family_id <= 0:
         raise ValueError("family_id 必須大於 0")
 
     if account_id <= 0:
         raise ValueError("account_id 必須大於 0")
-
-    if start_date and end_date and start_date > end_date:
-        raise ValueError("start_date 不可晚於 end_date")
 
     account = (
         db.query(Account)
@@ -65,6 +53,18 @@ def calculate_account_summary(
 
     if account is None:
         raise ValueError("找不到指定帳戶或帳戶已停用")
+
+    return account
+
+
+def get_taiwan_date_range(
+    start_date: date | None = None,
+    end_date: date | None = None,
+) -> tuple[datetime | None, datetime | None]:
+    """將台灣日期區間轉換為 UTC 起訖時間。"""
+
+    if start_date and end_date and start_date > end_date:
+        raise ValueError("start_date 不可晚於 end_date")
 
     start_datetime = None
     end_datetime = None
@@ -82,6 +82,30 @@ def calculate_account_summary(
             time.min,
             tzinfo=TAIWAN_TIMEZONE,
         ).astimezone(timezone.utc)
+
+    return start_datetime, end_datetime
+
+
+def build_account_transaction_query(
+    db: Session,
+    family_id: int,
+    account_id: int,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    created_by: int | None = None,
+):
+    """建立帳戶交易明細查詢。"""
+
+    account = get_account_or_raise(
+        db=db,
+        family_id=family_id,
+        account_id=account_id,
+    )
+
+    start_datetime, end_datetime = get_taiwan_date_range(
+        start_date=start_date,
+        end_date=end_date,
+    )
 
     query = db.query(Transaction).filter(
         Transaction.family_id == family_id,
@@ -103,6 +127,34 @@ def calculate_account_summary(
         query = query.filter(
             Transaction.created_by == created_by
         )
+
+    return account, query
+
+
+def calculate_account_summary(
+    db: Session,
+    family_id: int,
+    account_id: int,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    created_by: int | None = None,
+) -> dict:
+    """
+    計算指定帳戶的收支統計。
+
+    created_by:
+        None：統計整個家庭
+        整數：只統計指定使用者建立的交易
+    """
+
+    account, query = build_account_transaction_query(
+        db=db,
+        family_id=family_id,
+        account_id=account_id,
+        start_date=start_date,
+        end_date=end_date,
+        created_by=created_by,
+    )
 
     transactions = query.all()
 
@@ -130,11 +182,9 @@ def calculate_account_summary(
         transaction_type = transaction.transaction_type
         amount = Decimal(str(transaction.amount))
 
-        # 期初餘額不列入期間收支
         if transaction_type == "opening_balance":
             continue
 
-        # 信用卡繳款
         if transaction.credit_card_payment_id is not None:
             credit_card_payment_count += 1
 
@@ -146,7 +196,6 @@ def calculate_account_summary(
 
             continue
 
-        # 轉帳本金
         if (
             transaction.transfer_id is not None
             and transaction.related_transaction_id is not None
@@ -161,10 +210,8 @@ def calculate_account_summary(
 
             continue
 
-        # 一般收入
         if transaction_type == "income":
 
-            # 信用卡帳戶收入視為退款，不列入一般收入
             if account.account_type == "credit_card":
                 credit_card_refund_amount += amount
                 credit_card_refund_count += 1
@@ -173,7 +220,6 @@ def calculate_account_summary(
             total_income += amount
             income_count += 1
 
-        # 一般支出，包括轉帳手續費
         elif transaction_type == "expense":
             total_expense += amount
             expense_count += 1
@@ -205,4 +251,79 @@ def calculate_account_summary(
         "credit_card_payment_count": credit_card_payment_count,
         "credit_card_refund_count": credit_card_refund_count,
         "transaction_count": len(transactions),
+    }
+
+
+def calculate_account_transactions(
+    db: Session,
+    family_id: int,
+    account_id: int,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    page: int = 1,
+    page_size: int = 20,
+    created_by: int | None = None,
+) -> dict:
+    """
+    查詢指定帳戶的交易明細。
+
+    日期使用台灣當地日期。
+    資料庫使用 UTC。
+
+    作廢交易不列入明細。
+
+    期初餘額保留在明細中，方便查閱帳戶建立時的餘額。
+
+    created_by:
+        None：查詢整個家庭
+        整數：只查詢指定使用者建立的交易
+    """
+
+    if page < 1:
+        raise ValueError("page 必須大於或等於 1")
+
+    if page_size < 1:
+        raise ValueError("page_size 必須大於或等於 1")
+
+    if page_size > 100:
+        raise ValueError("page_size 不可大於 100")
+
+    account, query = build_account_transaction_query(
+        db=db,
+        family_id=family_id,
+        account_id=account_id,
+        start_date=start_date,
+        end_date=end_date,
+        created_by=created_by,
+    )
+
+    total_count = query.count()
+
+    transactions = (
+        query
+        .order_by(
+            Transaction.transaction_date.desc(),
+            Transaction.id.desc(),
+        )
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+
+    return {
+        "family_id": family_id,
+        "account_id": account.id,
+        "account_name": account.name,
+        "account_type": account.account_type,
+        "currency_code": account.currency_code,
+        "start_date": (
+            start_date.isoformat() if start_date else None
+        ),
+        "end_date": (
+            end_date.isoformat() if end_date else None
+        ),
+        "total_count": total_count,
+        "page": page,
+        "page_size": page_size,
+        "transactions": transactions,
     }
