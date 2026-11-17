@@ -30,32 +30,37 @@ def get_account_overview(
     active_only: bool = Query(True),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    roles: list = Depends(
-        require_permission("reports.view")
-    ),
 ):
     """
     查詢家庭帳戶總覽。
 
-    包含：
-    1. 家庭所有帳戶。
-    2. 各帳戶目前餘額。
-    3. 依幣別統計資產與信用卡負債。
+    功能：
+    1. 查詢家庭帳戶。
+    2. 計算各帳戶目前餘額。
+    3. 區分資產與信用卡負債。
+    4. 依幣別分組統計。
+    5. 支援啟用帳戶篩選。
     """
 
-    scope = require_data_scope(
-        resource="transactions",
-    )(
-        db=db,
-        current_user=current_user,
-        family_id=family_id,
-        roles=roles,
-    )
+    try:
+        _, roles = require_permission(
+            db=db,
+            user_id=current_user.id,
+            family_id=family_id,
+            permission_code="reports.view",
+        )
 
-    if not scope:
+        scope = require_data_scope(
+            db=db,
+            roles=roles,
+            family_id=family_id,
+            resource="transactions",
+        )
+
+    except PermissionError as exc:
         raise HTTPException(
             status_code=403,
-            detail="無權查看此家庭帳戶資料",
+            detail=str(exc),
         )
 
     result = calculate_account_overview(
