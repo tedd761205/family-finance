@@ -6,13 +6,12 @@
 1. 依帳戶統計收入及支出。
 2. 統計帳戶轉入與轉出。
 3. 獨立統計信用卡繳款。
-4. 支援台灣日期區間查詢。
-5. 支援多種帳戶類型。
+4. 獨立統計信用卡退款。
+5. 支援台灣日期區間查詢。
 6. 支援 own 資料範圍。
 7. 排除作廢交易及期初餘額。
 """
 
-from collections import defaultdict
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from zoneinfo import ZoneInfo
@@ -116,11 +115,16 @@ def calculate_account_summary(
     credit_card_payment_in = ZERO
     credit_card_payment_out = ZERO
 
+    credit_card_refund_amount = ZERO
+
     income_count = 0
     expense_count = 0
+
     transfer_in_count = 0
     transfer_out_count = 0
+
     credit_card_payment_count = 0
+    credit_card_refund_count = 0
 
     for transaction in transactions:
         transaction_type = transaction.transaction_type
@@ -160,8 +164,10 @@ def calculate_account_summary(
         # 一般收入
         if transaction_type == "income":
 
-            # 信用卡退款不列入一般收入
+            # 信用卡帳戶收入視為退款，不列入一般收入
             if account.account_type == "credit_card":
+                credit_card_refund_amount += amount
+                credit_card_refund_count += 1
                 continue
 
             total_income += amount
@@ -191,10 +197,12 @@ def calculate_account_summary(
         "transfer_out_amount": transfer_out_amount,
         "credit_card_payment_in": credit_card_payment_in,
         "credit_card_payment_out": credit_card_payment_out,
+        "credit_card_refund_amount": credit_card_refund_amount,
         "income_transaction_count": income_count,
         "expense_transaction_count": expense_count,
         "transfer_in_count": transfer_in_count,
         "transfer_out_count": transfer_out_count,
         "credit_card_payment_count": credit_card_payment_count,
+        "credit_card_refund_count": credit_card_refund_count,
         "transaction_count": len(transactions),
     }
