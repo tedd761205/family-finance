@@ -166,10 +166,13 @@ def calculate_account_summary(
 
     transactions = query.all()
 
-    # 使用共用帳戶餘額服務，確保餘額公式一致。
+    # 使用共用帳戶餘額服務。
+    # own 範圍只計算指定使用者建立的交易。
+    # family 範圍則計算整個家庭的交易。
     balance_data = calculate_account_balance(
         db=db,
         account=account,
+        created_by=created_by,
     )
 
     opening_balance = balance_data["opening_balance"]
