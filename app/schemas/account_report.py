@@ -7,6 +7,8 @@ from pydantic import BaseModel, ConfigDict
 
 
 class AccountReportResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     family_id: int
     account_id: int
     account_name: str
@@ -16,29 +18,23 @@ class AccountReportResponse(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
 
-    # 帳戶餘額
     opening_balance: Decimal
     current_balance: Decimal
 
-    # 期間收支
     total_income: Decimal
     total_expense: Decimal
     net_amount: Decimal
 
-    # 期間轉帳
     transfer_in_amount: Decimal
     transfer_out_amount: Decimal
 
-    # 信用卡繳款
     credit_card_payment_in: Decimal
     credit_card_payment_out: Decimal
 
-    # 信用卡退款
     credit_card_refund_amount: Decimal
 
-    # 交易筆數
-    income_count: int
-    expense_count: int
+    income_transaction_count: int
+    expense_transaction_count: int
 
     transfer_in_count: int
     transfer_out_count: int
@@ -48,10 +44,10 @@ class AccountReportResponse(BaseModel):
 
     transaction_count: int
 
-    model_config = ConfigDict(from_attributes=True)
-
 
 class AccountTransactionItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     family_id: int
     account_id: int
@@ -74,17 +70,16 @@ class AccountTransactionItem(BaseModel):
     is_voided: bool
     voided_at: Optional[datetime] = None
 
-    created_by: int
+    created_by: Optional[int] = None
     created_at: datetime
-    updated_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
+    updated_at: Optional[datetime] = None
 
 
 class AccountTransactionListResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     family_id: int
     account_id: int
-
     account_name: str
     account_type: str
     currency_code: str
@@ -97,5 +92,3 @@ class AccountTransactionListResponse(BaseModel):
     page_size: int
 
     transactions: list[AccountTransactionItem]
-
-    model_config = ConfigDict(from_attributes=True)
