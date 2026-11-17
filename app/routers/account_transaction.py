@@ -47,10 +47,6 @@ def get_account_transactions(
     page_size: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _: bool = Depends(require_permission("reports.view")),
-    data_scope: str = Depends(
-        require_data_scope("transactions")
-    ),
 ):
     """
     查詢指定帳戶的交易明細。
@@ -59,12 +55,31 @@ def get_account_transactions(
     family：查詢整個家庭的交易。
     """
 
-    created_by = None
-
-    if data_scope == "own":
-        created_by = current_user.id
-
     try:
+        # 1. 檢查家庭報表查看權限
+        _, roles = require_permission(
+            db=db,
+            user_id=current_user.id,
+            family_id=family_id,
+            permission_code="reports.view",
+        )
+
+        # 2. 檢查交易資料範圍
+        data_scope = require_data_scope(
+            db=db,
+            roles=roles,
+            family_id=family_id,
+            resource="transactions",
+        )
+
+        # 3. own 只查詢自己建立的交易
+        created_by = (
+            current_user.id
+            if data_scope == "own"
+            else None
+        )
+
+        # 4. 查詢交易明細
         return calculate_account_transactions(
             db=db,
             family_id=family_id,
@@ -74,6 +89,12 @@ def get_account_transactions(
             page=page,
             page_size=page_size,
             created_by=created_by,
+        )
+
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail=str(exc),
         )
 
     except ValueError as exc:
