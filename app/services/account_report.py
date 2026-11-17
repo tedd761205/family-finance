@@ -12,6 +12,7 @@
 7. 排除作廢交易及期初餘額（收支統計）。
 8. 查詢帳戶交易明細。
 9. 支援交易明細分頁。
+10. 顯示帳戶期初餘額及目前餘額。
 """
 
 from datetime import date, datetime, time, timedelta, timezone
@@ -22,10 +23,11 @@ from sqlalchemy.orm import Session
 
 from app.models.account import Account
 from app.models.transaction import Transaction
+from app.services.account_balance import calculate_account_balance
 
 
 TAIWAN_TIMEZONE = ZoneInfo("Asia/Taipei")
-ZERO = Decimal("0")
+ZERO = Decimal("0.0000")
 
 
 def get_account_or_raise(
@@ -140,11 +142,17 @@ def calculate_account_summary(
     created_by: int | None = None,
 ) -> dict:
     """
-    計算指定帳戶的收支統計。
+    計算指定帳戶的收支統計及目前餘額。
 
     created_by:
         None：統計整個家庭
         整數：只統計指定使用者建立的交易
+
+    注意：
+        opening_balance 和 current_balance
+        使用完整帳戶有效交易計算，不受報表日期區間影響。
+
+        期間收入、支出及其他統計仍依照日期區間及資料範圍計算。
     """
 
     account, query = build_account_transaction_query(
@@ -157,6 +165,15 @@ def calculate_account_summary(
     )
 
     transactions = query.all()
+
+    # 使用共用帳戶餘額服務，確保餘額公式一致。
+    balance_data = calculate_account_balance(
+        db=db,
+        account=account,
+    )
+
+    opening_balance = balance_data["opening_balance"]
+    current_balance = balance_data["balance"]
 
     total_income = ZERO
     total_expense = ZERO
@@ -230,20 +247,36 @@ def calculate_account_summary(
         "account_name": account.name,
         "account_type": account.account_type,
         "currency_code": account.currency_code,
+
+        # 帳戶餘額
+        "opening_balance": opening_balance,
+        "current_balance": current_balance,
+
+        # 報表日期
         "start_date": (
             start_date.isoformat() if start_date else None
         ),
         "end_date": (
             end_date.isoformat() if end_date else None
         ),
+
+        # 期間收支
         "total_income": total_income,
         "total_expense": total_expense,
         "net_amount": total_income - total_expense,
+
+        # 轉帳
         "transfer_in_amount": transfer_in_amount,
         "transfer_out_amount": transfer_out_amount,
+
+        # 信用卡繳款
         "credit_card_payment_in": credit_card_payment_in,
         "credit_card_payment_out": credit_card_payment_out,
+
+        # 信用卡退款
         "credit_card_refund_amount": credit_card_refund_amount,
+
+        # 交易筆數
         "income_transaction_count": income_count,
         "expense_transaction_count": expense_count,
         "transfer_in_count": transfer_in_count,
