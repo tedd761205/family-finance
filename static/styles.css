@@ -67,3 +67,17 @@
 .bill-status-voided{background:#f0e9e8;color:#89534d}
 .bill-status-open{background:#eef2f6;color:#526575}
 @media(max-width:760px){.bills-panel{padding:21px 17px}.bill-card{padding:14px}.bill-card-top{gap:8px}.bill-total{font-size:14px}}
+
+
+/* G-02-07 bill payment and refund workspace */
+.bill-payments-panel{padding:28px 30px;margin:18px 0 48px}
+.bill-payments-list{display:grid;gap:11px}
+.bill-payment-card{border:1px solid #e1eae3;border-radius:13px;padding:16px;background:#fff;min-width:0}
+.bill-payment-voided{opacity:.72;background:#f8f8f8}
+.bill-payment-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.bill-payment-top>div:first-child{min-width:0}
+.bill-payment-top p{margin:6px 0 0}
+.bill-payment-amount{white-space:nowrap;font-size:15px}
+.bill-payment-amount.expense{color:#a34a40}
+.bill-payment-amount.income{color:#24764f}
+@media(max-width:760px){.bill-payments-panel{padding:21px 17px}.bill-payment-card{padding:14px}}
