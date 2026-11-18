@@ -67,7 +67,13 @@ def get_account_overview(
         )
 
     try:
-        scope = require_data_scope(
+        account_scope = require_data_scope(
+            db=db,
+            roles=roles,
+            family_id=family_id,
+            resource="accounts",
+        )
+        transaction_scope = require_data_scope(
             db=db,
             roles=roles,
             family_id=family_id,
@@ -84,8 +90,11 @@ def get_account_overview(
             db=db,
             family_id=family_id,
             active_only=active_only,
-            created_by=(
-                current_user.id if scope == "own" else None
+            account_created_by=(
+                current_user.id if account_scope == "own" else None
+            ),
+            transaction_created_by=(
+                current_user.id if transaction_scope == "own" else None
             ),
         )
 
