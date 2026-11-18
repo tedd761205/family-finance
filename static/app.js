@@ -156,7 +156,7 @@ function renderTransactions() {
       const voidButton=document.createElement("button");
       voidButton.type="button";voidButton.className="danger small";voidButton.textContent="作廢";
       voidButton.addEventListener("click",()=>voidTransaction(item));
-      actions.append(payments,edit,voidButton);
+      actions.append(edit,voidButton);
       card.append(actions);
     } else if(managed&&!item.is_voided) {
       const hint=document.createElement("p");
@@ -932,7 +932,7 @@ function renderBills() {
       const voidButton=document.createElement("button");
       voidButton.type="button";voidButton.className="danger small";voidButton.textContent="作廢";
       voidButton.addEventListener("click",()=>voidBill(item));
-      actions.append(edit,voidButton);
+      actions.append(payments,edit,voidButton);
       card.append(actions);
     }
     list.append(card);

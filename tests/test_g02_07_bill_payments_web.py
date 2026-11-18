@@ -63,3 +63,21 @@ def test_bill_payment_ui_has_voided_history_and_mobile_layout():
     assert 'params.set("include_voided","true")' in javascript
     assert ".bill-payments-panel" in css
     assert "@media(max-width:760px)" in css
+
+
+def test_transaction_actions_do_not_reference_bill_payment_button():
+    with TestClient(app) as client:
+        javascript = client.get("/static/app.js").text
+
+    transactions = javascript.split("function renderTransactions()", 1)[1].split("async function loadTransactions()", 1)[0]
+    assert "actions.append(edit,voidButton)" in transactions
+    assert "actions.append(payments,edit,voidButton)" not in transactions
+
+
+def test_bill_payment_action_is_attached_only_to_bill_cards():
+    with TestClient(app) as client:
+        javascript = client.get("/static/app.js").text
+
+    bills = javascript.split("function renderBills()", 1)[1].split("async function loadBills()", 1)[0]
+    assert 'payments.textContent="付款／退款"' in bills
+    assert "actions.append(payments,edit,voidButton)" in bills
