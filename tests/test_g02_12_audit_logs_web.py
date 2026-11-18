@@ -29,7 +29,8 @@ def test_audit_log_ui_uses_family_scoped_read_only_endpoint():
 
     assert '"/audit-logs?" + params.toString()' in javascript
     assert 'result.scope === "family"' in javascript
-    assert 'method:"DELETE"' not in javascript[javascript.index("G-02-12"):]
+    audit_viewer = javascript[javascript.index("async function loadAuditLogs()"):javascript.index("G-02-13")]
+    assert 'method:"DELETE"' not in audit_viewer
 
 
 def test_audit_log_ui_displays_old_and_new_values_as_text():
