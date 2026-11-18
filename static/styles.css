@@ -35,3 +35,9 @@
   .transaction-filters{grid-template-columns:1fr}
   .transaction-void-filter{padding:4px 0}
 }
+
+/* G-02-04 account transfer workspace */
+.transfers-panel{padding:28px 30px;margin:18px 0 48px}
+.transfers-list{display:grid;gap:11px}
+.transfer-card-details{margin:8px 0 0}
+@media(max-width:760px){.transfers-panel{padding:21px 17px}}

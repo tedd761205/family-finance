@@ -10,6 +10,7 @@ on:
       - "tests/test_g02_01_web.py"
       - "tests/test_g02_02_accounts_web.py"
       - "tests/test_g02_03_transactions_web.py"
+      - "tests/test_g02_04_transfers_web.py"
       - ".github/workflows/g02-01-web-tests.yml"
       - "requirements.txt"
       - "requirements-dev.txt"
@@ -22,6 +23,7 @@ on:
       - "tests/test_g02_01_web.py"
       - "tests/test_g02_02_accounts_web.py"
       - "tests/test_g02_03_transactions_web.py"
+      - "tests/test_g02_04_transfers_web.py"
       - ".github/workflows/g02-01-web-tests.yml"
       - "requirements.txt"
       - "requirements-dev.txt"
@@ -53,4 +55,4 @@ jobs:
           pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Run G-02-01 web interface tests
-        run: python -m pytest -q tests/test_g02_01_web.py tests/test_g02_02_accounts_web.py tests/test_g02_03_transactions_web.py
+        run: python -m pytest -q tests/test_g02_01_web.py tests/test_g02_02_accounts_web.py tests/test_g02_03_transactions_web.py tests/test_g02_04_transfers_web.py

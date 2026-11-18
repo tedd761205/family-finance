@@ -16,7 +16,7 @@ function setMode(next){mode=next;$("login-tab").classList.toggle("active",mode==
 function showAuth(){currentUser=null;$("auth-view").classList.remove("hidden");$("app-view").classList.add("hidden");}
 function showApp(){$("auth-view").classList.add("hidden");$("app-view").classList.remove("hidden");}
 async function loadApp(){try{currentUser=await api("/auth/me");}catch(error){showAuth();notice("notice",error.message,"error");return;}$("user-greeting").textContent=currentUser.display_name+"（"+currentUser.email+"）";showApp();try{await loadFamilies();}catch(error){notice("notice-app","已登入，但家庭清單載入失敗："+error.message,"error");}}
-async function loadFamilies(){const result=await api("/families/mine");$("family-count").textContent=result.total+" 個家庭";const list=$("family-list");list.replaceChildren();$("empty-family").classList.toggle("hidden",result.total!==0);if(!selectedFamilyId&&result.families.length){selectedFamilyId=result.families[0].family_id;}for(const family of result.families){const card=document.createElement("button");card.type="button";card.className="family-card"+(selectedFamilyId===family.family_id?" selected":"");const title=document.createElement("strong");title.textContent=family.family_name;const meta=document.createElement("span");meta.textContent=family.currency+" · 家庭成員";card.append(title,meta);card.addEventListener("click",async()=>{selectedFamilyId=family.family_id;for(const node of list.children)node.classList.remove("selected");card.classList.add("selected");notice("notice-app","已切換至「"+family.family_name+"」。","success");if(!$("accounts-view").classList.contains("hidden")){await loadAccounts();}if(!$("transactions-view").classList.contains("hidden")){await showTransactions();}});list.append(card);}}
+async function loadFamilies(){const result=await api("/families/mine");$("family-count").textContent=result.total+" 個家庭";const list=$("family-list");list.replaceChildren();$("empty-family").classList.toggle("hidden",result.total!==0);if(!selectedFamilyId&&result.families.length){selectedFamilyId=result.families[0].family_id;}for(const family of result.families){const card=document.createElement("button");card.type="button";card.className="family-card"+(selectedFamilyId===family.family_id?" selected":"");const title=document.createElement("strong");title.textContent=family.family_name;const meta=document.createElement("span");meta.textContent=family.currency+" · 家庭成員";card.append(title,meta);card.addEventListener("click",async()=>{selectedFamilyId=family.family_id;for(const node of list.children)node.classList.remove("selected");card.classList.add("selected");notice("notice-app","已切換至「"+family.family_name+"」。","success");if(!$("accounts-view").classList.contains("hidden")){await loadAccounts();}if(!$("transactions-view").classList.contains("hidden")){await showTransactions();}if(!$("transfers-view").classList.contains("hidden")){await showTransfers();}});list.append(card);}}
 function accountTypeLabel(type){return({bank:"銀行帳戶",time_deposit:"定期存款",cash:"現金",credit_card:"信用卡",e_wallet:"電子支付",other:"其他"})[type]||type;}
 function money(value,currency){const amount=Number(value||0);try{return new Intl.NumberFormat("zh-TW",{style:"currency",currency:currency||"TWD",minimumFractionDigits:2,maximumFractionDigits:2}).format(amount);}catch{return amount.toFixed(2)+" "+(currency||"");}}
 function toggleCreditFields(){const isCard=$("account-type").value==="credit_card";$("credit-fields").classList.toggle("hidden",!isCard);}
@@ -294,5 +294,273 @@ async function voidTransaction(item) {
     notice("transaction-notice",refreshed?"收支紀錄已作廢，歷史資料仍會保留。":"已完成作廢，但收支清單重新載入失敗，請重新整理。",refreshed?"success":"error");
   } catch(error) {
     notice("transaction-notice",error.message,"error");
+  }
+}
+
+
+// --------------------------------------------------
+// G-02-04：帳戶轉帳管理
+// --------------------------------------------------
+let editingTransferId = null;
+let transferRows = [];
+let transferAccounts = [];
+
+function transferDateInput(value) {
+  if (!value) return localDateString();
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return localDateString();
+  return date.getFullYear()+"-"+String(date.getMonth()+1).padStart(2,"0")+"-"+String(date.getDate()).padStart(2,"0");
+}
+
+function transferDateTime(value) {
+  return value ? value+"T12:00:00+08:00" : "";
+}
+
+function transferFilterDateTime(value, endOfDay=false) {
+  return value ? value+(endOfDay?"T23:59:59+08:00":"T00:00:00+08:00") : "";
+}
+
+function transferAccountLabel(account) {
+  return account.name+" · "+account.currency_code;
+}
+
+function transferEligibleAccounts() {
+  return transferAccounts.filter(account=>account.is_active!==false);
+}
+
+function populateTransferAccountSelects(preferred={}) {
+  const eligible=transferEligibleAccounts();
+  const from=$("transfer-from-account");
+  const to=$("transfer-to-account");
+  const fee=$("transfer-fee-account");
+  const filter=$("transfer-filter-account");
+  const previous={from:preferred.from??from.value,to:preferred.to??to.value,fee:preferred.fee??fee.value,filter:filter.value};
+  from.replaceChildren();
+  to.replaceChildren();
+  fee.replaceChildren(new Option("不指定（無手續費時）",""));
+  filter.replaceChildren(new Option("全部帳戶",""));
+  for(const account of eligible) {
+    const label=transferAccountLabel(account);
+    from.add(new Option(label,String(account.id)));
+    filter.add(new Option(label,String(account.id)));
+  }
+  const source=eligible.find(account=>account.id===Number(previous.from))||eligible[0]||null;
+  if(source)from.value=String(source.id);
+  const currency=source?.currency_code;
+  for(const account of eligible.filter(item=>item.currency_code===currency)) {
+    to.add(new Option(transferAccountLabel(account),String(account.id)));
+    fee.add(new Option(transferAccountLabel(account),String(account.id)));
+  }
+  if(previous.to && [...to.options].some(option=>option.value===String(previous.to)))to.value=String(previous.to);
+  if(previous.fee && [...fee.options].some(option=>option.value===String(previous.fee)))fee.value=String(previous.fee);
+  if(previous.filter && [...filter.options].some(option=>option.value===String(previous.filter)))filter.value=String(previous.filter);
+  updateTransferCurrencyHint();
+}
+
+function updateTransferCurrencyHint() {
+  const source=transferAccounts.find(account=>account.id===Number($("transfer-from-account").value));
+  $("transfer-currency-hint").textContent=source
+    ?"轉帳幣別："+source.currency_code+"。轉入帳戶與手續費扣款帳戶必須使用相同幣別。"
+    :"請先建立至少兩個啟用中的同幣別帳戶。";
+}
+
+async function loadTransferSupportData() {
+  const result=await api("/accounts?family_id="+selectedFamilyId);
+  transferAccounts=result.accounts||[];
+  populateTransferAccountSelects();
+}
+
+function transferQuery() {
+  const params=new URLSearchParams({family_id:String(selectedFamilyId),limit:"200"});
+  const account=$("transfer-filter-account").value;
+  const start=$("transfer-filter-start").value;
+  const end=$("transfer-filter-end").value;
+  if(account)params.set("account_id",account);
+  if(start)params.set("start_date",transferFilterDateTime(start));
+  if(end)params.set("end_date",transferFilterDateTime(end,true));
+  if($("transfer-include-voided").checked)params.set("include_voided","true");
+  return params.toString();
+}
+
+function renderTransfers() {
+  const list=$("transfers-list");
+  list.replaceChildren();
+  $("transfers-count").textContent=transferRows.length+" 筆轉帳";
+  $("transfers-empty").classList.toggle("hidden",transferRows.length!==0);
+  for(const item of transferRows) {
+    const from=transferAccounts.find(account=>account.id===item.from_account_id);
+    const to=transferAccounts.find(account=>account.id===item.to_account_id);
+    const feeAccount=transferAccounts.find(account=>account.id===item.fee_account_id);
+    const card=document.createElement("article");
+    card.className="transaction-card"+(item.is_voided?" transaction-voided":"");
+    const top=document.createElement("div");
+    top.className="transaction-card-top";
+    const main=document.createElement("div");
+    const title=document.createElement("strong");
+    title.textContent=item.description||"帳戶轉帳";
+    const meta=document.createElement("p");
+    meta.className="muted tiny";
+    meta.textContent=[transferDateInput(item.transfer_date),(from?.name||"帳戶 #"+item.from_account_id)+" → "+(to?.name||"帳戶 #"+item.to_account_id)].join(" · ");
+    main.append(title,meta);
+    const amount=document.createElement("strong");
+    amount.className="transaction-amount";
+    amount.textContent=money(item.amount,item.currency_code);
+    top.append(main,amount);
+    card.append(top);
+    const details=document.createElement("p");
+    details.className="tiny muted";
+    details.textContent="手續費："+money(item.fee_amount||0,item.currency_code)+(Number(item.fee_amount||0)>0?" · 扣款帳戶："+(feeAccount?.name||"帳戶 #"+item.fee_account_id):"");
+    card.append(details);
+    if(item.is_voided) {
+      const status=document.createElement("span");
+      status.className="transaction-status";
+      status.textContent="已作廢";
+      card.append(status);
+    } else {
+      const actions=document.createElement("div");
+      actions.className="account-actions";
+      const edit=document.createElement("button");
+      edit.type="button";edit.className="secondary small";edit.textContent="修改";
+      edit.addEventListener("click",()=>startEditTransfer(item));
+      const voidButton=document.createElement("button");
+      voidButton.type="button";voidButton.className="danger small";voidButton.textContent="作廢";
+      voidButton.addEventListener("click",()=>voidTransfer(item));
+      actions.append(edit,voidButton);
+      card.append(actions);
+    }
+    list.append(card);
+  }
+}
+
+async function loadTransfers() {
+  if(!selectedFamilyId)return false;
+  clearNotice("transfer-notice");
+  $("transfers-loading").classList.remove("hidden");
+  try {
+    const result=await api("/transfers?"+transferQuery());
+    transferRows=result.transfers||[];
+    renderTransfers();
+    return true;
+  } catch(error) {
+    notice("transfer-notice","轉帳紀錄載入失敗："+error.message,"error");
+    return false;
+  } finally {
+    $("transfers-loading").classList.add("hidden");
+  }
+}
+
+async function showTransfers() {
+  if(!selectedFamilyId){notice("notice-app","請先建立或選擇家庭，再管理轉帳。","error");return;}
+  $("transfers-view").classList.remove("hidden");
+  $("transfers-view").scrollIntoView({behavior:"smooth",block:"start"});
+  try {
+    await loadTransferSupportData();
+    await loadTransfers();
+  } catch(error) {
+    notice("transfer-notice","轉帳管理初始化失敗："+error.message,"error");
+  }
+}
+
+function resetTransferForm() {
+  editingTransferId=null;
+  $("transfer-form").reset();
+  $("transfer-form-title").textContent="新增轉帳";
+  $("transfer-submit").textContent="新增轉帳";
+  $("transfer-date").value=localDateString();
+  $("transfer-fee-amount").value="0";
+  $("transfer-form-panel").classList.add("hidden");
+  populateTransferAccountSelects();
+}
+
+function startEditTransfer(item) {
+  editingTransferId=item.id;
+  $("transfer-form-title").textContent="修改轉帳";
+  $("transfer-submit").textContent="儲存修改";
+  populateTransferAccountSelects({from:item.from_account_id,to:item.to_account_id,fee:item.fee_account_id});
+  $("transfer-from-account").value=String(item.from_account_id);
+  populateTransferAccountSelects({from:item.from_account_id,to:item.to_account_id,fee:item.fee_account_id});
+  $("transfer-to-account").value=String(item.to_account_id);
+  $("transfer-amount").value=item.amount;
+  $("transfer-date").value=transferDateInput(item.transfer_date);
+  $("transfer-fee-amount").value=item.fee_amount||0;
+  $("transfer-fee-account").value=item.fee_account_id?String(item.fee_account_id):"";
+  $("transfer-description").value=item.description||"";
+  $("transfer-note").value=item.note||"";
+  $("transfer-form-panel").classList.remove("hidden");
+  $("transfer-form-panel").scrollIntoView({behavior:"smooth",block:"start"});
+}
+
+$("open-transfers").addEventListener("click",showTransfers);
+$("close-transfers").addEventListener("click",()=>{
+  $("transfers-view").classList.add("hidden");
+  resetTransferForm();
+});
+$("add-transfer-button").addEventListener("click",()=>{
+  resetTransferForm();
+  if(transferEligibleAccounts().length<2){notice("transfer-notice","請先建立至少兩個啟用中的同幣別帳戶。","error");return;}
+  $("transfer-form-panel").classList.remove("hidden");
+  $("transfer-form-panel").scrollIntoView({behavior:"smooth",block:"start"});
+});
+$("transfer-cancel").addEventListener("click",resetTransferForm);
+$("transfer-from-account").addEventListener("change",()=>{
+  const from=$("transfer-from-account").value;
+  populateTransferAccountSelects({from,to:"",fee:""});
+});
+$("transfer-fee-amount").addEventListener("input",()=>{
+  if(Number($("transfer-fee-amount").value||0)<=0)$("transfer-fee-account").value="";
+});
+$("apply-transfer-filters").addEventListener("click",loadTransfers);
+$("transfer-filter-account").addEventListener("change",loadTransfers);
+$("transfer-include-voided").addEventListener("change",loadTransfers);
+$("transfer-form").addEventListener("submit",async(event)=>{
+  event.preventDefault();
+  const button=$("transfer-submit");
+  button.disabled=true;
+  clearNotice("transfer-notice");
+  try {
+    const from=transferAccounts.find(account=>account.id===Number($("transfer-from-account").value));
+    const to=transferAccounts.find(account=>account.id===Number($("transfer-to-account").value));
+    const fee=Number($("transfer-fee-amount").value||0);
+    const feeAccountId=$("transfer-fee-account").value;
+    if(!from||!to)throw new Error("請選擇有效的轉出與轉入帳戶。");
+    if(from.id===to.id)throw new Error("轉出帳戶與轉入帳戶不可相同。");
+    if(from.currency_code!==to.currency_code)throw new Error("轉出與轉入帳戶幣別必須相同。");
+    if(fee>0&&!feeAccountId)throw new Error("有手續費時必須指定扣款帳戶。");
+    const feeAccount=feeAccountId?transferAccounts.find(account=>account.id===Number(feeAccountId)):null;
+    if(fee>0&&(!feeAccount||feeAccount.currency_code!==from.currency_code))throw new Error("手續費扣款帳戶幣別必須與轉帳一致。");
+    const payload={
+      from_account_id:from.id,
+      to_account_id:to.id,
+      amount:$("transfer-amount").value,
+      currency_code:from.currency_code,
+      transfer_date:transferDateTime($("transfer-date").value),
+      description:$("transfer-description").value.trim(),
+      fee_amount:String(fee),
+      fee_account_id:fee>0?Number(feeAccountId):null,
+      note:$("transfer-note").value.trim()||null
+    };
+    const wasEditing=Boolean(editingTransferId);
+    if(wasEditing)await api("/transfers/"+editingTransferId+"?family_id="+selectedFamilyId,{method:"PATCH",body:JSON.stringify(payload)});
+    else await api("/transfers?family_id="+selectedFamilyId,{method:"POST",body:JSON.stringify(payload)});
+    resetTransferForm();
+    const refreshed=await loadTransfers();
+    await loadAccounts();
+    notice("transfer-notice",refreshed?(wasEditing?"轉帳紀錄已更新，兩端交易明細已同步。":"轉帳已新增，兩端交易明細已建立。"):"資料已儲存，但轉帳清單重新載入失敗，請重新整理。",refreshed?"success":"error");
+  } catch(error) {
+    notice("transfer-notice",error.message,"error");
+  } finally {
+    button.disabled=false;
+  }
+});
+
+async function voidTransfer(item) {
+  if(!window.confirm("確定要作廢這筆帳戶轉帳？系統會一併作廢轉出、轉入及手續費交易，並保留歷史資料。"))return;
+  try {
+    await api("/transfers/"+item.id+"?family_id="+selectedFamilyId,{method:"DELETE"});
+    const refreshed=await loadTransfers();
+    await loadAccounts();
+    notice("transfer-notice",refreshed?"轉帳及相關交易已作廢，歷史資料仍會保留。":"已完成作廢，但轉帳清單重新載入失敗，請重新整理。",refreshed?"success":"error");
+  } catch(error) {
+    notice("transfer-notice",error.message,"error");
   }
 }
