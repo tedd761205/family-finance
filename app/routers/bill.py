@@ -225,10 +225,15 @@ def void_bill(
     _check_owner(bill, current_user, scope)
     if bill.is_voided:
         raise HTTPException(status_code=409, detail="帳單已經作廢")
-    paid_amount = get_bill_paid_amount(db, family_id, bill.id)
-    if paid_amount > 0:
-        raise HTTPException(status_code=409, detail="帳單仍有未退款的淨付款，請先完成退款或作廢付款紀錄")
+    active_payment_exists = db.query(BillPayment.id).filter(
+        BillPayment.family_id == family_id,
+        BillPayment.bill_id == bill.id,
+        BillPayment.is_voided.is_(False),
+    ).first()
+    if active_payment_exists is not None:
+        raise HTTPException(status_code=409, detail="帳單仍有有效付款／退款紀錄，請先作廢相關紀錄")
 
+    paid_amount = get_bill_paid_amount(db, family_id, bill.id)
     old_values = _audit_values(bill)
     bill.is_voided = True
     bill.voided_at = datetime.now(timezone.utc)
