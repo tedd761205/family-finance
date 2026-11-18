@@ -28,8 +28,8 @@ PERMISSIONS = (
 ROLE_CODES = {
     "家庭管理員": tuple(item[0] for item in PERMISSIONS),
     "財務管理員": ("notifications.view", "exports.view", "exports.create", "exports.update", "exports.publish", "exports.schedule", "exports.download", "exports.dashboard"),
-    "一般成員": ("notifications.view", "exports.view", "exports.create", "exports.download"),
-    "記帳人員": ("notifications.view", "exports.view", "exports.create", "exports.download"),
+    "一般成員": ("notifications.view", "exports.view", "exports.create", "exports.update", "exports.publish", "exports.schedule", "exports.download"),
+    "記帳人員": ("notifications.view", "exports.view", "exports.create", "exports.update", "exports.publish", "exports.schedule", "exports.download"),
     "檢視人員": ("notifications.view", "exports.view"),
 }
 ROLE_SCOPES = {
