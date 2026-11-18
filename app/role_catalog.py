@@ -257,6 +257,7 @@ BOOKKEEPER_SCOPES = {
     "reports": "family",
     "imports": "family",
     "attachments": "family",
+    "ocr": "family",
 }
 
 VIEWER_SCOPES = {
