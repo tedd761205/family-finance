@@ -319,6 +319,59 @@ def publish_export_template(
     return template
 
 
+@router.post("/exports/templates/{template_id}/disable", response_model=ExportTemplateItem, summary="停用匯出範本及相關排程")
+def disable_export_template(
+    template_id: int, expected_version: int = Query(..., ge=1),
+    family_id: int = Query(..., gt=0),
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    scope = _authorize(db, current_user.id, family_id, "exports.publish", "exports")
+    template = _template(db, family_id, template_id, lock=True)
+    if scope == "own" and template.created_by != current_user.id:
+        raise HTTPException(status_code=404, detail="找不到此家庭匯出範本")
+    if template.version != expected_version:
+        raise HTTPException(status_code=409, detail={
+            "code": "EXPORT_TEMPLATE_VERSION_CONFLICT",
+            "expected_version": expected_version, "latest_version": template.version,
+            "latest": _snapshot(template),
+        })
+    old = _snapshot(template)
+    template.status = "disabled"
+    template.updated_by = current_user.id
+    version = db.query(ExportTemplateVersion).filter(
+        ExportTemplateVersion.family_id == family_id,
+        ExportTemplateVersion.template_id == template.id,
+        ExportTemplateVersion.version == template.version,
+    ).with_for_update().first()
+    if version is not None:
+        version.status = "disabled"
+    schedules = db.query(ExportSchedule).filter(
+        ExportSchedule.family_id == family_id,
+        ExportSchedule.template_id == template.id,
+        ExportSchedule.enabled.is_(True),
+    ).with_for_update().all()
+    for schedule in schedules:
+        schedule.enabled = False
+        _notify(db, family_id=family_id, recipient_user_id=schedule.created_by,
+                actor_user_id=current_user.id, notification_type="export_schedule.disabled",
+                title="定期匯出已停用",
+                body=f"因共用範本「{template.name}」已停用，排程「{schedule.name}」同步停止。",
+                payload={"schedule_id": schedule.id, "template_id": template.id})
+    add_audit_log(db, family_id=family_id, actor_user_id=current_user.id,
+                  action="disable", entity_type="export_template", entity_id=template.id,
+                  old_values=old, new_values={**_snapshot(template), "disabled_schedule_count": len(schedules)},
+                  description="停用家庭共用匯出範本並同步停用相關排程")
+    _notify_family_members(
+        db, family_id=family_id, actor_user_id=current_user.id,
+        notification_type="export_template.disabled", title="家庭匯出範本已停用",
+        body=f"共用範本「{template.name}」已停用，相關定期匯出排程也已停止。",
+        payload={"template_id": template.id, "version": template.version},
+    )
+    db.commit()
+    db.refresh(template)
+    return template
+
+
 @router.get("/exports/templates/{template_id}/versions", summary="查詢匯出範本版本歷程")
 def list_export_template_versions(
     template_id: int, family_id: int = Query(..., gt=0),
@@ -390,11 +443,11 @@ def disable_export_schedule(
     schedule_id: int, family_id: int = Query(..., gt=0),
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
-    _authorize(db, current_user.id, family_id, "exports.schedule", "exports")
+    scope = _authorize(db, current_user.id, family_id, "exports.schedule", "exports")
     item = db.query(ExportSchedule).filter(
         ExportSchedule.id == schedule_id, ExportSchedule.family_id == family_id,
     ).with_for_update().first()
-    if item is None:
+    if item is None or (scope == "own" and item.created_by != current_user.id):
         raise HTTPException(status_code=404, detail="找不到此家庭匯出排程")
     item.enabled = False
     add_audit_log(db, family_id=family_id, actor_user_id=current_user.id,
@@ -510,10 +563,23 @@ def download_export_run(
 @router.get("/exports/dashboard", summary="匯出管理儀表板統計")
 def export_dashboard(
     family_id: int = Query(..., gt=0),
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+    status_filter: str | None = Query(default=None, alias="status"),
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
     scope = _authorize(db, current_user.id, family_id, "exports.dashboard", "exports")
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status_code=422, detail="起始日期不可晚於結束日期")
+    if status_filter is not None and status_filter not in {"queued", "running", "succeeded", "failed", "revoked"}:
+        raise HTTPException(status_code=422, detail="不支援的匯出狀態篩選")
     query = db.query(ExportRun).filter(ExportRun.family_id == family_id)
+    if start_date:
+        query = query.filter(ExportRun.created_at >= datetime.combine(start_date, time.min, TAIPEI).astimezone(timezone.utc))
+    if end_date:
+        query = query.filter(ExportRun.created_at < datetime.combine(end_date + timedelta(days=1), time.min, TAIPEI).astimezone(timezone.utc))
+    if status_filter:
+        query = query.filter(ExportRun.status == status_filter)
     if scope == "own":
         query = query.filter(ExportRun.requested_by == current_user.id)
     runs = query.order_by(ExportRun.created_at.desc()).limit(1000).all()
@@ -528,7 +594,10 @@ def export_dashboard(
         "success": True, "timezone": "Asia/Taipei", "total": len(runs),
         "status_counts": counts,
         "daily_trend": [{"date": k, "count": v} for k, v in sorted(daily.items())],
-        "recent_failures": failed,
+        "recent_failures": failed, "alert_count": counts.get("failed", 0),
+        "filters": {"start_date": start_date.isoformat() if start_date else None,
+                    "end_date": end_date.isoformat() if end_date else None,
+                    "status": status_filter},
     }
 
 
