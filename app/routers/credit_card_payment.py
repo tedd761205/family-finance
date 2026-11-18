@@ -403,21 +403,6 @@ def create_credit_card_payment(
             description="新增信用卡繳款（含自動產生的交易明細）",
         )
 
-        add_audit_log(
-            db,
-            family_id=family_id,
-            actor_user_id=current_user.id,
-            action="update",
-            entity_type="credit_card_payment",
-            entity_id=payment.id,
-            old_values=old_values,
-            new_values={
-                field: getattr(payment, field)
-                for field in changes
-            },
-            description="修改信用卡繳款及其交易明細",
-        )
-
         db.commit()
         db.refresh(payment)
 
@@ -661,6 +646,21 @@ def update_credit_card_payment(
         incoming.transaction_date = payment.payment_date
         incoming.description = payment.description
         incoming.note = payment.note
+
+        add_audit_log(
+            db,
+            family_id=family_id,
+            actor_user_id=current_user.id,
+            action="update",
+            entity_type="credit_card_payment",
+            entity_id=payment.id,
+            old_values=old_values,
+            new_values={
+                field: getattr(payment, field)
+                for field in changes
+            },
+            description="修改信用卡繳款及其交易明細",
+        )
 
         db.commit()
         db.refresh(payment)
