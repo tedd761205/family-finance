@@ -22,7 +22,7 @@ ROLE_CODES = {
     "家庭管理員": ("recurring_bills.view", "recurring_bills.create", "recurring_bills.update", "recurring_bills.void"),
     "財務管理員": ("recurring_bills.view", "recurring_bills.create", "recurring_bills.update", "recurring_bills.void"),
     "一般成員": ("recurring_bills.view", "recurring_bills.create", "recurring_bills.update", "recurring_bills.void"),
-    "記帳人員": ("recurring_bills.view", "recurring_bills.create", "recurring_bills.update", "recurring_bills.void"),
+    "記帳人員": ("recurring_bills.view", "recurring_bills.create", "recurring_bills.update"),
     "檢視人員": ("recurring_bills.view",),
 }
 ROLE_SCOPES = {"家庭管理員":"family", "財務管理員":"family", "一般成員":"own", "記帳人員":"family", "檢視人員":"family"}
