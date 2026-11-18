@@ -14,9 +14,9 @@ def test_reconciliation_models_register_expected_tables():
 def test_reconciliation_session_enforces_family_account_and_period():
     constraints = {item.name for item in ReconciliationSession.__table__.constraints}
     assert "uq_reconciliation_sessions_family_id_id" in constraints
-    assert "uq_reconciliation_sessions_family_id_batch" in constraints
+    assert "uq_reconciliation_sessions_family_id_account_batch" in constraints
     assert "fk_reconciliation_sessions_family_account" in constraints
-    assert "fk_reconciliation_sessions_family_batch" in constraints
+    assert "fk_reconciliation_sessions_family_account_batch" in constraints
     assert "ck_reconciliation_sessions_period" in constraints
     assert "ck_reconciliation_sessions_status" in constraints
     assert "ck_reconciliation_sessions_counts" in constraints
@@ -31,9 +31,9 @@ def test_reconciliation_session_prevents_duplicate_active_periods_and_batches():
 
 def test_reconciliation_match_has_family_scoped_foreign_keys_and_allocation_checks():
     constraints = {item.name for item in ReconciliationMatch.__table__.constraints}
-    assert "fk_reconciliation_matches_family_session_batch" in constraints
+    assert "fk_reconciliation_matches_family_session_account_batch" in constraints
     assert "fk_reconciliation_matches_family_import_row" in constraints
-    assert "fk_reconciliation_matches_family_transaction" in constraints
+    assert "fk_reconciliation_matches_family_account_transaction" in constraints
     assert "ck_reconciliation_matches_amount_positive" in constraints
     assert "ck_reconciliation_matches_void_metadata" in constraints
 
