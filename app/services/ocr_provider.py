@@ -19,10 +19,14 @@ def _suggest_fields(text: str) -> dict:
     """Conservative hints only; values are never persisted to bills automatically."""
     result = {}
     dates = re.findall(r"(?<!\d)(20\d{2})[年./-](\d{1,2})[月./-](\d{1,2})日?", text)
+    roc_dates = re.findall(r"(?:民國\s*)?(\d{2,3})[年./-](\d{1,2})[月./-](\d{1,2})日?", text)
     if dates:
         y, m, d = dates[0]
         result["date_candidate"] = f"{int(y):04d}-{int(m):02d}-{int(d):02d}"
-    amounts = re.findall(r"(?:NT\$|NTD|TWD|\$|金額|應繳|合計|總計)[：:\s]*([0-9,]+(?:\.[0-9]{1,2})?)", text, re.I)
+    elif roc_dates:
+        y, m, d = roc_dates[0]
+        result["date_candidate"] = f"{int(y) + 1911:04d}-{int(m):02d}-{int(d):02d}"
+    amounts = re.findall(r"(?:NT\$|NTD|TWD|\$|應繳金額|本期應繳|應付金額|金額|應繳|合計|總計)[：:\s]*([0-9,]+(?:\.[0-9]{1,2})?)", text, re.I)
     if amounts:
         result["amount_candidate"] = amounts[-1].replace(",", "")
     number = re.search(r"(?:帳單編號|繳款編號|單據號碼|Bill\s*No\.?)[：:\s]*([A-Z0-9-]{4,})", text, re.I)
