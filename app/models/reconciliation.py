@@ -23,7 +23,7 @@ class ReconciliationSession(Base):
         ),
         ForeignKeyConstraint(
             ["family_id", "account_id", "source_batch_id"], ["bank_import_batches.family_id", "bank_import_batches.account_id", "bank_import_batches.id"],
-            ondelete="RESTRICT", name="fk_reconciliation_sessions_family_batch",
+            ondelete="RESTRICT", name="fk_reconciliation_sessions_family_account_batch",
         ),
         ForeignKeyConstraint(
             ["created_by"], ["users.id"], ondelete="RESTRICT",
@@ -87,7 +87,7 @@ class ReconciliationMatch(Base):
         ForeignKeyConstraint(
             ["family_id", "session_id", "account_id", "batch_id"],
             ["reconciliation_sessions.family_id", "reconciliation_sessions.id", "reconciliation_sessions.account_id", "reconciliation_sessions.source_batch_id"],
-            ondelete="RESTRICT", name="fk_reconciliation_matches_family_session_batch",
+            ondelete="RESTRICT", name="fk_reconciliation_matches_family_session_account_batch",
         ),
         ForeignKeyConstraint(
             ["family_id", "batch_id", "bank_import_row_id"],
@@ -97,7 +97,7 @@ class ReconciliationMatch(Base):
         ForeignKeyConstraint(
             ["family_id", "account_id", "transaction_id"],
             ["transactions.family_id", "transactions.account_id", "transactions.id"],
-            ondelete="RESTRICT", name="fk_reconciliation_matches_family_transaction",
+            ondelete="RESTRICT", name="fk_reconciliation_matches_family_account_transaction",
         ),
         ForeignKeyConstraint(
             ["matched_by"], ["users.id"], ondelete="RESTRICT",
