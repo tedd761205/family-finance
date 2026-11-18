@@ -473,6 +473,18 @@ def list_family_members(
             "status": member.status,
             "joined_at": member.joined_at.isoformat() if member.joined_at else None,
             "roles": role_names,
+            "role_ids": [
+                row[0] for row in (
+                    db.query(MemberRole.role_id)
+                    .join(Role, Role.id == MemberRole.role_id)
+                    .filter(
+                        MemberRole.family_member_id == member.id,
+                        MemberRole.family_id == family_id,
+                        Role.family_id == family_id,
+                        Role.is_active.is_(True),
+                    ).all()
+                )
+            ],
             "is_me": user.id == current_user.id,
         })
 
