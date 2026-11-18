@@ -1,6 +1,6 @@
 import hashlib
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import and_, or_
@@ -255,7 +255,11 @@ def run_ocr_task(
     db: Session = Depends(get_db),
 ):
     scope = _authorize(db, current_user, family_id, "create")
-    task = _get_task(db, family_id, task_id)
+    task = db.query(OcrTask).filter(
+        OcrTask.id == task_id, OcrTask.family_id == family_id,
+    ).with_for_update().first()
+    if task is None:
+        raise HTTPException(status_code=404, detail="找不到此 OCR 任務")
     _check_access(db, current_user, task, scope)
     if task.status not in {"queued", "failed"}:
         raise HTTPException(status_code=409, detail="目前任務狀態不可執行")
@@ -291,8 +295,13 @@ def retry_ocr_task(
     scope = _authorize(db, current_user, family_id, "retry")
     task = _get_task(db, family_id, task_id)
     _check_access(db, current_user, task, scope)
-    if task.status != "failed":
-        raise HTTPException(status_code=409, detail="只有失敗的 OCR 任務可以重試")
+    stale_processing = (
+        task.status == "processing"
+        and task.started_at is not None
+        and task.started_at < datetime.now(timezone.utc) - timedelta(minutes=15)
+    )
+    if task.status != "failed" and not stale_processing:
+        raise HTTPException(status_code=409, detail="只有失敗或逾時的 OCR 任務可以重試")
     if task.attempts >= MAX_ATTEMPTS:
         raise HTTPException(status_code=409, detail="已達最大 OCR 重試次數")
     task.status = "queued"
