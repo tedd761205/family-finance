@@ -80,6 +80,33 @@ jobs:
           export DATABASE_URL="postgresql+psycopg://postgres:postgres@localhost:5432/g01_migration_test"
           python -m alembic upgrade head
           python -m alembic current
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+          from sqlalchemy.engine import make_url
+
+          url = make_url(os.environ["DATABASE_URL"])
+          engine = create_engine(url)
+          with engine.connect() as connection:
+              table_exists = connection.execute(text(
+                  "SELECT to_regclass('public.bills') IS NOT NULL"
+              )).scalar_one()
+              trigger_exists = connection.execute(text("""
+                  SELECT EXISTS (
+                      SELECT 1 FROM pg_trigger
+                      WHERE tgname = 'trg_check_bill_category_scope'
+                        AND NOT tgisinternal
+                  )
+              """)).scalar_one()
+              permission_count = connection.execute(text("""
+                  SELECT count(*) FROM permissions
+                  WHERE code IN ('bills.view', 'bills.create', 'bills.update', 'bills.void')
+              """)).scalar_one()
+          engine.dispose()
+          if not table_exists or not trigger_exists or permission_count != 4:
+              raise SystemExit("Bills migration objects or permissions are incomplete")
+          print("Bills table, category-scope trigger, and four permissions verified.")
+          PY
           python -m alembic downgrade base
           python -m alembic upgrade head
           python -m alembic current
