@@ -63,9 +63,49 @@
         </form>
       </section>
       <section class="quick-grid">
-        <article class="quick-card"><span class="quick-icon">帳</span><h3>帳戶管理</h3><p>銀行、現金、信用卡與電子支付。</p><span class="coming">即將開放</span></article>
-        <article class="quick-card"><span class="quick-icon">單</span><h3>帳單與付款</h3><p>分開追蹤應付帳單與實際付款。</p><span class="coming">即將開放</span></article>
-        <article class="quick-card"><span class="quick-icon">報</span><h3>家庭報表</h3><p>掌握每月收支與家庭支出分布。</p><span class="coming">即將開放</span></article>
+        <button class="quick-card quick-card-button" id="open-accounts" type="button"><span class="quick-icon">帳</span><span class="quick-card-title">帳戶管理</span><span class="quick-card-description">銀行、現金、信用卡與電子支付。</span><span class="coming">管理帳戶 →</span></button>
+        <article class="quick-card"><span class="quick-icon">單</span><h3>帳單與付款</h3><p>分開追蹤應付帳單與實際付款。</p><span class="coming">後續階段開放</span></article>
+        <article class="quick-card"><span class="quick-icon">報</span><h3>家庭報表</h3><p>掌握每月收支與家庭支出分布。</p><span class="coming">後續階段開放</span></article>
+      </section>
+      <section id="accounts-view" class="panel accounts-panel hidden">
+        <div class="accounts-heading">
+          <div><p class="eyebrow">FAMILY ACCOUNTS</p><h2>帳戶管理</h2><p class="muted">管理家庭各幣別帳戶與目前餘額。</p></div>
+          <div class="heading-actions"><button class="secondary small" id="close-accounts" type="button">收起</button><button class="primary small" id="add-account-button" type="button">＋ 新增帳戶</button></div>
+        </div>
+        <div id="account-notice" class="notice" role="status" aria-live="polite"></div>
+        <div class="accounts-summary"><strong id="accounts-count">0 個帳戶</strong><span class="muted tiny">不同幣別分開顯示；信用卡正數代表尚欠款項。</span></div>
+        <p id="accounts-loading" class="muted hidden">正在載入帳戶…</p>
+        <div id="accounts-list" class="accounts-list"></div>
+        <div id="accounts-empty" class="empty-state"><div class="empty-icon">＋</div><h3>尚未建立帳戶</h3><p class="muted">新增銀行、現金、信用卡或電子支付帳戶，開始管理家庭資產。</p></div>
+        <div id="account-form-panel" class="subpanel hidden">
+          <h3 id="account-form-title">新增帳戶</h3>
+          <form id="account-form">
+            <div class="account-form-grid">
+              <label class="field">帳戶名稱<input id="account-name" required maxlength="100" placeholder="例如：薪轉帳戶、家用現金"></label>
+              <label class="field">帳戶類型<select id="account-type" required><option value="bank">銀行帳戶</option><option value="time_deposit">定期存款</option><option value="cash">現金</option><option value="credit_card">信用卡</option><option value="e_wallet">電子支付</option><option value="other">其他</option></select></label>
+              <label class="field">幣別<input id="account-currency" required minlength="3" maxlength="3" pattern="[A-Za-z]{3}" value="TWD" placeholder="TWD"></label>
+              <label class="field">銀行／機構名稱<input id="account-institution" maxlength="100" placeholder="例如：台灣銀行、LINE Pay"></label>
+              <label class="field">帳號末四碼<input id="account-number-last4" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" placeholder="選填，僅記錄末四碼"></label>
+            </div>
+            <div id="credit-fields" class="account-form-grid hidden">
+              <label class="field">信用卡額度<input id="credit-limit" type="number" min="0" step="0.01" placeholder="選填"></label>
+              <label class="field">結帳日<input id="statement-day" type="number" min="1" max="31" placeholder="1–31"></label>
+              <label class="field">繳款截止日<input id="payment-due-day" type="number" min="1" max="31" placeholder="1–31"></label>
+            </div>
+            <label class="field">備註<textarea id="account-note" rows="2" maxlength="500" placeholder="選填"></textarea></label>
+            <div class="form-actions"><button class="primary" id="account-submit" type="submit">新增帳戶</button><button class="secondary" id="account-cancel" type="button">取消</button></div>
+          </form>
+        </div>
+        <div id="opening-form-panel" class="subpanel hidden">
+          <h3>設定期初餘額</h3>
+          <p class="muted tiny">帳戶：<strong id="opening-account-name"></strong></p>
+          <p id="opening-status" class="notice show" role="status" aria-live="polite"></p>
+          <form id="opening-form" class="hidden">
+            <label class="field"><span id="opening-amount-label">期初餘額</span><input id="opening-amount" type="number" min="0.0001" step="0.0001" required placeholder="輸入大於 0 的金額"></label>
+            <label class="field">期初日期<input id="opening-date" type="date" required></label>
+            <div class="form-actions"><button class="primary" id="opening-submit" type="submit">確認設定</button><button class="secondary" id="opening-cancel" type="button">取消</button></div>
+          </form>
+        </div>
       </section>
     </section>
     <footer>家庭記帳系統 <span>·</span> 安全管理每一筆家庭收支</footer>
