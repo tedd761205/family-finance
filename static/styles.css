@@ -201,3 +201,7 @@
  .audit-log-value-grid{grid-template-columns:1fr}
 }
 @media(max-width:420px){.audit-log-filters{grid-template-columns:1fr}}
+
+/* G-02-13 category management */
+.categories-list{display:grid;gap:12px}.category-admin-card{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px;border:1px solid var(--line,#dce5e1);border-radius:14px;background:var(--surface,#fff)}.category-admin-info{min-width:0}.category-admin-info strong{overflow-wrap:anywhere}.category-admin-info p{margin:6px 0 0}.category-admin-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+@media(max-width:760px){.category-admin-card{align-items:flex-start;flex-direction:column}.category-admin-actions{width:100%}.category-admin-actions button{flex:1}}
