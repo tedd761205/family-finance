@@ -406,3 +406,74 @@ def invite_family_member(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="邀請家庭成員失敗，請稍後再試",
         )
+
+
+@router.get(
+    "/{family_id}/members",
+    status_code=status.HTTP_200_OK,
+)
+def list_family_members(
+    family_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """列出家庭有效成員及其角色；必須具備 members.view 權限。"""
+    if not current_user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="此帳號已停用，無法查詢家庭成員",
+        )
+
+    try:
+        require_permission(
+            db=db,
+            user_id=current_user.id,
+            family_id=family_id,
+            permission_code="members.view",
+        )
+    except PermissionError:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="目前帳號沒有查看家庭成員的權限",
+        )
+
+    rows = (
+        db.query(FamilyMember, User)
+        .join(User, User.id == FamilyMember.user_id)
+        .filter(
+            FamilyMember.family_id == family_id,
+            FamilyMember.status == "active",
+            User.is_active.is_(True),
+        )
+        .order_by(FamilyMember.joined_at.asc(), FamilyMember.id.asc())
+        .all()
+    )
+
+    members = []
+    for member, user in rows:
+        role_names = [
+            row[0]
+            for row in (
+                db.query(Role.name)
+                .join(MemberRole, MemberRole.role_id == Role.id)
+                .filter(
+                    MemberRole.family_member_id == member.id,
+                    MemberRole.family_id == family_id,
+                    Role.family_id == family_id,
+                    Role.is_active.is_(True),
+                )
+                .order_by(Role.name.asc())
+                .all()
+            )
+        ]
+        members.append({
+            "family_member_id": member.id,
+            "display_name": user.display_name,
+            "email": user.email,
+            "status": member.status,
+            "joined_at": member.joined_at.isoformat() if member.joined_at else None,
+            "roles": role_names,
+            "is_me": user.id == current_user.id,
+        })
+
+    return {"success": True, "total": len(members), "members": members}

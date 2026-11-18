@@ -16,7 +16,7 @@ function setMode(next){mode=next;$("login-tab").classList.toggle("active",mode==
 function showAuth(){currentUser=null;$("auth-view").classList.remove("hidden");$("app-view").classList.add("hidden");}
 function showApp(){$("auth-view").classList.add("hidden");$("app-view").classList.remove("hidden");}
 async function loadApp(){try{currentUser=await api("/auth/me");}catch(error){showAuth();notice("notice",error.message,"error");return;}$("user-greeting").textContent=currentUser.display_name+"（"+currentUser.email+"）";showApp();try{await loadFamilies();}catch(error){notice("notice-app","已登入，但家庭清單載入失敗："+error.message,"error");}}
-async function loadFamilies(){const result=await api("/families/mine");$("family-count").textContent=result.total+" 個家庭";const list=$("family-list");list.replaceChildren();$("empty-family").classList.toggle("hidden",result.total!==0);if(!selectedFamilyId&&result.families.length){selectedFamilyId=result.families[0].family_id;}for(const family of result.families){const card=document.createElement("button");card.type="button";card.className="family-card"+(selectedFamilyId===family.family_id?" selected":"");const title=document.createElement("strong");title.textContent=family.family_name;const meta=document.createElement("span");meta.textContent=family.currency+" · 家庭成員";card.append(title,meta);card.addEventListener("click",async()=>{selectedFamilyId=family.family_id;for(const node of list.children)node.classList.remove("selected");card.classList.add("selected");notice("notice-app","已切換至「"+family.family_name+"」。","success");if(!$("accounts-view").classList.contains("hidden")){await loadAccounts();}if(!$("transactions-view").classList.contains("hidden")){await showTransactions();}if(!$("transfers-view").classList.contains("hidden")){await showTransfers();}if(!$("credit-card-payments-view").classList.contains("hidden")){await showCreditCardPayments();}if(!$("bills-view").classList.contains("hidden")){await showBills();}if(!$("bill-payments-view").classList.contains("hidden")){$("bill-payments-view").classList.add("hidden");activeBillForPayments=null;}if(!$("recurring-bills-view").classList.contains("hidden")){await showRecurringBills();}if(!$("reports-view").classList.contains("hidden")){await loadFinancialReports();}});list.append(card);}}
+async function loadFamilies(){const result=await api("/families/mine");$("family-count").textContent=result.total+" 個家庭";const list=$("family-list");list.replaceChildren();$("empty-family").classList.toggle("hidden",result.total!==0);if(!selectedFamilyId&&result.families.length){selectedFamilyId=result.families[0].family_id;}for(const family of result.families){const card=document.createElement("button");card.type="button";card.className="family-card"+(selectedFamilyId===family.family_id?" selected":"");const title=document.createElement("strong");title.textContent=family.family_name;const meta=document.createElement("span");meta.textContent=family.currency+" · 家庭成員";card.append(title,meta);card.addEventListener("click",async()=>{selectedFamilyId=family.family_id;for(const node of list.children)node.classList.remove("selected");card.classList.add("selected");notice("notice-app","已切換至「"+family.family_name+"」。","success");if(!$("accounts-view").classList.contains("hidden")){await loadAccounts();}if(!$("transactions-view").classList.contains("hidden")){await showTransactions();}if(!$("transfers-view").classList.contains("hidden")){await showTransfers();}if(!$("credit-card-payments-view").classList.contains("hidden")){await showCreditCardPayments();}if(!$("bills-view").classList.contains("hidden")){await showBills();}if(!$("bill-payments-view").classList.contains("hidden")){$("bill-payments-view").classList.add("hidden");activeBillForPayments=null;}if(!$("recurring-bills-view").classList.contains("hidden")){await showRecurringBills();}if(!$("reports-view").classList.contains("hidden")){await loadFinancialReports();}if(!$("family-members-view").classList.contains("hidden")){await loadFamilyMembers();}});list.append(card);}}
 function accountTypeLabel(type){return({bank:"銀行帳戶",time_deposit:"定期存款",cash:"現金",credit_card:"信用卡",e_wallet:"電子支付",other:"其他"})[type]||type;}
 function money(value,currency){const amount=Number(value||0);try{return new Intl.NumberFormat("zh-TW",{style:"currency",currency:currency||"TWD",minimumFractionDigits:2,maximumFractionDigits:2}).format(amount);}catch{return amount.toFixed(2)+" "+(currency||"");}}
 function toggleCreditFields(){const isCard=$("account-type").value==="credit_card";$("credit-fields").classList.toggle("hidden",!isCard);}
@@ -1763,3 +1763,98 @@ $("open-reports").addEventListener("click",openFinancialReports);
 $("close-reports").addEventListener("click",()=>{$("reports-view").classList.add("hidden");});
 $("refresh-reports").addEventListener("click",loadFinancialReports);
 $("apply-reports").addEventListener("click",loadFinancialReports);
+
+
+// --------------------------------------------------
+// G-02-10：家庭成員名單與邀請
+// --------------------------------------------------
+function renderFamilyMembers(members) {
+  const host = $("family-members-list");
+  host.replaceChildren();
+  $("family-members-count").textContent = members.length + " 位成員";
+  $("family-members-empty").classList.toggle("hidden", members.length > 0);
+  for (const member of members) {
+    const card = document.createElement("article");
+    card.className = "family-member-card";
+    const identity = document.createElement("div");
+    identity.className = "family-member-identity";
+    const name = document.createElement("strong");
+    name.textContent = (member.display_name || "未設定名稱") + (member.is_me ? "（我）" : "");
+    const email = document.createElement("span");
+    email.className = "tiny muted";
+    email.textContent = member.email;
+    identity.append(name, email);
+    const roles = document.createElement("div");
+    roles.className = "family-member-roles";
+    for (const role of (member.roles || [])) {
+      const tag = document.createElement("span");
+      tag.className = "member-role-tag";
+      tag.textContent = role;
+      roles.append(tag);
+    }
+    if (!member.roles || member.roles.length === 0) {
+      const none = document.createElement("span");
+      none.className = "tiny muted";
+      none.textContent = "尚未指派角色";
+      roles.append(none);
+    }
+    card.append(identity, roles);
+    host.append(card);
+  }
+}
+
+async function loadFamilyMembers() {
+  if (!selectedFamilyId) {
+    notice("notice-app", "請先建立或選擇家庭，再管理家庭成員。", "error");
+    return;
+  }
+  $("family-members-loading").classList.remove("hidden");
+  clearNotice("family-members-notice");
+  try {
+    const result = await api("/families/" + selectedFamilyId + "/members");
+    renderFamilyMembers(result.members || []);
+  } catch (error) {
+    notice("family-members-notice", "家庭成員載入失敗：" + error.message, "error");
+    $("family-members-list").replaceChildren();
+    $("family-members-count").textContent = "—";
+  } finally {
+    $("family-members-loading").classList.add("hidden");
+  }
+}
+
+function openFamilyMembers() {
+  if (!selectedFamilyId) {
+    notice("notice-app", "請先建立或選擇家庭，再管理家庭成員。", "error");
+    return;
+  }
+  $("family-members-view").classList.remove("hidden");
+  $("family-members-view").scrollIntoView({behavior: "smooth", block: "start"});
+  loadFamilyMembers();
+}
+
+$("open-family-members").addEventListener("click", openFamilyMembers);
+$("close-family-members").addEventListener("click", () => {
+  $("family-members-view").classList.add("hidden");
+});
+$("refresh-family-members").addEventListener("click", loadFamilyMembers);
+$("family-member-invite-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!selectedFamilyId) return;
+  const button = $("family-member-invite-submit");
+  button.disabled = true;
+  clearNotice("family-members-notice");
+  try {
+    const email = $("family-member-email").value.trim();
+    await api("/families/" + selectedFamilyId + "/members", {
+      method: "POST",
+      body: JSON.stringify({email})
+    });
+    $("family-member-email").value = "";
+    await loadFamilyMembers();
+    notice("family-members-notice", "家庭成員已成功加入，並指派預設「一般成員」角色。", "success");
+  } catch (error) {
+    notice("family-members-notice", "邀請失敗：" + error.message, "error");
+  } finally {
+    button.disabled = false;
+  }
+});
