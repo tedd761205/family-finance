@@ -70,6 +70,34 @@ jobs:
           print("Isolated PostgreSQL test service is reachable; credentials were not printed.")
           PY
 
+      - name: Validate Alembic upgrade and downgrade on a separate database
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          createdb --host=localhost --port=5432 --username=postgres g01_migration_test
+          cleanup() {
+            dropdb --if-exists --host=localhost --port=5432 --username=postgres g01_migration_test
+          }
+          trap cleanup EXIT
+
+          export DATABASE_URL="postgresql+psycopg://postgres:postgres@localhost:5432/g01_migration_test"
+          python - <<'PY'
+          import os
+          from sqlalchemy.engine import make_url
+
+          url = make_url(os.environ["DATABASE_URL"])
+          if url.host != "localhost" or url.database != "g01_migration_test":
+              raise SystemExit("Refusing to run Alembic outside the isolated migration database")
+          print("Alembic target verified as isolated localhost database.")
+          PY
+
+          python -m alembic upgrade head
+          python -m alembic current
+          python -m alembic downgrade base
+          python -m alembic upgrade head
+          python -m alembic current
+
       - name: Run full regression suite
         env:
           DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/g01_test
