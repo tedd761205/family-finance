@@ -68,3 +68,11 @@ def test_recurring_bill_workspace_has_mobile_responsive_styles():
     assert ".recurring-bills-panel" in css
     assert ".recurring-bill-card" in css
     assert "@media(max-width:760px)" in css
+
+
+def test_recurring_bill_generate_date_uses_iso_date_validation():
+    with TestClient(app) as client:
+        javascript = client.get("/static/app.js").text
+
+    assert r"/^\d{4}-\d{2}-\d{2}$/" in javascript
+    assert r"/^\\d{4}-\\d{2}-\\d{2}$/" not in javascript
