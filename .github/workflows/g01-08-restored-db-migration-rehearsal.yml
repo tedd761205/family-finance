@@ -114,7 +114,7 @@ jobs:
                       raise SystemExit(f"Target appears already migrated; refusing repeat rehearsal: {already_migrated}")
                   counts = {}
                   for table in ("families", "users", "accounts", "categories", "transactions", "transfers", "credit_card_payments"):
-                      counts[table] = connection.execute(text(f'SELECT count(*) FROM "{table}"')).scalar_one()
+                      counts[table] = connection.execute(text(f'SELECT count(*) FROM public."{table}"')).scalar_one()
           finally:
               engine.dispose()
 
@@ -182,7 +182,7 @@ jobs:
                       raise SystemExit(f"Migration did not create required tables: {missing}")
 
                   for table, expected in expected_counts.items():
-                      actual = connection.execute(text(f'SELECT count(*) FROM "{table}"')).scalar_one()
+                      actual = connection.execute(text(f'SELECT count(*) FROM public."{table}"')).scalar_one()
                       if actual != expected:
                           raise SystemExit(f"Baseline data count changed for {table}: before={expected}, after={actual}")
 
