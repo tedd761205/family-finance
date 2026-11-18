@@ -267,3 +267,75 @@ def test_credit_card_payment_and_audit_log_rollback_together_on_audit_fk_failure
                 AuditLog.entity_id == payment_id,
             )
         ) == 0
+
+
+
+def test_account_balance_uses_real_postgresql_aggregates_and_ignores_voided_rows():
+    from app.services.account_balance import calculate_account_balance
+
+    with Session(engine) as db:
+        user, family, source, _, _ = seed_family_accounts(db)
+        now = datetime.now(timezone.utc)
+        db.add_all([
+            Transaction(
+                family_id=family.id, account_id=source.id,
+                transaction_type="opening_balance", amount=Decimal("100.0000"),
+                currency_code="TWD", transaction_date=now, created_by=user.id,
+            ),
+            Transaction(
+                family_id=family.id, account_id=source.id,
+                transaction_type="income", amount=Decimal("20.2500"),
+                currency_code="TWD", transaction_date=now, created_by=user.id,
+            ),
+            Transaction(
+                family_id=family.id, account_id=source.id,
+                transaction_type="expense", amount=Decimal("10.1250"),
+                currency_code="TWD", transaction_date=now, created_by=user.id,
+            ),
+            Transaction(
+                family_id=family.id, account_id=source.id,
+                transaction_type="expense", amount=Decimal("500.0000"),
+                currency_code="TWD", transaction_date=now, created_by=user.id,
+                is_voided=True,
+            ),
+        ])
+        db.commit()
+
+        result = calculate_account_balance(db, source)
+
+        assert result["opening_balance"] == Decimal("100.0000")
+        assert result["total_income"] == Decimal("20.2500")
+        assert result["total_expense"] == Decimal("10.1250")
+        assert result["balance"] == Decimal("110.1250")
+        assert result["transaction_count"] == 3
+
+
+def test_credit_card_balance_uses_real_postgresql_aggregates():
+    from app.services.account_balance import calculate_account_balance
+
+    with Session(engine) as db:
+        user, family, _, _, credit_card = seed_family_accounts(db)
+        now = datetime.now(timezone.utc)
+        db.add_all([
+            Transaction(
+                family_id=family.id, account_id=credit_card.id,
+                transaction_type="opening_balance", amount=Decimal("100.0000"),
+                currency_code="TWD", transaction_date=now, created_by=user.id,
+            ),
+            Transaction(
+                family_id=family.id, account_id=credit_card.id,
+                transaction_type="expense", amount=Decimal("30.0000"),
+                currency_code="TWD", transaction_date=now, created_by=user.id,
+            ),
+            Transaction(
+                family_id=family.id, account_id=credit_card.id,
+                transaction_type="income", amount=Decimal("20.0000"),
+                currency_code="TWD", transaction_date=now, created_by=user.id,
+            ),
+        ])
+        db.commit()
+
+        result = calculate_account_balance(db, credit_card)
+
+        assert result["balance"] == Decimal("110.0000")
+        assert result["transaction_count"] == 3
