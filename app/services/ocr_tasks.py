@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.models.attachment import Attachment
 from app.models.ocr_task import OcrTask
 from app.services import attachment_storage
-from app.services.ocr_provider import recognize_image
+from app.services.ocr_provider import OcrProviderError, OcrProviderNotConfigured, recognize_image
 
 
 MAX_ATTEMPTS = 5
@@ -49,6 +49,13 @@ def process_task(db: Session, task: OcrTask) -> OcrTask:
         task.extracted_text = None
         task.suggested_fields = None
         task.error_code = type(exc).__name__[:80]
-        task.error_message = str(exc)[:500]
+        if isinstance(exc, OcrProviderNotConfigured):
+            task.error_message = "OCR 服務尚未設定，請聯絡系統管理員"
+        elif isinstance(exc, OcrProviderError):
+            task.error_message = "OCR 服務暫時無法完成辨識，請稍後重試"
+        elif isinstance(exc, ValueError):
+            task.error_message = "附件完整性驗證失敗"
+        else:
+            task.error_message = "OCR 執行失敗，請稍後重試"
     task.completed_at = datetime.now(timezone.utc)
     return task
