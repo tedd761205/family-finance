@@ -109,14 +109,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    bind = op.get_bind()
-    bind.execute(sa.text("""
-        DELETE FROM role_permissions rp USING permissions p
-        WHERE rp.permission_id=p.id AND p.code LIKE 'payments.%'
-    """))
-    bind.execute(sa.text("DELETE FROM role_data_scopes WHERE resource='payments'"))
-    bind.execute(sa.text("DELETE FROM permissions WHERE code LIKE 'payments.%'"))
-    op.drop_index("uq_transactions_active_bill_payment", table_name="transactions")
+    # payments.* 是系統既有權限目錄的一部分；降版只移除本階段新增的資料結構，
+    # 不刪除既有權限、角色指派或資料範圍，避免破壞其他功能。
+    op.drop_index("uq_transactions_bill_payment", table_name="transactions")
     op.drop_index("ix_transactions_bill_payment_id", table_name="transactions")
     op.drop_constraint("fk_transactions_family_bill_payment", "transactions", type_="foreignkey")
     op.drop_column("transactions", "bill_payment_id")
