@@ -180,9 +180,10 @@ def refund_bill_payment(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _authorize(db, current_user.id, family_id, "create")
+    scope = _authorize(db, current_user.id, family_id, "create")
     try:
         original = _get_payment(db, family_id, payment_id)
+        _check_owner(original, current_user, scope)
         bill = _get_bill(db, family_id, original.bill_id, lock=True)
         original = _get_payment(db, family_id, payment_id, lock=True)
         if original.payment_type != "payment":
@@ -290,6 +291,15 @@ def void_bill_payment(
         _check_owner(payment, current_user, scope)
         if payment.is_voided:
             raise HTTPException(status_code=409, detail="此付款紀錄已作廢")
+        if payment.payment_type == "refund":
+            bill = _get_bill(db, family_id, payment.bill_id)
+            current_net_paid = get_bill_paid_amount(db, family_id, bill.id)
+            bill_total = bill.original_amount + bill.tax_amount - bill.discount_amount
+            if bill.is_voided or current_net_paid + payment.amount > bill_total:
+                raise HTTPException(
+                    status_code=409,
+                    detail="作廢此退款會使帳單淨付款超過應繳金額或使已作廢帳單重新產生付款",
+                )
         if payment.payment_type == "payment":
             active_refunds = db.query(BillPayment.id).filter(
                 BillPayment.family_id == family_id,
