@@ -145,10 +145,10 @@ jobs:
           if ACTUAL_HOST not in allowed_hosts:
               raise SystemExit("Refusing to restore: database URL hostname is not the API-confirmed g01-restore-test endpoint.")
           with open("restore-provenance/restore.txt", "a", encoding="utf-8") as provenance_file:
-              provenance_file.write(f"project_id={project_id}\\n")
-              provenance_file.write(f"branch_id={branch_id}\\n")
-              provenance_file.write("branch_name=g01-restore-test\\n")
-              provenance_file.write(f"endpoint_host={endpoint_host}\\n")
+              provenance_file.write(f"project_id={project_id}\n")
+              provenance_file.write(f"branch_id={branch_id}\n")
+              provenance_file.write("branch_name=g01-restore-test\n")
+              provenance_file.write(f"endpoint_host={endpoint_host}\n")
           print("Neon API confirmed the exact restore-test branch, project, and connected endpoint.")
           PY
           echo "Neon endpoint and branch identity checks passed."
