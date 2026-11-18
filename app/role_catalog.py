@@ -58,6 +58,9 @@ FINANCE_PERMISSIONS = [
 
     "reports.view",
     "reports.export",
+    "notifications.view",
+    "exports.view", "exports.create", "exports.update", "exports.publish",
+    "exports.schedule", "exports.download", "exports.dashboard",
 
     "imports.view",
     "imports.create",
@@ -76,6 +79,10 @@ FINANCE_PERMISSIONS = [
     "family.view",
     "audit_logs.view",
     "audit_logs.export",
+    "notifications.view",
+    "notifications.manage",
+    "exports.view", "exports.create", "exports.update", "exports.publish",
+    "exports.schedule", "exports.download", "exports.dashboard",
 
     "backups.view",
     "backups.create",
@@ -115,6 +122,8 @@ MEMBER_PERMISSIONS = [
     "payments.void",
 
     "reports.view",
+    "notifications.view",
+    "exports.view", "exports.create", "exports.download",
 
     "imports.view",
     "imports.create",
@@ -177,6 +186,8 @@ BOOKKEEPER_PERMISSIONS = [
     "ocr.confirm",
 
     "family.view",
+    "notifications.view",
+    "exports.view", "exports.create", "exports.download",
     "exchange_rates.view",
 ]
 
@@ -192,6 +203,7 @@ VIEWER_PERMISSIONS = [
     "payments.view",
     "reconciliation.view",
     "reports.view",
+    "notifications.view", "exports.view",
     "attachments.view",
     "ocr.view",
     "family.view",
@@ -212,10 +224,13 @@ ADMIN_SCOPES = {
     "payments": "family",
     "reconciliation": "family",
     "reports": "family",
+    "exports": "family",
+    "exports": "family",
     "imports": "family",
     "attachments": "family",
     "ocr": "family",
     "audit_logs": "family",
+    "exports": "family",
 }
 
 FINANCE_SCOPES = {
@@ -241,6 +256,7 @@ MEMBER_SCOPES = {
     "bills": "own",
     "payments": "own",
     "reports": "own",
+    "exports": "own",
     "imports": "own",
     "attachments": "own",
     "ocr": "own",
