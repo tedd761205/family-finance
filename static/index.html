@@ -68,6 +68,7 @@
         <button class="quick-card quick-card-button" id="open-transfers" type="button"><span class="quick-icon">轉</span><span class="quick-card-title">帳戶轉帳</span><span class="quick-card-description">管理帳戶間轉入、轉出與手續費。</span><span class="coming">管理轉帳 →</span></button>
         <button class="quick-card quick-card-button" id="open-credit-card-payments" type="button"><span class="quick-icon">卡</span><span class="quick-card-title">信用卡繳款</span><span class="quick-card-description">記錄繳款、同步來源帳戶與信用卡負債。</span><span class="coming">管理信用卡繳款 →</span></button>
         <button class="quick-card quick-card-button" id="open-bills" type="button"><span class="quick-icon">單</span><span class="quick-card-title">帳單管理</span><span class="quick-card-description">管理帳單金額、到期日、分類與付款狀態。</span><span class="coming">管理帳單 →</span></button>
+        <button class="quick-card quick-card-button" id="open-recurring-bills" type="button"><span class="quick-icon">週</span><span class="quick-card-title">定期帳單</span><span class="quick-card-description">設定週期、下次日期，批次產生應繳帳單。</span><span class="coming">管理定期帳單 →</span></button>
       </section>
 
       <section id="transactions-view" class="panel transactions-panel hidden">
@@ -237,6 +238,42 @@
             <p class="tiny muted">帳戶幣別必須與帳單幣別一致。退款金額不可超過原付款尚可退款餘額。</p>
             <label class="field">備註<textarea id="bill-payment-note" rows="2" placeholder="選填"></textarea></label>
             <div class="form-actions"><button class="primary" id="bill-payment-submit" type="submit">確認付款</button><button class="secondary" id="bill-payment-cancel" type="button">取消</button></div>
+          </form>
+        </div>
+      </section>
+      <section id="recurring-bills-view" class="panel recurring-bills-panel hidden">
+        <div class="accounts-heading">
+          <div><p class="eyebrow">RECURRING BILLS</p><h2>定期帳單</h2><p class="muted">設定每週、每月或每年的規則；產生後仍是一般帳單，可個別付款、退款及管理。</p></div>
+          <div class="heading-actions"><button class="secondary small" id="close-recurring-bills" type="button">收起</button><button class="primary small" id="add-recurring-bill-button" type="button">＋ 新增規則</button></div>
+        </div>
+        <div id="recurring-bill-notice" class="notice" role="status" aria-live="polite"></div>
+        <div class="transaction-filters">
+          <label class="field transaction-void-filter"><span>顯示已停用</span><input id="recurring-bill-include-inactive" type="checkbox"></label>
+        </div>
+        <div class="accounts-summary"><strong id="recurring-bills-count">0 個定期規則</strong><span class="muted tiny">產生帳單前不會建立實際應付帳款。</span></div>
+        <p id="recurring-bills-loading" class="muted hidden">正在載入定期帳單…</p>
+        <div id="recurring-bills-list" class="recurring-bills-list"></div>
+        <div id="recurring-bills-empty" class="empty-state hidden"><div class="empty-icon">週</div><h3>尚無定期帳單規則</h3><p class="muted">新增每月水電費、房租或保險等週期性帳單。</p></div>
+        <div id="recurring-bill-form-panel" class="subpanel hidden">
+          <h3 id="recurring-bill-form-title">新增定期帳單</h3>
+          <form id="recurring-bill-form">
+            <div class="account-form-grid">
+              <label class="field">規則名稱<input id="recurring-bill-title" required maxlength="200" placeholder="例如：每月電費"></label>
+              <label class="field">支出分類<select id="recurring-bill-category"><option value="">未指定分類</option></select></label>
+              <label class="field">週期<select id="recurring-bill-frequency"><option value="weekly">每週</option><option value="monthly" selected>每月</option><option value="yearly">每年</option></select></label>
+              <label class="field">間隔週期數<input id="recurring-bill-interval" type="number" min="1" max="120" value="1" required></label>
+              <label class="field">開始日期<input id="recurring-bill-start" type="date" required></label>
+              <label class="field">結束日期<input id="recurring-bill-end" type="date"></label>
+              <label class="field">下次產生日期<input id="recurring-bill-next" type="date"></label>
+              <label class="field">產生後幾天到期<input id="recurring-bill-due-days" type="number" min="0" max="365" value="0" required></label>
+              <label class="field">原始金額<input id="recurring-bill-original" type="number" min="0.0001" step="0.0001" required></label>
+              <label class="field">稅額<input id="recurring-bill-tax" type="number" min="0" step="0.0001" value="0"></label>
+              <label class="field">折扣<input id="recurring-bill-discount" type="number" min="0" step="0.0001" value="0"></label>
+              <label class="field">幣別<input id="recurring-bill-currency" minlength="3" maxlength="3" pattern="[A-Za-z]{3}" value="TWD" required></label>
+            </div>
+            <p class="tiny muted">月／年週期會依開始日期的日數作為錨點；遇到該月沒有此日期時，採當月最後一天。下次產生日期可調整，但不可早於開始日期。</p>
+            <label class="field">備註<textarea id="recurring-bill-note" rows="2" placeholder="選填"></textarea></label>
+            <div class="form-actions"><button class="primary" id="recurring-bill-submit" type="submit">新增定期帳單</button><button class="secondary" id="recurring-bill-cancel" type="button">取消</button></div>
           </form>
         </div>
       </section>
