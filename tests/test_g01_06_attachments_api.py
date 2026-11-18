@@ -321,6 +321,21 @@ def test_ocr_provider_missing_key_fails_closed(attachment_client, monkeypatch):
     assert failed.status_code == 200, failed.text
     assert failed.json()["task"]["status"] == "failed"
     assert failed.json()["task"]["error_code"] == "OcrProviderNotConfigured"
+    assert failed.json()["task"]["attempts"] == 1
+
+    retry = client.post(
+        f"/ocr/tasks/{task.json()['task']['id']}/retry?family_id={family_id}",
+        headers=headers,
+    )
+    assert retry.status_code == 200, retry.text
+    assert retry.json()["task"]["status"] == "queued"
+    retried = client.post(
+        f"/ocr/tasks/{task.json()['task']['id']}/process?family_id={family_id}",
+        headers=headers,
+    )
+    assert retried.status_code == 200, retried.text
+    assert retried.json()["task"]["status"] == "failed"
+    assert retried.json()["task"]["attempts"] == 2
 
 
 
