@@ -187,3 +187,50 @@ def test_scheduled_export_requires_published_template_and_is_taipei_time(g0107_c
     )
     assert disabled.status_code == 200
     assert disabled.json()["enabled"] is False
+
+
+
+def test_due_schedule_worker_uses_latest_published_version_and_rechecks_access(g0107_client):
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy.orm import Session
+    from app.database import engine
+    from app.models.export_template import ExportSchedule, ExportRun
+    from app.routers.g01_07 import process_due_exports
+
+    client, stored = g0107_client
+    headers, family_id = _family(client)
+    created = client.post(
+        f"/exports/templates?family_id={family_id}", headers=headers,
+        json={"name": "排程範本", "description": None,
+              "config": {"dataset": "bills", "columns": ["id", "title"]}},
+    )
+    template_id = created.json()["id"]
+    published = client.post(
+        f"/exports/templates/{template_id}/publish?family_id={family_id}&expected_version=1",
+        headers=headers,
+    )
+    assert published.status_code == 200
+    schedule = client.post(
+        f"/exports/schedules?family_id={family_id}", headers=headers,
+        json={"template_id": template_id, "name": "到期排程", "frequency": "daily",
+              "local_hour": 8, "local_minute": 0},
+    )
+    assert schedule.status_code == 201, schedule.text
+    schedule_id = schedule.json()["id"]
+
+    with Session(engine) as db:
+        item = db.query(ExportSchedule).filter(ExportSchedule.id == schedule_id).one()
+        item.next_run_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+        db.commit()
+        result = process_due_exports(db)
+        assert result == {"checked": 1, "succeeded": 1, "failed": 0, "disabled": 0}
+
+    with Session(engine) as db:
+        run = db.query(ExportRun).filter(
+            ExportRun.family_id == family_id, ExportRun.schedule_id == schedule_id,
+        ).one()
+        assert run.status == "succeeded"
+        assert run.template_version == 1
+        assert run.template_snapshot["data_scope"] == "family"
+        assert run.sha256 and run.file_size > 0
+    assert len(stored) == 1
