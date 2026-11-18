@@ -1,6 +1,7 @@
 from decimal import Decimal
 
-from app.models.bank_import import BankImportRow
+from app.models.bank_import import BankImportBatch, BankImportRow
+from app.models.transaction import Transaction
 from app.models.reconciliation import ReconciliationMatch, ReconciliationSession
 from app.permission_catalog import PERMISSION_CATALOG
 from app.role_catalog import ADMIN_PERMISSIONS, BOOKKEEPER_PERMISSIONS, FINANCE_PERMISSIONS
@@ -43,6 +44,13 @@ def test_reconciliation_match_prevents_active_transaction_double_matching():
     index = indexes["uq_reconciliation_matches_active_transaction"]
     assert index.unique is True
     assert index.dialect_options["postgresql"]["where"] is not None
+
+
+def test_existing_bank_tables_expose_account_scoped_composite_keys():
+    batch_constraints = {item.name for item in BankImportBatch.__table__.constraints}
+    transaction_constraints = {item.name for item in Transaction.__table__.constraints}
+    assert "uq_bank_import_batches_family_account_id" in batch_constraints
+    assert "uq_transactions_family_account_id" in transaction_constraints
 
 
 def test_bank_import_rows_expose_composite_key_for_session_batch_integrity():
