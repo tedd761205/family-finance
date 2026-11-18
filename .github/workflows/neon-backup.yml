@@ -45,7 +45,7 @@ jobs:
           BACKUP_FILE="family-finance-$(date -u +%Y%m%dT%H%M%SZ).dump"
           echo "backup_file=$BACKUP_FILE" >> "$GITHUB_OUTPUT"
 
-          echo "Starting database dump (connection string is configured)." \
+          echo "Starting database dump (connection string is configured)."
           docker run --rm \
             --env "DATABASE_URL=$DATABASE_URL" \
             -v "$GITHUB_WORKSPACE/backups:/backups" \
