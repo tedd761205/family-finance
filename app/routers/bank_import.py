@@ -291,6 +291,7 @@ def create_import_batch(
                 previous = db.query(BankImportRow).filter(
                     BankImportRow.family_id == family_id,
                     BankImportRow.fingerprint == fingerprint,
+                    BankImportRow.status.in_(["ready", "duplicate", "imported"]),
                 ).order_by(BankImportRow.id.desc()).first()
                 if previous is not None:
                     is_duplicate = True
