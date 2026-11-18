@@ -78,6 +78,27 @@ def upgrade() -> None:
     )
 
     bind = op.get_bind()
+    bind.exec_driver_sql("""
+        CREATE OR REPLACE FUNCTION check_recurring_bill_category_scope()
+        RETURNS trigger LANGUAGE plpgsql AS $recurring_category_scope$
+        DECLARE category_family_id BIGINT;
+        BEGIN
+            IF NEW.category_id IS NULL THEN RETURN NEW; END IF;
+            SELECT family_id INTO category_family_id FROM categories WHERE id = NEW.category_id;
+            IF FOUND AND category_family_id IS NOT NULL AND category_family_id <> NEW.family_id THEN
+                RAISE EXCEPTION '定期帳單分類必須屬於同一家庭或為系統分類'
+                    USING ERRCODE = '23514', CONSTRAINT = 'ck_recurring_bills_category_family_scope';
+            END IF;
+            RETURN NEW;
+        END;
+        $recurring_category_scope$;
+    """)
+    bind.exec_driver_sql("""
+        CREATE TRIGGER trg_check_recurring_bill_category_scope
+        BEFORE INSERT OR UPDATE OF family_id, category_id ON recurring_bills
+        FOR EACH ROW EXECUTE FUNCTION check_recurring_bill_category_scope();
+    """)
+
     for code, name, description, category in PERMISSIONS:
         bind.execute(sa.text("""
             INSERT INTO permissions (code,name,description,category,is_active)
@@ -99,6 +120,8 @@ def upgrade() -> None:
         """), {"role":role,"scope":ROLE_SCOPES[role]})
 
 def downgrade() -> None:
+    op.execute("DROP TRIGGER IF EXISTS trg_check_recurring_bill_category_scope ON recurring_bills")
+    op.execute("DROP FUNCTION IF EXISTS check_recurring_bill_category_scope()")
     bind = op.get_bind()
     bind.execute(sa.text("""
         DELETE FROM role_permissions rp USING permissions p
