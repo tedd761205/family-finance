@@ -87,7 +87,7 @@ def _parse_date(value: str) -> datetime:
             except ValueError:
                 continue
     if parsed is None:
-        roc = re.fullmatch(r"(\\d{2,3})[./-](\\d{1,2})[./-](\\d{1,2})", value)
+        roc = re.fullmatch(r"(\d{2,3})[./-](\d{1,2})[./-](\d{1,2})", value)
         if roc:
             year, month, day = (int(part) for part in roc.groups())
             try:
