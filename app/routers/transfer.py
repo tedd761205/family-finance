@@ -367,28 +367,6 @@ def create_transfer(
             description="新增轉帳（含自動產生的交易明細）",
         )
 
-        add_audit_log(
-            db,
-            family_id=family_id,
-            actor_user_id=current_user.id,
-            action="update",
-            entity_type="transfer",
-            entity_id=transfer.id,
-            old_values=old_values,
-            new_values={
-                "from_account_id": transfer.from_account_id,
-                "to_account_id": transfer.to_account_id,
-                "amount": transfer.amount,
-                "currency_code": transfer.currency_code,
-                "transfer_date": transfer.transfer_date,
-                "description": transfer.description,
-                "fee_amount": transfer.fee_amount,
-                "fee_account_id": transfer.fee_account_id,
-                "note": transfer.note,
-            },
-            description="修改轉帳及其交易明細",
-        )
-
         db.commit()
         db.refresh(transfer)
 
@@ -752,6 +730,28 @@ def update_transfer(
             if not fee_transaction.is_voided:
                 fee_transaction.is_voided = True
                 fee_transaction.voided_at = datetime.now(timezone.utc)
+
+        add_audit_log(
+            db,
+            family_id=family_id,
+            actor_user_id=current_user.id,
+            action="update",
+            entity_type="transfer",
+            entity_id=transfer.id,
+            old_values=old_values,
+            new_values={
+                "from_account_id": transfer.from_account_id,
+                "to_account_id": transfer.to_account_id,
+                "amount": transfer.amount,
+                "currency_code": transfer.currency_code,
+                "transfer_date": transfer.transfer_date,
+                "description": transfer.description,
+                "fee_amount": transfer.fee_amount,
+                "fee_account_id": transfer.fee_account_id,
+                "note": transfer.note,
+            },
+            description="修改轉帳及其交易明細",
+        )
 
         db.commit()
         db.refresh(transfer)
