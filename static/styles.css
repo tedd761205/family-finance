@@ -81,3 +81,16 @@
 .bill-payment-amount.expense{color:#a34a40}
 .bill-payment-amount.income{color:#24764f}
 @media(max-width:760px){.bill-payments-panel{padding:21px 17px}.bill-payment-card{padding:14px}}
+
+
+/* G-02-08 recurring bill rules */
+.recurring-bills-panel{padding:28px 30px;margin:18px 0 48px}
+.recurring-bills-list{display:grid;gap:11px}
+.recurring-bill-card{border:1px solid #e1eae3;border-radius:13px;padding:16px;background:#fff;min-width:0}
+.recurring-bill-inactive{opacity:.72;background:#f8f8f8}
+.recurring-bill-top{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}
+.recurring-bill-top>div:first-child{min-width:0}
+.recurring-bill-top p{margin:6px 0 0}
+.recurring-bill-amount{display:grid;text-align:right;gap:4px;flex-shrink:0}
+.recurring-bill-amount strong{color:#205b4b;white-space:nowrap}
+@media(max-width:760px){.recurring-bills-panel{padding:21px 17px}.recurring-bill-card{padding:14px}.recurring-bill-top{gap:8px}.recurring-bill-amount strong{font-size:14px}}
