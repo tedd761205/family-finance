@@ -18,8 +18,9 @@ def test_import_date_parser_supports_iso_and_common_bank_formats():
     iso = _parse_date("2026-11-19")
     slash = _parse_date("2026/11/19")
     compact = _parse_date("20261119")
+    roc = _parse_date("115/11/19")
     assert iso.tzinfo is not None
-    assert iso == slash == compact
+    assert iso == slash == compact == roc
     assert iso.astimezone(timezone.utc).hour == 16
 
 
@@ -38,6 +39,8 @@ def test_import_type_parser_uses_bank_debit_credit_labels_or_amount_sign():
     assert _parse_type("", False) == "income"
     assert _parse_type("借方", False) == "expense"
     assert _parse_type("貸方", True) == "income"
+    assert _parse_type("D", False) == "expense"
+    assert _parse_type("C", True) == "income"
     with pytest.raises(ValueError, match="交易類型"):
         _parse_type("transfer", False)
 
