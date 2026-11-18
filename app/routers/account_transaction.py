@@ -64,18 +64,29 @@ def get_account_transactions(
             permission_code="reports.view",
         )
 
-        # 2. 檢查交易資料範圍
-        data_scope = require_data_scope(
+        # 2. 分別檢查帳戶及交易資料範圍
+        account_scope = require_data_scope(
+            db=db,
+            roles=roles,
+            family_id=family_id,
+            resource="accounts",
+        )
+        transaction_scope = require_data_scope(
             db=db,
             roles=roles,
             family_id=family_id,
             resource="transactions",
         )
 
-        # 3. own 只查詢自己建立的交易
+        # 3. own 範圍分別限制帳戶與交易建立者
+        account_created_by = (
+            current_user.id
+            if account_scope == "own"
+            else None
+        )
         created_by = (
             current_user.id
-            if data_scope == "own"
+            if transaction_scope == "own"
             else None
         )
 
@@ -89,6 +100,7 @@ def get_account_transactions(
             page=page,
             page_size=page_size,
             created_by=created_by,
+            account_created_by=account_created_by,
         )
 
     except PermissionError as exc:
