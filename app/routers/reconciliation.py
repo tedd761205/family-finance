@@ -118,9 +118,6 @@ def create_reconciliation_session(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _, roles = require_permission(
-        db, current_user.id, family_id, "reconciliation.create"
-    ) if False else (None, None)
     try:
         _, roles = require_permission(db, current_user.id, family_id, "reconciliation.create")
         reconciliation_scope = require_data_scope(db, roles, family_id, "reconciliation")
