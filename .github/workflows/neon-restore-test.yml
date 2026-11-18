@@ -128,7 +128,28 @@ jobs:
               raise SystemExit("Could not verify the configured restore-test branch through the Neon API.") from exc
           if branch.get("id") != branch_id or branch.get("project_id") != project_id or branch.get("name") != "g01-restore-test":
               raise SystemExit("Refusing to restore: Neon API did not confirm the expected g01-restore-test branch.")
-          print("Neon API confirmed the exact g01-restore-test branch and project.")
+          endpoints_request = urllib.request.Request(
+              f"https://console.neon.tech/api/v2/projects/{project_id}/branches/{branch_id}/endpoints",
+              headers={"Accept": "application/json", "Authorization": f"Bearer {os.environ['NEON_API_KEY']}"},
+          )
+          try:
+              with urllib.request.urlopen(endpoints_request, timeout=20) as response:
+                  endpoints = json.load(response).get("endpoints", [])
+          except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+              raise SystemExit("Could not verify the restore-test branch endpoint through the Neon API.") from exc
+          rw_endpoints = [item for item in endpoints if item.get("type") == "read_write" and not item.get("disabled")]
+          if len(rw_endpoints) != 1 or rw_endpoints[0].get("branch_id") != branch_id or rw_endpoints[0].get("project_id") != project_id:
+              raise SystemExit("Refusing to restore: expected exactly one active read-write endpoint on g01-restore-test.")
+          endpoint_host = (rw_endpoints[0].get("host") or "").lower()
+          allowed_hosts = {endpoint_host, endpoint_host.replace(".", "-pooler.", 1)}
+          if ACTUAL_HOST not in allowed_hosts:
+              raise SystemExit("Refusing to restore: database URL hostname is not the API-confirmed g01-restore-test endpoint.")
+          with open("restore-provenance/restore.txt", "a", encoding="utf-8") as provenance_file:
+              provenance_file.write(f"project_id={project_id}\\n")
+              provenance_file.write(f"branch_id={branch_id}\\n")
+              provenance_file.write("branch_name=g01-restore-test\\n")
+              provenance_file.write(f"endpoint_host={endpoint_host}\\n")
+          print("Neon API confirmed the exact restore-test branch, project, and connected endpoint.")
           PY
           echo "Neon endpoint and branch identity checks passed."
           docker run --rm --env DATABASE_URL postgres:18-bookworm \
