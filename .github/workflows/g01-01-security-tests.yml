@@ -26,11 +26,9 @@ jobs:
           - 5432:5432
         options: >-
           --health-cmd "pg_isready -U postgres -d g01_test"
-          --health-interval 10s
+          --health-interval 5s
           --health-timeout 5s
-          --health-retries 5
-    env:
-      DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/g01_test
+          --health-retries 10
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -49,5 +47,29 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
 
+      - name: Verify isolated PostgreSQL test service
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/g01_test
+        run: |
+          set -euo pipefail
+          pg_isready --host=localhost --port=5432 --username=postgres --dbname=g01_test
+          python - <<'PY'
+          import os
+          from sqlalchemy.engine import make_url
+          from app.database import engine, SessionLocal
+
+          raw_url = os.environ.get("DATABASE_URL")
+          if not raw_url or engine is None or SessionLocal is None:
+              raise SystemExit("PostgreSQL test DATABASE_URL was not injected")
+          parsed = make_url(raw_url)
+          if parsed.host != "localhost" or parsed.database != "g01_test":
+              raise SystemExit("Refusing to run tests against a non-isolated database")
+          with engine.connect() as connection:
+              connection.exec_driver_sql("SELECT 1")
+          print("Isolated PostgreSQL test service is reachable; credentials were not printed.")
+          PY
+
       - name: Run security regression tests
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/g01_test
         run: python -m pytest -q
