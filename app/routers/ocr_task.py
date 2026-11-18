@@ -3,6 +3,7 @@ import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import and_, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -173,9 +174,59 @@ def list_ocr_tasks(
     db: Session = Depends(get_db),
 ):
     scope = _authorize(db, current_user, family_id, "view")
-    query = db.query(OcrTask).filter(OcrTask.family_id == family_id)
+    query = db.query(OcrTask).join(
+        Attachment,
+        and_(Attachment.id == OcrTask.attachment_id, Attachment.family_id == OcrTask.family_id),
+    ).outerjoin(
+        Bill,
+        and_(Bill.id == Attachment.bill_id, Bill.family_id == Attachment.family_id),
+    ).outerjoin(
+        Transaction,
+        and_(Transaction.id == Attachment.transaction_id, Transaction.family_id == Attachment.family_id),
+    ).filter(
+        OcrTask.family_id == family_id,
+        Attachment.is_voided.is_(False),
+        or_(
+            and_(Attachment.bill_id.is_not(None), Bill.is_voided.is_(False)),
+            and_(Attachment.transaction_id.is_not(None), Transaction.is_voided.is_(False)),
+        ),
+    )
     if scope == "own":
         query = query.filter(OcrTask.created_by == current_user.id)
+    try:
+        _, attachment_roles = require_permission(
+            db=db, user_id=current_user.id, family_id=family_id,
+            permission_code="attachments.view",
+        )
+        attachment_scope = require_data_scope(
+            db=db, roles=attachment_roles, family_id=family_id, resource="attachments",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    if attachment_scope == "own":
+        query = query.filter(Attachment.created_by == current_user.id)
+    parent_visibility = []
+    for permission_code, resource, parent_id_column, parent_created_by in (
+        ("bills.view", "bills", Attachment.bill_id, Bill.created_by),
+        ("transactions.view", "transactions", Attachment.transaction_id, Transaction.created_by),
+    ):
+        try:
+            _, parent_roles = require_permission(
+                db=db, user_id=current_user.id, family_id=family_id,
+                permission_code=permission_code,
+            )
+            parent_scope = require_data_scope(
+                db=db, roles=parent_roles, family_id=family_id, resource=resource,
+            )
+        except PermissionError:
+            parent_scope = None
+        if parent_scope == "family":
+            parent_visibility.append(parent_id_column.is_not(None))
+        elif parent_scope == "own":
+            parent_visibility.append(and_(parent_id_column.is_not(None), parent_created_by == current_user.id))
+    if not parent_visibility:
+        return {"success": True, "total": 0, "tasks": []}
+    query = query.filter(or_(*parent_visibility))
     if attachment_id is not None:
         query = query.filter(OcrTask.attachment_id == attachment_id)
     total = query.count()
