@@ -238,7 +238,7 @@ def test_ocr_task_lifecycle_requires_human_confirmation(attachment_client, monke
     from app.database import engine
     from app.models.bill import Bill
     from app.models.ocr_task import OcrTask
-    from app.services import ocr_provider
+    from app.services import ocr_tasks
 
     client, stored = attachment_client
     headers, family_id, bill_id = _setup_family(client, uuid4().hex)
@@ -259,7 +259,7 @@ def test_ocr_task_lifecycle_requires_human_confirmation(attachment_client, monke
     assert task["status"] == "queued"
     assert task["attempts"] == 0
 
-    monkeypatch.setattr(ocr_provider, "recognize_image", lambda content, content_type: {
+    monkeypatch.setattr(ocr_tasks, "recognize_image", lambda content, content_type: {
         "text": "台灣電力公司\n帳單編號：ABCD1234\n應繳金額：1,280\n2026年11月18日",
         "suggested_fields": {
             "bill_number_candidate": "ABCD1234",
