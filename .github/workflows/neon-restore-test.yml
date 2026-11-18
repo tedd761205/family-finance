@@ -26,6 +26,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
+      - name: Record restore provenance
+        env:
+          BACKUP_RUN_ID: ${{ inputs.backup_run_id }}
+          TARGET_CONFIRMATION: ${{ inputs.target_confirmation }}
+        run: |
+          set -euo pipefail
+          mkdir -p restore-provenance
+          printf 'backup_run_id=%s\n' "$BACKUP_RUN_ID" > restore-provenance/restore.txt
+          printf 'target_confirmation=%s\n' "$TARGET_CONFIRMATION" >> restore-provenance/restore.txt
+
       - name: Validate explicit target confirmation
         env:
           BACKUP_RUN_ID: ${{ inputs.backup_run_id }}
@@ -224,3 +234,11 @@ jobs:
               END
               \$\$;
             "
+
+      - name: Upload restore provenance
+        uses: actions/upload-artifact@v4
+        with:
+          name: neon-restore-test-provenance
+          path: restore-provenance/restore.txt
+          if-no-files-found: error
+          retention-days: 14
