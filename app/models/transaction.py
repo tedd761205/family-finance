@@ -82,7 +82,7 @@ class Transaction(Base):
         ),
         Index("ix_transactions_bill_payment_id", "bill_payment_id"),
         Index(
-            "uq_transactions_active_bill_payment",
+            "uq_transactions_bill_payment",
             "family_id", "bill_payment_id", unique=True,
             postgresql_where=text("bill_payment_id IS NOT NULL"),
         ),
