@@ -147,10 +147,12 @@ def test_export_template_version_conflict_publish_run_download_and_notification(
     assert marked.status_code == 200, marked.text
     assert marked.json()["read_at"] is not None
 
-    dashboard = client.get(f"/exports/dashboard?family_id={family_id}", headers=headers)
+    dashboard = client.get(f"/exports/dashboard?family_id={family_id}&status=succeeded", headers=headers)
     assert dashboard.status_code == 200, dashboard.text
     assert dashboard.json()["timezone"] == "Asia/Taipei"
     assert dashboard.json()["status_counts"]["succeeded"] >= 1
+    assert dashboard.json()["filters"]["status"] == "succeeded"
+    assert dashboard.json()["alert_count"] == 0
 
 
 def test_scheduled_export_requires_published_template_and_is_taipei_time(g0107_client):
@@ -236,3 +238,34 @@ def test_due_schedule_worker_uses_latest_published_version_and_rechecks_access(g
         assert run.template_snapshot["data_scope"] == "family"
         assert run.sha256 and run.file_size > 0
     assert len(stored) == 1
+
+
+def test_disabling_template_stops_its_schedules(g0107_client):
+    client, _ = g0107_client
+    headers, family_id = _family(client)
+    created = client.post(
+        f"/exports/templates?family_id={family_id}", headers=headers,
+        json={"name": "停用測試範本", "description": None,
+              "config": {"dataset": "bills", "columns": ["id", "title"]}},
+    )
+    template_id = created.json()["id"]
+    publish = client.post(
+        f"/exports/templates/{template_id}/publish?family_id={family_id}&expected_version=1",
+        headers=headers,
+    )
+    assert publish.status_code == 200
+    schedule = client.post(
+        f"/exports/schedules?family_id={family_id}", headers=headers,
+        json={"template_id": template_id, "name": "要同步停用的排程",
+              "frequency": "daily", "local_hour": 8, "local_minute": 0},
+    )
+    assert schedule.status_code == 201
+    disabled = client.post(
+        f"/exports/templates/{template_id}/disable?family_id={family_id}&expected_version=1",
+        headers=headers,
+    )
+    assert disabled.status_code == 200, disabled.text
+    assert disabled.json()["status"] == "disabled"
+    schedules = client.get(f"/exports/schedules?family_id={family_id}", headers=headers)
+    assert schedules.status_code == 200
+    assert schedules.json()["schedules"][0]["enabled"] is False
