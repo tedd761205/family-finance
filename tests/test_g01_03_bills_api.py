@@ -28,9 +28,18 @@ def bill_api_client(monkeypatch):
         app.dependency_overrides.pop(get_db, None)
 
 
-def seed_bill_permissions(engine):
+@pytest.fixture(scope="session", autouse=True)
+def ensure_bill_schema():
+    from app.database import Base, engine
+    from app import models  # noqa: F401
+
+    Base.metadata.create_all(bind=engine)
+
+
+def seed_bill_permissions():
     from sqlalchemy.orm import Session
 
+    from app.database import engine
     from app.models.permission import Permission
     from app.permission_catalog import PERMISSION_CATALOG
 
@@ -205,7 +214,7 @@ def test_bill_api_own_scope_isolates_member_records(bill_api_client):
 
 
 def test_bill_api_rejects_category_from_another_family(bill_api_client):
-    seed_bill_permissions(__import__("app.database", fromlist=["engine"]).engine)
+    seed_bill_permissions()
     suffix = uuid4().hex
     _, first_headers = register_user(bill_api_client, suffix, "first-family")
     _, second_headers = register_user(bill_api_client, suffix, "second-family")
