@@ -23,6 +23,7 @@ on:
     branches:
       - main
     paths:
+      - "tests/test_g02_09_financial_reports_web.py"
       - "main.py"
       - "static/**"
       - "tests/test_g02_01_web.py"
