@@ -2290,3 +2290,107 @@ function openCategoryForm(row=null){editingCategoryId=row?row.id:null;$("categor
 async function openCategories(){if(!selectedFamilyId){notice("notice-app","請先建立或選擇家庭，再管理收支分類。","error");return;}$("categories-view").classList.remove("hidden");$("categories-view").scrollIntoView({behavior:"smooth",block:"start"});await loadCategories();}
 $("open-categories").addEventListener("click",openCategories);$("close-categories").addEventListener("click",()=>$("categories-view").classList.add("hidden"));$("add-category-button").addEventListener("click",()=>openCategoryForm());$("category-cancel").addEventListener("click",()=>{$("category-form-panel").classList.add("hidden");editingCategoryId=null;});$("refresh-categories").addEventListener("click",loadCategories);$("category-filter-type").addEventListener("change",loadCategories);$("category-include-inactive").addEventListener("change",loadCategories);$("category-type").addEventListener("change",()=>populateCategoryParents($("category-type").value,editingCategoryId));
 $("category-form").addEventListener("submit",async event=>{event.preventDefault();const payload={category_type:$("category-type").value,name:$("category-name").value.trim(),parent_id:$("category-parent").value?Number($("category-parent").value):null,sort_order:Number($("category-sort-order").value),icon:$("category-icon").value.trim()||null,color:$("category-color").value.trim()||null,note:$("category-note").value.trim()||null};try{const path="/categories"+(editingCategoryId?"/"+editingCategoryId:"")+"?family_id="+selectedFamilyId;await api(path,{method:editingCategoryId?"PATCH":"POST",body:JSON.stringify(payload)});$("category-form-panel").classList.add("hidden");editingCategoryId=null;notice("categories-notice","分類已成功儲存。");await loadCategories();}catch(error){notice("categories-notice","儲存分類失敗："+error.message,"error");}});
+
+/* G-02-14: secure attachments and OCR review */
+let attachmentRecords = [], selectedAttachment = null, currentOcrTask = null;
+function selectedAttachmentTarget() {
+  const id = Number($("attachment-target-record").value);
+  return attachmentRecords.find(row => row.id === id) || null;
+}
+function renderAttachmentRows(rows) {
+  const host=$("attachments-list");host.replaceChildren();$("attachments-empty").classList.toggle("hidden",rows.length>0);$("attachments-count").textContent=rows.length+" 個附件";
+  for(const row of rows) {
+    const card=document.createElement("article");card.className="attachment-admin-card";
+    const info=document.createElement("div");info.className="attachment-admin-info";
+    const name=document.createElement("strong");name.textContent=row.original_filename;
+    const meta=document.createElement("p");meta.className="tiny muted";meta.textContent=(row.content_type||"圖片")+" · "+Math.ceil((row.file_size||0)/1024)+" KB · "+(row.created_at?new Date(row.created_at).toLocaleString("zh-TW",{hour12:false}):"時間未知")+(row.is_voided?" · 已作廢":"");
+    info.append(name,meta);card.append(info);
+    const actions=document.createElement("div");actions.className="attachment-admin-actions";
+    if(!row.is_voided) {
+      const view=document.createElement("button");view.type="button";view.className="secondary small";view.textContent="查看圖片";view.addEventListener("click",()=>viewAttachment(row));
+      const ocr=document.createElement("button");ocr.type="button";ocr.className="secondary small";ocr.textContent="OCR 辨識";ocr.addEventListener("click",()=>startAttachmentOcr(row));
+      const voidButton=document.createElement("button");voidButton.type="button";voidButton.className="secondary small";voidButton.textContent="作廢附件";voidButton.addEventListener("click",async()=>{if(!window.confirm("確定作廢附件「"+row.original_filename+"」？原始檔案會保留。"))return;try{await api("/attachments/"+row.id+"?family_id="+selectedFamilyId,{method:"DELETE"});notice("attachments-notice","附件已作廢，檔案本體仍保留。");await loadAttachments();}catch(error){notice("attachments-notice",error.message,"error");}});
+      actions.append(view,ocr,voidButton);
+    } else {const tag=document.createElement("span");tag.className="tiny muted";tag.textContent="已作廢（保留原始檔案）";actions.append(tag);}
+    card.append(actions);host.append(card);
+  }
+}
+async function loadAttachmentTargets() {
+  const type=$("attachment-target-type").value,select=$("attachment-target-record"),previous=select.value;
+  select.replaceChildren(new Option("請選擇資料",""));
+  try {
+    const result=await api(type==="bill"?"/bills?family_id="+selectedFamilyId+"&limit=200":"/transactions?family_id="+selectedFamilyId+"&limit=200");
+    attachmentRecords=type==="bill"?(result.bills||[]):(result.transactions||[]);
+    for(const row of attachmentRecords) {
+      const label=type==="bill"?(row.bill_date+" · "+row.title+" · "+row.total_amount+" "+row.currency_code):(String(row.transaction_date||"").slice(0,10)+" · "+(row.description||row.transaction_type)+" · "+row.amount+" "+row.currency_code);
+      select.add(new Option(label,String(row.id)));
+    }
+    if(previous&&attachmentRecords.some(row=>String(row.id)===previous))select.value=previous;
+    $("attachment-upload-panel").classList.toggle("hidden",!select.value);
+  } catch(error) { attachmentRecords=[];$("attachment-upload-panel").classList.add("hidden");notice("attachments-notice","帳單／交易清單載入失敗："+error.message,"error"); }
+}
+async function loadAttachments() {
+  const target=selectedAttachmentTarget();
+  if(!target){$("attachments-list").replaceChildren();$("attachments-empty").classList.add("hidden");$("attachments-count").textContent="0 個附件";$("attachment-upload-panel").classList.add("hidden");return;}
+  $("attachment-upload-panel").classList.remove("hidden");$("attachments-loading").classList.remove("hidden");clearNotice("attachments-notice");
+  const type=$("attachment-target-type").value,params=new URLSearchParams({family_id:String(selectedFamilyId)});
+  params.set(type==="bill"?"bill_id":"transaction_id",String(target.id));
+  try {const result=await api("/attachments?"+params.toString());renderAttachmentRows(result.attachments||[]);}
+  catch(error){renderAttachmentRows([]);notice("attachments-notice","附件載入失敗："+error.message,"error");}
+  finally{$("attachments-loading").classList.add("hidden");}
+}
+async function viewAttachment(row) {
+  try {const response=await fetch("/attachments/"+row.id+"/content?family_id="+selectedFamilyId,{headers:token()?{Authorization:"Bearer "+token()}:{}});
+    let data={};if(!response.ok){try{data=await response.json();}catch{}throw new Error(data.detail||"無法讀取附件");}
+    const blob=await response.blob(),url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.target="_blank";link.rel="noopener";link.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
+  } catch(error){notice("attachments-notice","附件讀取失敗："+error.message,"error");}
+}
+function renderOcrTask(task) {
+  currentOcrTask=task;$("ocr-result-panel").classList.remove("hidden");
+  const labels={queued:"排隊中",processing:"辨識中",succeeded:"辨識成功",failed:"辨識失敗",confirmed:"已人工確認"};
+  $("ocr-result-status").textContent=(labels[task.status]||task.status)+" · 嘗試 "+task.attempts+"/5"+(task.error_message?" · "+task.error_message:"");
+  $("ocr-extracted-text").textContent=task.extracted_text||"目前沒有辨識文字。";
+  const host=$("ocr-suggested-fields");host.replaceChildren();
+  if(task.suggested_fields){const pre=document.createElement("pre");pre.textContent=JSON.stringify(task.suggested_fields,null,2);host.append(pre);}
+  if(task.status==="succeeded") {
+    const confirm=document.createElement("button");confirm.type="button";confirm.className="primary small";confirm.textContent="我已核對，確認辨識結果";confirm.addEventListener("click",async()=>{try{const result=await api("/ocr/tasks/"+task.id+"/confirm?family_id="+selectedFamilyId,{method:"POST"});renderOcrTask(result.task);notice("attachments-notice","OCR 結果已確認；正式帳單與交易未被修改。");}catch(error){notice("attachments-notice",error.message,"error");}});
+    host.append(confirm);
+  } else if(task.status==="failed"&&task.attempts<5) {
+    const retry=document.createElement("button");retry.type="button";retry.className="secondary small";retry.textContent="重新排入辨識";retry.addEventListener("click",async()=>{try{const result=await api("/ocr/tasks/"+task.id+"/retry?family_id="+selectedFamilyId,{method:"POST"});await processOcrTask(result.task);}catch(error){notice("attachments-notice",error.message,"error");}});
+    host.append(retry);
+  }
+}
+async function processOcrTask(task) {
+  try {const result=await api("/ocr/tasks/"+task.id+"/process?family_id="+selectedFamilyId,{method:"POST"});renderOcrTask(result.task);notice("attachments-notice",result.message||"OCR 作業已完成。");}
+  catch(error){notice("attachments-notice","OCR 執行失敗："+error.message,"error");try{const latest=await api("/ocr/tasks/"+task.id+"?family_id="+selectedFamilyId);renderOcrTask(latest);}catch{}}
+}
+async function startAttachmentOcr(row) {
+  selectedAttachment=row;$("ocr-result-panel").classList.remove("hidden");$("ocr-result-status").textContent="正在建立或讀取 OCR 任務…";$("ocr-extracted-text").textContent="";$("ocr-suggested-fields").replaceChildren();
+  try {
+    const result=await api("/ocr/tasks?attachment_id="+row.id+"&family_id="+selectedFamilyId,{method:"POST"});
+    const task=result.task;renderOcrTask(task);
+    if(task.status==="queued")await processOcrTask(task);
+  } catch(error){notice("attachments-notice","無法建立 OCR 任務："+error.message,"error");}
+}
+async function openAttachments() {
+  if(!selectedFamilyId){notice("notice-app","請先建立或選擇家庭，再管理附件。","error");return;}
+  $("attachments-view").classList.remove("hidden");$("attachments-view").scrollIntoView({behavior:"smooth",block:"start"});await loadAttachmentTargets();await loadAttachments();
+}
+$("open-attachments").addEventListener("click",openAttachments);
+$("close-attachments").addEventListener("click",()=>$("attachments-view").classList.add("hidden"));
+$("refresh-attachments").addEventListener("click",async()=>{await loadAttachmentTargets();await loadAttachments();});
+$("attachment-target-type").addEventListener("change",async()=>{await loadAttachmentTargets();await loadAttachments();});
+$("attachment-target-record").addEventListener("change",loadAttachments);
+$("attachment-upload-form").addEventListener("submit",async event=>{
+  event.preventDefault();const target=selectedAttachmentTarget(),file=$("attachment-file").files[0];if(!target||!file)return;
+  if(file.size>10*1024*1024){notice("attachments-notice","圖片大小不可超過 10 MB。","error");return;}
+  const formData=new FormData();formData.append("file",file);
+  const type=$("attachment-target-type").value,params=new URLSearchParams({family_id:String(selectedFamilyId)});params.set(type==="bill"?"bill_id":"transaction_id",String(target.id));
+  $("attachment-upload-submit").disabled=true;
+  try {
+    const response=await fetch("/attachments?"+params.toString(),{method:"POST",headers:token()?{Authorization:"Bearer "+token()}: {},body:formData});
+    let data={};try{data=await response.json();}catch{}if(!response.ok)throw new Error(data.detail||"上傳附件失敗");
+    $("attachment-upload-form").reset();notice("attachments-notice","附件已成功上傳。");await loadAttachments();
+  } catch(error){notice("attachments-notice","上傳附件失敗："+error.message,"error");}
+  finally{$("attachment-upload-submit").disabled=false;}
+});

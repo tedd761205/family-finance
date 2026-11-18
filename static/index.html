@@ -74,6 +74,7 @@
         <button class="quick-card quick-card-button" id="open-recurring-bills" type="button"><span class="quick-icon">週</span><span class="quick-card-title">定期帳單</span><span class="quick-card-description">設定週期、下次日期，批次產生應繳帳單。</span><span class="coming">管理定期帳單 →</span></button>
         <button class="quick-card quick-card-button" id="open-reports" type="button"><span class="quick-icon">報</span><span class="quick-card-title">財務報表</span><span class="quick-card-description">查看月收支、年度趨勢與分類占比。</span><span class="coming">查看財務報表 →</span></button>
         <button class="quick-card quick-card-button" id="open-categories" type="button"><span class="quick-icon">類</span><span class="quick-card-title">收支分類</span><span class="quick-card-description">管理家庭收入與支出分類、子分類及排序。</span><span class="coming">管理分類 →</span></button>
+        <button class="quick-card quick-card-button" id="open-attachments" type="button"><span class="quick-icon">檔</span><span class="quick-card-title">帳單附件與 OCR</span><span class="quick-card-description">上傳帳單或交易圖片、查看附件並核對 OCR 辨識結果。</span><span class="coming">管理附件 →</span></button>
       </section>
 
 
@@ -395,6 +396,33 @@
 <label class="field">顏色<input id="category-color" maxlength="20" placeholder="#64748b"></label>
 </div><label class="field">備註<textarea id="category-note" rows="2" maxlength="500"></textarea></label><div class="form-actions"><button class="primary" id="category-submit" type="submit">新增分類</button><button class="secondary" id="category-cancel" type="button">取消</button></div></form></div>
 </section>
+      <section id="attachments-view" class="panel attachments-panel hidden">
+        <div class="accounts-heading"><div><p class="eyebrow">ATTACHMENTS & OCR</p><h2>帳單附件與 OCR</h2><p class="muted">附件會安全關聯到一張帳單或一筆交易。OCR 只提供辨識建議，人工確認前不會建立或修改正式帳務。</p></div><div class="heading-actions"><button class="secondary small" id="close-attachments" type="button">收起</button><button class="secondary small" id="refresh-attachments" type="button">重新整理</button></div></div>
+        <div id="attachments-notice" class="notice" role="status" aria-live="polite"></div>
+        <div class="attachment-target-grid">
+          <label class="field">關聯資料類型<select id="attachment-target-type"><option value="bill">帳單</option><option value="transaction">交易</option></select></label>
+          <label class="field">選擇帳單／交易<select id="attachment-target-record"><option value="">請先選擇資料</option></select></label>
+        </div>
+        <div id="attachment-upload-panel" class="subpanel hidden">
+          <h3>上傳圖片附件</h3>
+          <form id="attachment-upload-form">
+            <label class="field">選擇圖片（JPEG、PNG、WebP，最大 10 MB）<input id="attachment-file" type="file" accept="image/jpeg,image/png,image/webp" required></label>
+            <div class="form-actions"><button class="primary" id="attachment-upload-submit" type="submit">上傳附件</button></div>
+          </form>
+        </div>
+        <div class="accounts-summary"><strong id="attachments-count">0 個附件</strong><span class="muted tiny">檔案採私有儲存；下載時會驗證 SHA-256 完整性。</span></div>
+        <p id="attachments-loading" class="muted hidden">正在載入附件…</p>
+        <div id="attachments-list" class="attachments-list"></div>
+        <div id="attachments-empty" class="empty-state hidden"><h3>目前沒有附件</h3><p class="muted">選擇一張帳單或一筆交易後，即可上傳圖片。</p></div>
+        <div id="ocr-result-panel" class="subpanel hidden">
+          <div class="section-heading"><h3>OCR 辨識結果</h3><span class="tiny muted">請人工核對，確認不會自動寫入帳務</span></div>
+          <p id="ocr-result-status" class="tiny muted"></p>
+          <pre id="ocr-extracted-text" class="ocr-extracted-text"></pre>
+          <div id="ocr-suggested-fields" class="ocr-suggested-fields"></div>
+        </div>
+        <p class="tiny muted">提醒：OCR 服務尚需 Google Cloud Vision API 設定；未設定時，附件仍可上傳與保存，但辨識任務會回報未設定，不會影響原始圖片。</p>
+      </section>
+
       <section id="accounts-view" class="panel accounts-panel hidden">
         <div class="accounts-heading">
           <div><p class="eyebrow">FAMILY ACCOUNTS</p><h2>帳戶管理</h2><p class="muted">管理家庭各幣別帳戶與目前餘額。</p></div>
