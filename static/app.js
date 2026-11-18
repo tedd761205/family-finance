@@ -1763,3 +1763,98 @@ $("open-reports").addEventListener("click",openFinancialReports);
 $("close-reports").addEventListener("click",()=>{$("reports-view").classList.add("hidden");});
 $("refresh-reports").addEventListener("click",loadFinancialReports);
 $("apply-reports").addEventListener("click",loadFinancialReports);
+
+
+// --------------------------------------------------
+// G-02-10：家庭成員名單與邀請
+// --------------------------------------------------
+function renderFamilyMembers(members) {
+  const host = $("family-members-list");
+  host.replaceChildren();
+  $("family-members-count").textContent = members.length + " 位成員";
+  $("family-members-empty").classList.toggle("hidden", members.length > 0);
+  for (const member of members) {
+    const card = document.createElement("article");
+    card.className = "family-member-card";
+    const identity = document.createElement("div");
+    identity.className = "family-member-identity";
+    const name = document.createElement("strong");
+    name.textContent = (member.display_name || "未設定名稱") + (member.is_me ? "（我）" : "");
+    const email = document.createElement("span");
+    email.className = "tiny muted";
+    email.textContent = member.email;
+    identity.append(name, email);
+    const roles = document.createElement("div");
+    roles.className = "family-member-roles";
+    for (const role of (member.roles || [])) {
+      const tag = document.createElement("span");
+      tag.className = "member-role-tag";
+      tag.textContent = role;
+      roles.append(tag);
+    }
+    if (!member.roles || member.roles.length === 0) {
+      const none = document.createElement("span");
+      none.className = "tiny muted";
+      none.textContent = "尚未指派角色";
+      roles.append(none);
+    }
+    card.append(identity, roles);
+    host.append(card);
+  }
+}
+
+async function loadFamilyMembers() {
+  if (!selectedFamilyId) {
+    notice("notice-app", "請先建立或選擇家庭，再管理家庭成員。", "error");
+    return;
+  }
+  $("family-members-loading").classList.remove("hidden");
+  clearNotice("family-members-notice");
+  try {
+    const result = await api("/families/" + selectedFamilyId + "/members");
+    renderFamilyMembers(result.members || []);
+  } catch (error) {
+    notice("family-members-notice", "家庭成員載入失敗：" + error.message, "error");
+    $("family-members-list").replaceChildren();
+    $("family-members-count").textContent = "—";
+  } finally {
+    $("family-members-loading").classList.add("hidden");
+  }
+}
+
+function openFamilyMembers() {
+  if (!selectedFamilyId) {
+    notice("notice-app", "請先建立或選擇家庭，再管理家庭成員。", "error");
+    return;
+  }
+  $("family-members-view").classList.remove("hidden");
+  $("family-members-view").scrollIntoView({behavior: "smooth", block: "start"});
+  loadFamilyMembers();
+}
+
+$("open-family-members").addEventListener("click", openFamilyMembers);
+$("close-family-members").addEventListener("click", () => {
+  $("family-members-view").classList.add("hidden");
+});
+$("refresh-family-members").addEventListener("click", loadFamilyMembers);
+$("family-member-invite-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!selectedFamilyId) return;
+  const button = $("family-member-invite-submit");
+  button.disabled = true;
+  clearNotice("family-members-notice");
+  try {
+    const email = $("family-member-email").value.trim();
+    await api("/families/" + selectedFamilyId + "/members", {
+      method: "POST",
+      body: JSON.stringify({email})
+    });
+    $("family-member-email").value = "";
+    await loadFamilyMembers();
+    notice("family-members-notice", "家庭成員已成功加入，並指派預設「一般成員」角色。", "success");
+  } catch (error) {
+    notice("family-members-notice", "邀請失敗：" + error.message, "error");
+  } finally {
+    button.disabled = false;
+  }
+});
