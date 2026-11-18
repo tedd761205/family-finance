@@ -68,7 +68,25 @@ def _check_owner(payment: BillPayment, user: User, scope: str):
         raise HTTPException(status_code=404, detail="找不到此付款紀錄")
 
 
-def _validate_account(db: Session, family_id: int, account_id: int, currency_code: str):
+def _check_bill_access(db: Session, user: User, family_id: int, bill: Bill):
+    try:
+        _, roles = require_permission(
+            db=db, user_id=user.id, family_id=family_id,
+            permission_code="bills.view",
+        )
+        scope = require_data_scope(
+            db=db, roles=roles, family_id=family_id, resource="bills",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    if scope == "own" and bill.created_by != user.id:
+        raise HTTPException(status_code=404, detail="找不到此家庭帳單")
+
+
+def _validate_account(
+    db: Session, family_id: int, account_id: int, currency_code: str,
+    current_user: User,
+):
     account = db.query(Account).filter(
         Account.family_id == family_id, Account.id == account_id,
     ).first()
@@ -78,6 +96,18 @@ def _validate_account(db: Session, family_id: int, account_id: int, currency_cod
         raise HTTPException(status_code=409, detail="付款帳戶已停用")
     if account.currency_code != currency_code:
         raise HTTPException(status_code=422, detail="付款幣別必須與帳戶幣別一致")
+    try:
+        _, roles = require_permission(
+            db=db, user_id=current_user.id, family_id=family_id,
+            permission_code="accounts.view",
+        )
+        account_scope = require_data_scope(
+            db=db, roles=roles, family_id=family_id, resource="accounts",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    if account_scope == "own" and account.created_by != current_user.id:
+        raise HTTPException(status_code=404, detail="找不到此家庭帳戶")
     return account
 
 
@@ -126,11 +156,12 @@ def create_bill_payment(
     _authorize(db, current_user.id, family_id, "create")
     try:
         bill = _get_bill(db, family_id, payload.bill_id, lock=True)
+        _check_bill_access(db, current_user, family_id, bill)
         if bill.is_voided:
             raise HTTPException(status_code=409, detail="帳單已作廢，不可付款")
         if payload.currency_code != bill.currency_code:
             raise HTTPException(status_code=422, detail="付款幣別必須與帳單幣別一致")
-        _validate_account(db, family_id, payload.account_id, payload.currency_code)
+        _validate_account(db, family_id, payload.account_id, payload.currency_code, current_user)
 
         total = bill.original_amount + bill.tax_amount - bill.discount_amount
         paid = get_bill_paid_amount(db, family_id, bill.id)
@@ -185,6 +216,7 @@ def refund_bill_payment(
         original = _get_payment(db, family_id, payment_id)
         _check_owner(original, current_user, scope)
         bill = _get_bill(db, family_id, original.bill_id, lock=True)
+        _check_bill_access(db, current_user, family_id, bill)
         original = _get_payment(db, family_id, payment_id, lock=True)
         if original.payment_type != "payment":
             raise HTTPException(status_code=409, detail="只能針對原始付款建立退款")
