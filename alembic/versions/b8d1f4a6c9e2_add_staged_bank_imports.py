@@ -34,6 +34,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.UniqueConstraint("family_id", "id", name="uq_bank_import_batches_family_id_id"),
         sa.ForeignKeyConstraint(["family_id", "account_id"], ["accounts.family_id", "accounts.id"], ondelete="RESTRICT", name="fk_bank_import_batches_family_account"),
+        sa.ForeignKeyConstraint(["family_id"], ["families.id"], ondelete="RESTRICT", name="fk_bank_import_batches_family"),
         sa.ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="RESTRICT", name="fk_bank_import_batches_created_by"),
         sa.ForeignKeyConstraint(["confirmed_by"], ["users.id"], ondelete="RESTRICT", name="fk_bank_import_batches_confirmed_by"),
         sa.CheckConstraint("status IN ('previewed','confirmed','cancelled')", name="ck_bank_import_batches_status"),
