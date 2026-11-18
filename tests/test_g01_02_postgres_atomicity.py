@@ -498,3 +498,212 @@ def test_postgresql_data_scope_prefers_family_over_own_across_roles():
 
         assert {role.id for role in roles} == {own_role.id, family_role.id}
         assert get_data_scope(db, roles, family.id, "transactions") == "family"
+
+
+# ---------------------------------------------------------------------------
+# FastAPI + JWT + PostgreSQL integration tests
+# ---------------------------------------------------------------------------
+
+def _seed_api_permission_catalog(db: Session):
+    """為家庭 API 整合測試建立預設角色所需的系統權限。"""
+    from app.models.permission import Permission
+    from app.role_catalog import DEFAULT_ROLES
+
+    required_codes = sorted({
+        code
+        for role_config in DEFAULT_ROLES
+        for code in role_config["permissions"]
+    })
+    existing_codes = {
+        row[0]
+        for row in db.query(Permission.code)
+        .filter(Permission.code.in_(required_codes))
+        .all()
+    }
+    for code in required_codes:
+        if code not in existing_codes:
+            db.add(Permission(
+                code=code,
+                name=code,
+                category=code.split(".", 1)[0],
+                is_active=True,
+            ))
+    db.flush()
+
+
+@pytest.fixture
+def api_client(monkeypatch):
+    """使用真正 PostgreSQL、JWT 與 FastAPI 路由的測試用戶端。"""
+    from fastapi.testclient import TestClient
+    from main import app
+    from app.database import get_db
+
+    monkeypatch.setenv(
+        "JWT_SECRET_KEY",
+        "g01-02-api-integration-test-secret-key-32-bytes-minimum",
+    )
+
+    def override_get_db():
+        with Session(engine) as db:
+            yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        with TestClient(app) as client:
+            yield client
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+def _register_and_login(client, email: str, display_name: str):
+    registered = client.post(
+        "/auth/register",
+        json={
+            "email": email,
+            "password": "G01-02-test-password-123!",
+            "display_name": display_name,
+        },
+    )
+    assert registered.status_code == 201, registered.text
+
+    login = client.post(
+        "/auth/login",
+        json={
+            "email": email,
+            "password": "G01-02-test-password-123!",
+        },
+    )
+    assert login.status_code == 200, login.text
+    token = login.json()["access_token"]
+    return registered.json(), {"Authorization": f"Bearer {token}"}
+
+
+def test_api_register_login_and_me_require_valid_jwt(api_client):
+    suffix = uuid4().hex
+    user, headers = _register_and_login(
+        api_client,
+        f"api-auth-{suffix}@example.test",
+        "API 認證測試",
+    )
+
+    assert "password_hash" not in user
+    assert api_client.get("/auth/me").status_code == 401
+
+    response = api_client.get("/auth/me", headers=headers)
+    assert response.status_code == 200, response.text
+    assert response.json()["id"] == user["id"]
+    assert response.json()["email"] == user["email"]
+    assert "password_hash" not in response.json()
+
+
+def test_api_family_create_and_list_are_bound_to_authenticated_user(api_client):
+    suffix = uuid4().hex
+    user, headers = _register_and_login(
+        api_client,
+        f"api-family-{suffix}@example.test",
+        "家庭建立測試",
+    )
+
+    with Session(engine) as db:
+        _seed_api_permission_catalog(db)
+        db.commit()
+
+    created = api_client.post(
+        "/families",
+        headers=headers,
+        json={"name": f"API 測試家庭 {suffix}", "currency": "TWD"},
+    )
+    assert created.status_code == 201, created.text
+    family_data = created.json()
+    assert family_data["user_id"] == user["id"]
+    assert family_data["admin_role_name"] == "家庭管理員"
+
+    listed = api_client.get("/families/mine", headers=headers)
+    assert listed.status_code == 200, listed.text
+    payload = listed.json()
+    assert payload["total"] == 1
+    assert payload["families"][0]["family_id"] == family_data["family_id"]
+
+    unauthenticated = api_client.get("/families/mine")
+    assert unauthenticated.status_code == 401
+
+
+def test_api_family_invite_assigns_default_role_and_rejects_duplicate(api_client):
+    suffix = uuid4().hex
+    _, owner_headers = _register_and_login(
+        api_client,
+        f"api-owner-{suffix}@example.test",
+        "家庭管理員測試",
+    )
+    invited_user, _ = _register_and_login(
+        api_client,
+        f"api-invitee-{suffix}@example.test",
+        "受邀成員測試",
+    )
+
+    with Session(engine) as db:
+        _seed_api_permission_catalog(db)
+        db.commit()
+
+    created = api_client.post(
+        "/families",
+        headers=owner_headers,
+        json={"name": f"邀請測試家庭 {suffix}", "currency": "TWD"},
+    )
+    assert created.status_code == 201, created.text
+    family_id = created.json()["family_id"]
+
+    invited = api_client.post(
+        f"/families/{family_id}/members",
+        headers=owner_headers,
+        json={"email": invited_user["email"]},
+    )
+    assert invited.status_code == 201, invited.text
+    assert invited.json()["user_id"] == invited_user["id"]
+    assert invited.json()["role_name"] == "一般成員"
+    assert invited.json()["status"] == "active"
+
+    duplicate = api_client.post(
+        f"/families/{family_id}/members",
+        headers=owner_headers,
+        json={"email": invited_user["email"]},
+    )
+    assert duplicate.status_code == 409
+
+
+def test_api_non_member_cannot_invite_into_another_users_family(api_client):
+    suffix = uuid4().hex
+    _, owner_headers = _register_and_login(
+        api_client,
+        f"api-owner-isolation-{suffix}@example.test",
+        "家庭擁有者",
+    )
+    _, outsider_headers = _register_and_login(
+        api_client,
+        f"api-outsider-{suffix}@example.test",
+        "非家庭成員",
+    )
+    invitee, _ = _register_and_login(
+        api_client,
+        f"api-target-{suffix}@example.test",
+        "受邀目標",
+    )
+
+    with Session(engine) as db:
+        _seed_api_permission_catalog(db)
+        db.commit()
+
+    created = api_client.post(
+        "/families",
+        headers=owner_headers,
+        json={"name": f"隔離測試家庭 {suffix}", "currency": "TWD"},
+    )
+    assert created.status_code == 201, created.text
+    family_id = created.json()["family_id"]
+
+    denied = api_client.post(
+        f"/families/{family_id}/members",
+        headers=outsider_headers,
+        json={"email": invitee["email"]},
+    )
+    assert denied.status_code == 403
