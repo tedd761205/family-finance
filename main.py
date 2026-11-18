@@ -55,6 +55,7 @@ from app.routers.account_transaction import (
 from app.routers.account_overview import (
     router as account_overview_router,
 )
+from app.routers.g01_07 import router as g01_07_router
 
 
 # --------------------------------------------------
@@ -93,6 +94,7 @@ app.include_router(category_report_router)
 app.include_router(account_report_router)
 app.include_router(account_transaction_router)
 app.include_router(account_overview_router)
+app.include_router(g01_07_router)
 
 
 # --------------------------------------------------

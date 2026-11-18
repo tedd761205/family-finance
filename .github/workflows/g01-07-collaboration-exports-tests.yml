@@ -1,0 +1,111 @@
+name: G-01-07 Collaboration, Notifications and Exports Tests
+
+on:
+  push:
+    branches:
+      - feature/g01-07-collaboration-notifications-exports
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  collaboration-exports:
+    name: Collaboration, export permissions, PostgreSQL migrations and regression
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: g01_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d g01_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: Verify isolated PostgreSQL
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/g01_test
+        run: |
+          set -euo pipefail
+          pg_isready --host=localhost --port=5432 --username=postgres --dbname=g01_test
+          python - <<'PY'
+          import os
+          from sqlalchemy.engine import make_url
+          from app.database import engine
+          parsed = make_url(os.environ["DATABASE_URL"])
+          if parsed.host != "localhost" or parsed.database != "g01_test":
+              raise SystemExit("Refusing to run against a non-isolated database")
+          with engine.connect() as connection:
+              connection.exec_driver_sql("SELECT 1")
+          PY
+      - name: Validate migration upgrade, downgrade and re-upgrade
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          createdb --host=localhost --port=5432 --username=postgres g01_migration_test
+          cleanup() { dropdb --if-exists --host=localhost --port=5432 --username=postgres g01_migration_test; }
+          trap cleanup EXIT
+          export DATABASE_URL="postgresql+psycopg://postgres:postgres@localhost:5432/g01_migration_test"
+          python -m alembic upgrade head
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+          from sqlalchemy.engine import make_url
+          engine = create_engine(make_url(os.environ["DATABASE_URL"]))
+          expected_tables = {"notifications", "export_templates", "export_template_versions", "export_schedules", "export_runs"}
+          with engine.connect() as c:
+              actual_tables = set(c.execute(text("""
+                  SELECT tablename FROM pg_tables WHERE schemaname='public'
+              """)).scalars())
+              permissions = c.execute(text("""
+                  SELECT count(*) FROM permissions
+                  WHERE code IN (
+                    'notifications.view','notifications.manage','exports.view',
+                    'exports.create','exports.update','exports.publish',
+                    'exports.schedule','exports.download','exports.dashboard'
+                  )
+              """)).scalar_one()
+              foreign_keys = c.execute(text("""
+                  SELECT count(*) FROM pg_constraint
+                  WHERE conname IN (
+                    'fk_export_template_versions_family_template',
+                    'fk_export_schedules_family_template',
+                    'fk_export_runs_family_template',
+                    'fk_export_runs_family_schedule'
+                  )
+              """)).scalar_one()
+          engine.dispose()
+          if not expected_tables.issubset(actual_tables) or permissions != 9 or foreign_keys != 4:
+              raise SystemExit("G-01-07 migration objects or permissions are incomplete")
+          PY
+          python -m alembic downgrade f1a2b3c4d5e6
+          python -m alembic upgrade head
+          python -m alembic current
+      - name: Validate role catalog
+        run: python -m app.validate_role_catalog
+      - name: Run full regression suite
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/g01_test
+        run: python -m pytest -q

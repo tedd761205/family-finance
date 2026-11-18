@@ -58,6 +58,9 @@ FINANCE_PERMISSIONS = [
 
     "reports.view",
     "reports.export",
+    "notifications.view",
+    "exports.view", "exports.create", "exports.update", "exports.publish",
+    "exports.schedule", "exports.download", "exports.dashboard",
 
     "imports.view",
     "imports.create",
@@ -115,6 +118,8 @@ MEMBER_PERMISSIONS = [
     "payments.void",
 
     "reports.view",
+    "notifications.view",
+    "exports.view", "exports.create", "exports.update", "exports.publish", "exports.schedule", "exports.download",
 
     "imports.view",
     "imports.create",
@@ -162,6 +167,7 @@ BOOKKEEPER_PERMISSIONS = [
     "reconciliation.unmatch",
 
     "reports.view",
+    "notifications.view", "exports.view", "exports.create", "exports.download",
 
     "imports.view",
     "imports.create",
@@ -192,6 +198,7 @@ VIEWER_PERMISSIONS = [
     "payments.view",
     "reconciliation.view",
     "reports.view",
+    "notifications.view", "exports.view",
     "attachments.view",
     "ocr.view",
     "family.view",
@@ -204,73 +211,40 @@ VIEWER_PERMISSIONS = [
 # own：只能操作自己建立的資料
 # family：可操作全家庭資料
 ADMIN_SCOPES = {
-    "transactions": "family",
-    "accounts": "family",
-    "categories": "family",
-    "recurring_bills": "family",
-    "bills": "family",
-    "payments": "family",
-    "reconciliation": "family",
-    "reports": "family",
-    "imports": "family",
-    "attachments": "family",
-    "ocr": "family",
+    "transactions": "family", "accounts": "family", "categories": "family",
+    "recurring_bills": "family", "bills": "family", "payments": "family",
+    "reconciliation": "family", "reports": "family", "exports": "family",
+    "imports": "family", "attachments": "family", "ocr": "family",
     "audit_logs": "family",
 }
 
 FINANCE_SCOPES = {
-    "transactions": "family",
-    "accounts": "family",
-    "categories": "family",
-    "recurring_bills": "family",
-    "bills": "family",
-    "payments": "family",
-    "reconciliation": "family",
-    "reports": "family",
-    "imports": "family",
-    "attachments": "family",
-    "ocr": "family",
+    "transactions": "family", "accounts": "family", "categories": "family",
+    "recurring_bills": "family", "bills": "family", "payments": "family",
+    "reconciliation": "family", "reports": "family", "exports": "family",
+    "imports": "family", "attachments": "family", "ocr": "family",
     "audit_logs": "family",
 }
 
 MEMBER_SCOPES = {
-    "transactions": "own",
-    "accounts": "family",
-    "categories": "family",
-    "recurring_bills": "own",
-    "bills": "own",
-    "payments": "own",
-    "reports": "own",
-    "imports": "own",
-    "attachments": "own",
-    "ocr": "own",
+    "transactions": "own", "accounts": "family", "categories": "family",
+    "recurring_bills": "own", "bills": "own", "payments": "own",
+    "reports": "own", "exports": "own", "imports": "own",
+    "attachments": "own", "ocr": "own",
 }
 
 BOOKKEEPER_SCOPES = {
-    "transactions": "family",
-    "accounts": "family",
-    "categories": "family",
-    "recurring_bills": "family",
-    "bills": "family",
-    "payments": "family",
-    "reconciliation": "family",
-    "reports": "family",
-    "imports": "family",
-    "attachments": "family",
-    "ocr": "family",
+    "transactions": "family", "accounts": "family", "categories": "family",
+    "recurring_bills": "family", "bills": "family", "payments": "family",
+    "reconciliation": "family", "reports": "family", "exports": "family",
+    "imports": "family", "attachments": "family", "ocr": "family",
 }
 
 VIEWER_SCOPES = {
-    "transactions": "family",
-    "accounts": "family",
-    "categories": "family",
-    "recurring_bills": "family",
-    "bills": "family",
-    "payments": "family",
-    "reconciliation": "family",
-    "reports": "family",
-    "attachments": "family",
-    "ocr": "family",
+    "transactions": "family", "accounts": "family", "categories": "family",
+    "recurring_bills": "family", "bills": "family", "payments": "family",
+    "reconciliation": "family", "reports": "family", "exports": "family",
+    "attachments": "family", "ocr": "family",
 }
 
 
