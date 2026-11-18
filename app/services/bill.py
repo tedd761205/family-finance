@@ -2,6 +2,7 @@ from datetime import date
 from decimal import Decimal
 
 from app.models.bill import Bill
+from app.services.bill_payment import get_bill_paid_amount
 
 
 def calculate_bill_total(bill: Bill) -> Decimal:
