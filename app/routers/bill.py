@@ -10,6 +10,7 @@ from app.database import get_db
 from app.dependencies.auth import get_current_user
 from app.dependencies.permissions import require_permission, require_data_scope
 from app.models.bill import Bill
+from app.models.bill_payment import BillPayment
 from app.models.category import Category
 from app.models.user import User
 from app.schemas.bill import (
@@ -17,6 +18,7 @@ from app.schemas.bill import (
 )
 from app.services.audit_log import add_audit_log
 from app.services.bill import bill_to_dict
+from app.services.bill_payment import get_bill_paid_amount, get_bill_paid_amounts
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +149,7 @@ def list_bills(
     rows = query.order_by(Bill.bill_date.desc(), Bill.id.desc()).offset(skip).limit(limit).all()
     return {
         "success": True, "total": total, "skip": skip, "limit": limit,
-        "bills": [bill_to_dict(item) for item in rows],
+        "bills": [bill_to_dict(item, paid_amounts.get(item.id, Decimal("0"))) for item in rows],
     }
 
 
@@ -248,7 +250,7 @@ def void_bill(
         )
         db.commit()
         db.refresh(bill)
-        return {"success": True, "message": "帳單已作廢", "bill": bill_to_dict(bill)}
+        return {"success": True, "message": "帳單已作廢", "bill": bill_to_dict(bill, get_bill_paid_amount(db, family_id, bill.id))}
     except IntegrityError:
         db.rollback()
         logger.exception("作廢帳單時發生資料完整性錯誤")
