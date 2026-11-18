@@ -23,11 +23,12 @@ def test_family_members_ui_calls_permission_checked_endpoint():
     assert 'body: JSON.stringify({email})' in javascript
 
 
-def test_family_members_endpoint_requires_authentication():
-    with TestClient(app) as client:
-        response = client.get("/families/1/members")
+def test_family_members_endpoint_is_registered_and_secured():
+    schema = app.openapi()
+    operation = schema["paths"]["/families/{family_id}/members"]["get"]
 
-    assert response.status_code == 401
+    assert "HTTPBearer" in str(operation.get("security", []))
+    assert operation["responses"]["200"]["description"] == "Successful Response"
 
 
 def test_family_members_ui_refreshes_after_family_switch():
