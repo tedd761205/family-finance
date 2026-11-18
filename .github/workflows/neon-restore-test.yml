@@ -1,0 +1,128 @@
+name: Neon Restore Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      backup_run_id:
+        description: "Successful Neon Database Backup workflow run ID"
+        required: true
+        type: string
+      target_confirmation:
+        description: "Type exactly g01-restore-test to authorize replacing objects in that test branch"
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: neon-restore-test
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    name: Restore backup into isolated test branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Validate explicit target confirmation
+        env:
+          BACKUP_RUN_ID: ${{ inputs.backup_run_id }}
+          TARGET_CONFIRMATION: ${{ inputs.target_confirmation }}
+        run: |
+          set -euo pipefail
+          case "$BACKUP_RUN_ID" in
+            ''|*[!0-9]*)
+              echo "backup_run_id must contain digits only."
+              exit 1
+              ;;
+          esac
+          if [ "$TARGET_CONFIRMATION" != "g01-restore-test" ]; then
+            echo "Refusing to run: type exactly g01-restore-test in target_confirmation."
+            exit 1
+          fi
+          echo "Explicit test-branch confirmation received."
+
+      - name: Download backup artifact from selected run
+        uses: actions/download-artifact@v4
+        with:
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.backup_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: restore-input
+
+      - name: Locate and validate dump file
+        id: dump
+        run: |
+          set -euo pipefail
+          mapfile -t DUMPS < <(find restore-input -type f -name '*.dump' -print)
+          if [ "${#DUMPS[@]}" -ne 1 ]; then
+            echo "Expected exactly one .dump file in the selected backup artifact; found ${#DUMPS[@]}."
+            find restore-input -maxdepth 3 -type f -printf '%p\n'
+            exit 1
+          fi
+          DUMP_PATH="${DUMPS[0]}"
+          test -s "$DUMP_PATH"
+          echo "dump_path=$DUMP_PATH" >> "$GITHUB_OUTPUT"
+          echo "Found one non-empty PostgreSQL custom-format dump."
+          docker run --rm -v "$GITHUB_WORKSPACE:/work:ro" postgres:18-bookworm \
+            pg_restore --list "/work/$DUMP_PATH" > /tmp/restore-list.txt
+          test -s /tmp/restore-list.txt
+          echo "Backup archive is readable."
+
+      - name: Validate test database connection
+        env:
+          DATABASE_URL: ${{ secrets.NEON_RESTORE_TEST_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          case "${DATABASE_URL:-}" in
+            postgres://*|postgresql://*) ;;
+            *)
+              echo "Missing or invalid NEON_RESTORE_TEST_DATABASE_URL. Use a native PostgreSQL URI."
+              exit 1
+              ;;
+          esac
+          docker run --rm --env DATABASE_URL postgres:18-bookworm \
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atc \
+            "SELECT 'database=' || current_database() || '; role=' || current_user;"
+          echo "Connection succeeded. The dedicated test-branch secret will be used for restore."
+
+      - name: Restore dump into test branch
+        env:
+          DATABASE_URL: ${{ secrets.NEON_RESTORE_TEST_DATABASE_URL }}
+          DUMP_PATH: ${{ steps.dump.outputs.dump_path }}
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --env DATABASE_URL \
+            --env DUMP_PATH \
+            -v "$GITHUB_WORKSPACE:/work:ro" \
+            postgres:18-bookworm \
+            sh -ec 'exec pg_restore --dbname="$DATABASE_URL" --clean --if-exists --no-owner --no-acl --exit-on-error --verbose "/work/$DUMP_PATH"'
+
+      - name: Verify restored schema and data
+        env:
+          DATABASE_URL: ${{ secrets.NEON_RESTORE_TEST_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          docker run --rm --env DATABASE_URL postgres:18-bookworm \
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -P pager=off -c "
+              SELECT
+                (SELECT count(*) FROM information_schema.tables
+                 WHERE table_schema = 'public' AND table_type = 'BASE TABLE') AS public_table_count,
+                (SELECT count(*) FROM information_schema.triggers
+                 WHERE trigger_schema = 'public') AS public_trigger_count,
+                (SELECT count(*) FROM pg_indexes
+                 WHERE schemaname = 'public') AS public_index_count,
+                (SELECT count(*) FROM public.alembic_version) AS alembic_version_rows;
+            "
+          docker run --rm --env DATABASE_URL postgres:18-bookworm \
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -P pager=off -c "
+              SELECT 'accounts' AS table_name, count(*) AS row_count FROM public.accounts
+              UNION ALL SELECT 'categories', count(*) FROM public.categories
+              UNION ALL SELECT 'transactions', count(*) FROM public.transactions
+              UNION ALL SELECT 'transfers', count(*) FROM public.transfers
+              UNION ALL SELECT 'users', count(*) FROM public.users
+              ORDER BY table_name;
+            "
