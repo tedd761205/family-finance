@@ -69,6 +69,7 @@
         <button class="quick-card quick-card-button" id="open-credit-card-payments" type="button"><span class="quick-icon">卡</span><span class="quick-card-title">信用卡繳款</span><span class="quick-card-description">記錄繳款、同步來源帳戶與信用卡負債。</span><span class="coming">管理信用卡繳款 →</span></button>
         <button class="quick-card quick-card-button" id="open-bills" type="button"><span class="quick-icon">單</span><span class="quick-card-title">帳單管理</span><span class="quick-card-description">管理帳單金額、到期日、分類與付款狀態。</span><span class="coming">管理帳單 →</span></button>
         <button class="quick-card quick-card-button" id="open-recurring-bills" type="button"><span class="quick-icon">週</span><span class="quick-card-title">定期帳單</span><span class="quick-card-description">設定週期、下次日期，批次產生應繳帳單。</span><span class="coming">管理定期帳單 →</span></button>
+        <button class="quick-card quick-card-button" id="open-reports" type="button"><span class="quick-icon">報</span><span class="quick-card-title">財務報表</span><span class="quick-card-description">查看月收支、年度趨勢與分類占比。</span><span class="coming">查看財務報表 →</span></button>
       </section>
 
       <section id="transactions-view" class="panel transactions-panel hidden">
@@ -276,6 +277,37 @@
             <div class="form-actions"><button class="primary" id="recurring-bill-submit" type="submit">新增定期帳單</button><button class="secondary" id="recurring-bill-cancel" type="button">取消</button></div>
           </form>
         </div>
+      </section>
+      <section id="reports-view" class="panel reports-panel hidden">
+        <div class="accounts-heading">
+          <div><p class="eyebrow">FAMILY FINANCIAL REPORTS</p><h2>財務報表</h2><p class="muted">依家庭權限與資料範圍統計；不同幣別分開顯示，不進行未經設定的匯率換算。</p></div>
+          <div class="heading-actions"><button class="secondary small" id="close-reports" type="button">收起</button><button class="primary small" id="refresh-reports" type="button">重新整理</button></div>
+        </div>
+        <div id="reports-notice" class="notice" role="status" aria-live="polite"></div>
+        <div class="report-filter-grid">
+          <label class="field">報表年份<input id="report-year" type="number" min="2000" max="2100" step="1" required></label>
+          <label class="field">月份<select id="report-month"><option value="1">1 月</option><option value="2">2 月</option><option value="3">3 月</option><option value="4">4 月</option><option value="5">5 月</option><option value="6">6 月</option><option value="7">7 月</option><option value="8">8 月</option><option value="9">9 月</option><option value="10">10 月</option><option value="11">11 月</option><option value="12">12 月</option></select></label>
+          <label class="field">分類開始日期<input id="report-start-date" type="date"></label>
+          <label class="field">分類結束日期<input id="report-end-date" type="date"></label>
+          <label class="field">分類類型<select id="report-category-type"><option value="">收入與支出</option><option value="income">只看收入</option><option value="expense">只看支出</option></select></label>
+          <button class="secondary small report-filter-button" id="apply-reports" type="button">套用條件</button>
+        </div>
+        <p id="reports-loading" class="muted hidden">正在計算財務報表…</p>
+        <section class="report-block">
+          <div class="report-heading"><div><h3>月份收支摘要</h3><p class="muted tiny" id="monthly-report-period"></p></div><span class="count" id="monthly-report-count">0 筆交易</span></div>
+          <div id="monthly-report-summary" class="report-summary-grid"></div>
+          <div id="monthly-report-empty" class="empty-state hidden"><h3>這個月份尚無收支資料</h3><p class="muted">新增交易後，這裡會顯示收入、支出與淨收支。</p></div>
+        </section>
+        <section class="report-block">
+          <div class="report-heading"><div><h3>年度收支趨勢</h3><p class="muted tiny">依月份及幣別呈現，避免跨幣別混合加總。</p></div></div>
+          <div id="yearly-report-list" class="yearly-report-list"></div>
+          <div id="yearly-report-empty" class="empty-state hidden"><h3>年度尚無收支資料</h3></div>
+        </section>
+        <section class="report-block">
+          <div class="report-heading"><div><h3>分類收支分析</h3><p class="muted tiny" id="category-report-period"></p></div></div>
+          <div id="category-report-list" class="category-report-list"></div>
+          <div id="category-report-empty" class="empty-state hidden"><h3>這段期間沒有分類收支資料</h3></div>
+        </section>
       </section>
       <section id="accounts-view" class="panel accounts-panel hidden">
         <div class="accounts-heading">
