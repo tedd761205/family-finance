@@ -52,11 +52,19 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Download restore-test provenance
+        uses: actions/download-artifact@v4
+        with:
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.restore_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: neon-restore-test-provenance
+          path: restore-evidence
+
       - name: Validate explicit authorization and evidence runs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPOSITORY: ${{ github.repository }}
-          CURRENT_SHA: ${{ github.sha }}
           BACKUP_RUN_ID: ${{ inputs.backup_run_id }}
           RESTORE_RUN_ID: ${{ inputs.restore_run_id }}
           REHEARSAL_RUN_ID: ${{ inputs.rehearsal_run_id }}
@@ -72,7 +80,6 @@ jobs:
 
           repo = os.environ["GH_REPOSITORY"]
           token = os.environ["GH_TOKEN"]
-          current_sha = os.environ["CURRENT_SHA"]
           if os.environ["TARGET_CONFIRMATION"] != "family-finance-production":
               raise SystemExit("Refusing to proceed: target_confirmation must be exactly family-finance-production.")
 
@@ -137,10 +144,29 @@ jobs:
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
               env_file.write(f"REHEARSAL_SHA={rehearsal_sha}\n")
 
+          provenance_path = "restore-evidence/restore.txt"
+          try:
+              with open(provenance_path, encoding="utf-8") as provenance_file:
+                  provenance = dict(
+                      line.strip().split("=", 1)
+                      for line in provenance_file
+                      if "=" in line
+                  )
+          except OSError as exc:
+              raise SystemExit("Restore-test provenance artifact is missing or unreadable.") from exc
+          if provenance.get("backup_run_id") != ids["backup"]:
+              raise SystemExit("Restore-test provenance does not match the selected backup run ID.")
+          if provenance.get("target_confirmation") != "g01-restore-test":
+              raise SystemExit("Restore-test provenance does not confirm the isolated g01-restore-test target.")
+
           backup_artifacts = get_json(f"/actions/runs/{ids['backup']}/artifacts").get("artifacts", [])
           backup_name = f"family-finance-neon-backup-{runs['backup']['run_number']}"
           if not any(a.get("name") == backup_name and not a.get("expired") and a.get("size_in_bytes", 0) > 0 for a in backup_artifacts):
               raise SystemExit("Selected backup run has no available, non-empty backup artifact.")
+
+          restore_artifacts = get_json(f"/actions/runs/{ids['restore']}/artifacts").get("artifacts", [])
+          if not any(a.get("name") == "neon-restore-test-provenance" and not a.get("expired") and a.get("size_in_bytes", 0) > 0 for a in restore_artifacts):
+              raise SystemExit("Selected restore-test run has no available provenance artifact.")
 
           rehearsal_artifacts = get_json(f"/actions/runs/{ids['rehearsal']}/artifacts").get("artifacts", [])
           if not any(a.get("name") == "g01-08-restored-db-migration-rehearsal" and not a.get("expired") and a.get("size_in_bytes", 0) > 0 for a in rehearsal_artifacts):
