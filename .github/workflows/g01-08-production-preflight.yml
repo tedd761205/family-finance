@@ -15,9 +15,23 @@ concurrency:
 
 jobs:
   production-preflight:
-    name: Inspect production schema without changing it
+    name: Simulate migrations and inspect production read-only
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: g01_preflight
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d g01_preflight"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout workflow revision
         uses: actions/checkout@v4
@@ -34,16 +48,45 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Generate offline migration SQL plan
+      - name: Simulate complete migration chain on disposable PostgreSQL
         env:
-          DATABASE_URL: postgresql+psycopg://offline:offline@localhost/offline
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/g01_preflight
         run: |
           set -euo pipefail
           mkdir -p preflight-artifacts
-          python -m alembic heads
-          python -m alembic upgrade head --sql > preflight-artifacts/production-upgrade-plan.sql
-          test -s preflight-artifacts/production-upgrade-plan.sql
-          echo "Offline migration SQL generated. No database connection or schema change was made."
+          pg_isready --host=localhost --port=5432 --username=postgres --dbname=g01_preflight
+          {
+            echo "=== Alembic heads ==="
+            python -m alembic heads
+            echo "=== Full migration simulation on disposable PostgreSQL 18 ==="
+            python -m alembic upgrade head
+            echo "=== Final disposable database revision ==="
+            python -m alembic current
+          } 2>&1 | tee preflight-artifacts/migration-simulation.log
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+          from sqlalchemy.engine import make_url
+
+          engine = create_engine(make_url(os.environ["DATABASE_URL"]))
+          expected_tables = {
+              "users", "families", "family_members", "roles", "permissions",
+              "accounts", "transactions", "categories", "transfers",
+              "bills", "recurring_bills", "bill_payments", "attachments",
+              "ocr_tasks", "notifications", "export_templates",
+              "export_template_versions", "export_schedules", "export_runs",
+          }
+          with engine.connect() as connection:
+              tables = set(connection.execute(text("""
+                  SELECT tablename FROM pg_catalog.pg_tables
+                  WHERE schemaname = 'public'
+              """)).scalars())
+              missing = sorted(expected_tables - tables)
+              if missing:
+                  raise SystemExit(f"Disposable migration simulation missing tables: {missing}")
+              print(f"Disposable migration simulation passed: {len(tables)} public tables.")
+          engine.dispose()
+          PY
 
       - name: Inspect production migration state and required tables (read-only)
         if: github.event_name == 'workflow_dispatch'
@@ -51,7 +94,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           set -euo pipefail
-          python - <<'PY'
+          python - <<'PY' | tee preflight-artifacts/production-read-only-inspection.txt
           import os
           from sqlalchemy import create_engine, text
           from sqlalchemy.engine import make_url
@@ -64,10 +107,8 @@ jobs:
           if url.drivername in {"postgres", "postgresql"}:
               url = url.set(drivername="postgresql+psycopg")
           engine = create_engine(url, pool_pre_ping=True, connect_args={"connect_timeout": 10})
-          config = Config("alembic.ini")
-          scripts = ScriptDirectory.from_config(config)
+          scripts = ScriptDirectory.from_config(Config("alembic.ini"))
           expected_heads = set(scripts.get_heads())
-
           required_tables = {
               "users", "families", "family_members", "roles", "permissions",
               "accounts", "transactions", "categories", "transfers",
@@ -129,10 +170,10 @@ jobs:
               engine.dispose()
           PY
 
-      - name: Upload offline migration plan
+      - name: Upload preflight reports
         uses: actions/upload-artifact@v4
         with:
-          name: g01-08-production-offline-migration-plan
-          path: preflight-artifacts/production-upgrade-plan.sql
+          name: g01-08-production-preflight-reports
+          path: preflight-artifacts/*
           if-no-files-found: error
           retention-days: 7
