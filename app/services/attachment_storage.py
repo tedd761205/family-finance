@@ -1,4 +1,7 @@
+import hashlib
 import os
+import uuid
+from urllib.parse import urlsplit
 
 import boto3
 from botocore.config import Config
@@ -16,9 +19,18 @@ def _client():
         raise AttachmentStorageNotConfigured(
             "附件物件儲存尚未設定，請設定 ATTACHMENT_STORAGE_* 環境變數"
         )
-    if not endpoint.startswith("https://"):
+    parsed_endpoint = urlsplit(endpoint)
+    if (
+        parsed_endpoint.scheme != "https"
+        or not parsed_endpoint.hostname
+        or parsed_endpoint.username
+        or parsed_endpoint.password
+        or parsed_endpoint.query
+        or parsed_endpoint.fragment
+        or parsed_endpoint.path not in ("", "/")
+    ):
         raise AttachmentStorageNotConfigured(
-            "附件物件儲存端點必須使用 HTTPS"
+            "附件物件儲存端點必須是有效的 HTTPS API 根網址"
         )
     return boto3.client(
         "s3",
@@ -60,3 +72,34 @@ def download_object(object_key: str) -> bytes:
 
 def delete_object(object_key: str) -> None:
     _client().delete_object(Bucket=_bucket(), Key=object_key)
+
+
+
+def check_storage_connection() -> None:
+    """Verify credentials and bucket using a short-lived private object."""
+    client = _client()
+    bucket = _bucket()
+    content = b"family-finance-attachment-storage-check"
+    digest = hashlib.sha256(content).hexdigest()
+    key = f"system-checks/{uuid.uuid4().hex}.txt"
+    uploaded = False
+    try:
+        client.put_object(
+            Bucket=bucket,
+            Key=key,
+            Body=content,
+            ContentLength=len(content),
+            ContentType="text/plain",
+            Metadata={"sha256": digest},
+        )
+        uploaded = True
+        response = client.get_object(Bucket=bucket, Key=key)
+        try:
+            downloaded = response["Body"].read()
+        finally:
+            response["Body"].close()
+        if hashlib.sha256(downloaded).hexdigest() != digest:
+            raise RuntimeError("附件儲存連線測試的完整性驗證失敗")
+    finally:
+        if uploaded:
+            client.delete_object(Bucket=bucket, Key=key)

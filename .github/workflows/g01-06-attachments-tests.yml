@@ -3,7 +3,7 @@ name: G-01-06 Secure Attachments Tests
 on:
   push:
     branches:
-      - g01-06-attachments
+      - g01-06-r2-storage-setup
   pull_request:
     branches:
       - main
@@ -76,6 +76,8 @@ jobs:
           engine = create_engine(make_url(os.environ["DATABASE_URL"]))
           with engine.connect() as c:
               table_ok = c.execute(text("SELECT to_regclass('public.attachments') IS NOT NULL")).scalar_one()
+              ocr_table_ok = c.execute(text("SELECT to_regclass('public.ocr_tasks') IS NOT NULL")).scalar_one()
+              ocr_permission_count = c.execute(text("SELECT count(*) FROM permissions WHERE code IN ('ocr.view','ocr.create','ocr.retry','ocr.confirm')")).scalar_one()
               fk_count = c.execute(text("""
                   SELECT count(*) FROM pg_constraint
                   WHERE conname IN (
@@ -95,8 +97,8 @@ jobs:
                   WHERE code IN ('attachments.view','attachments.upload','attachments.void')
               """)).scalar_one()
           engine.dispose()
-          if not table_ok or fk_count != 5 or index_count < 4 or permission_count != 3:
-              raise SystemExit("G-01-06 attachment migration objects or permissions are incomplete")
+          if not table_ok or not ocr_table_ok or ocr_permission_count != 4 or fk_count != 5 or index_count < 4 or permission_count != 3:
+              raise SystemExit("G-01-06 attachment/OCR migration objects or permissions are incomplete")
           PY
           python -m alembic downgrade base
           python -m alembic upgrade head
