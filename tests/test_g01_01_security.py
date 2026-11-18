@@ -93,6 +93,8 @@ def test_account_report_requires_own_account_scope(monkeypatch):
         account_report.get_account_summary(
             family_id=7,
             account_id=23,
+            start_date=None,
+            end_date=None,
             current_user=SimpleNamespace(id=11),
             db=db,
         )
