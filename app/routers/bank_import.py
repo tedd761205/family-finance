@@ -87,6 +87,14 @@ def _parse_date(value: str) -> datetime:
             except ValueError:
                 continue
     if parsed is None:
+        roc = re.fullmatch(r"(\\d{2,3})[./-](\\d{1,2})[./-](\\d{1,2})", value)
+        if roc:
+            year, month, day = (int(part) for part in roc.groups())
+            try:
+                parsed = datetime(year + 1911, month, day)
+            except ValueError as exc:
+                raise ValueError("日期格式無法辨識") from exc
+    if parsed is None:
         raise ValueError("日期格式無法辨識")
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=TAIPEI)
@@ -94,7 +102,7 @@ def _parse_date(value: str) -> datetime:
 
 
 def _parse_amount(value: str) -> tuple[Decimal, bool]:
-    raw = (value or "").strip().replace(",", "").replace("NT$", "").replace("TWD", "").replace("$", "").strip()
+    raw = (value or "").strip().replace(",", "").replace("NT$", "").replace("TWD", "").replace("NTD", "").replace("$", "").strip()
     negative_parentheses = raw.startswith("(") and raw.endswith(")")
     if negative_parentheses:
         raw = raw[1:-1].strip()
@@ -117,9 +125,9 @@ def _parse_type(value: str, negative: bool) -> str:
     normalized = (value or "").strip().lower()
     if not normalized:
         return "expense" if negative else "income"
-    if normalized in {"expense", "debit", "withdrawal", "支出", "扣款", "轉出", "借方"}:
+    if normalized in {"expense", "debit", "d", "withdrawal", "支出", "扣款", "轉出", "借方"}:
         return "expense"
-    if normalized in {"income", "credit", "deposit", "收入", "存入", "轉入", "貸方"}:
+    if normalized in {"income", "credit", "c", "deposit", "收入", "存入", "轉入", "貸方"}:
         return "income"
     raise ValueError("交易類型只接受收入／支出或銀行常見借貸標示")
 
@@ -231,13 +239,12 @@ def create_import_batch(
         transaction_scope = require_data_scope(db, transaction_roles, family_id, "transactions")
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
-    if import_scope == "own" or transaction_scope == "own":
-        if account.created_by != current_user.id:
-            raise HTTPException(status_code=404, detail="目前資料範圍不允許匯入此帳戶")
-
     raw = file.file.read(MAX_UPLOAD_BYTES + 1)
     headers, source_rows = _read_csv(raw)
-    selected_headers = {value.strip() for value in mapping_data.values() if isinstance(value, str) and value.strip()}
+    mapped_values = [value.strip() for value in mapping_data.values() if isinstance(value, str) and value.strip()]
+    selected_headers = set(mapped_values)
+    if len(mapped_values) != len(selected_headers):
+        raise HTTPException(status_code=422, detail="每個匯入欄位請對應不同的 CSV 標題")
     missing_headers = sorted(selected_headers - set(headers))
     if missing_headers:
         raise HTTPException(status_code=422, detail={"message": "欄位對應的 CSV 標題不存在", "missing_headers": missing_headers})
