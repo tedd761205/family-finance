@@ -531,3 +531,133 @@ def export_dashboard(
         "daily_trend": [{"date": k, "count": v} for k, v in sorted(daily.items())],
         "recent_failures": failed,
     }
+
+
+
+def process_due_exports(db: Session, *, limit: int = 25) -> dict:
+    """Worker entry point. Each due schedule is re-authorized before any export data is read."""
+    now = datetime.now(timezone.utc)
+    schedules = db.query(ExportSchedule).filter(
+        ExportSchedule.enabled.is_(True),
+        ExportSchedule.next_run_at <= now,
+    ).order_by(ExportSchedule.next_run_at.asc(), ExportSchedule.id.asc()).with_for_update(skip_locked=True).limit(limit).all()
+    result = {"checked": 0, "succeeded": 0, "failed": 0, "disabled": 0}
+    for schedule in schedules:
+        result["checked"] += 1
+        try:
+            template = _template(db, schedule.family_id, schedule.template_id, lock=True)
+            published = db.query(ExportTemplateVersion).filter(
+                ExportTemplateVersion.family_id == schedule.family_id,
+                ExportTemplateVersion.template_id == template.id,
+                ExportTemplateVersion.status == "published",
+            ).order_by(ExportTemplateVersion.version.desc()).first()
+            if published is None:
+                schedule.enabled = False
+                _notify(db, family_id=schedule.family_id, recipient_user_id=schedule.created_by,
+                        actor_user_id=None, notification_type="export_schedule.disabled",
+                        title="定期匯出已暫停", body="目前沒有可用的已發布範本版本，排程已自動停用。",
+                        payload={"schedule_id": schedule.id})
+                add_audit_log(db, family_id=schedule.family_id, actor_user_id=None,
+                              action="disable", entity_type="export_schedule", entity_id=schedule.id,
+                              new_values={"enabled": False}, description="排程因無已發布範本而自動停用")
+                result["disabled"] += 1
+                db.commit()
+                continue
+
+            dataset = published.config.get("dataset")
+            data_permission = "transactions.view" if dataset == "transactions" else "bills.view"
+            try:
+                _, schedule_roles = require_permission(
+                    db, schedule.created_by, schedule.family_id, "exports.schedule",
+                )
+                require_permission(db, schedule.created_by, schedule.family_id, "exports.create")
+                _, data_roles = require_permission(db, schedule.created_by, schedule.family_id, data_permission)
+                data_scope = require_data_scope(db, data_roles, schedule.family_id, dataset)
+                if data_scope not in {"own", "family"}:
+                    raise PermissionError("匯出資料範圍已失效")
+            except PermissionError:
+                schedule.enabled = False
+                _notify(db, family_id=schedule.family_id, recipient_user_id=schedule.created_by,
+                        actor_user_id=None, notification_type="export_schedule.permission_revoked",
+                        title="定期匯出已暫停：權限變更",
+                        body="排程建立者已不具備執行匯出所需的家庭成員資格或權限，因此排程已停用。",
+                        payload={"schedule_id": schedule.id})
+                add_audit_log(db, family_id=schedule.family_id, actor_user_id=None,
+                              action="disable", entity_type="export_schedule", entity_id=schedule.id,
+                              new_values={"enabled": False, "reason": "permission_revoked"},
+                              description="排程執行前重新驗證權限失敗，已自動停用")
+                result["disabled"] += 1
+                db.commit()
+                continue
+
+            snapshot = {
+                "name": published.name, "description": published.description,
+                "config": published.config, "version": published.version,
+                "status": "published", "data_scope": data_scope,
+            }
+            run = ExportRun(
+                family_id=schedule.family_id, template_id=template.id,
+                schedule_id=schedule.id, requested_by=schedule.created_by,
+                template_version=published.version, template_snapshot=snapshot,
+                status="running",
+            )
+            db.add(run)
+            db.flush()
+            content = _render_export(db, schedule.family_id, run, schedule.created_by, data_scope)
+            digest = hashlib.sha256(content).hexdigest()
+            key = f"family-{schedule.family_id}/exports/{uuid.uuid4().hex}.csv"
+            attachment_storage.upload_object(key, content, "text/csv; charset=utf-8", digest)
+            run.object_key = key
+            run.sha256 = digest
+            run.file_size = len(content)
+            run.status = "succeeded"
+            run.completed_at = datetime.now(timezone.utc)
+            schedule.last_run_at = now
+            schedule.next_run_at = _next_run(
+                schedule.frequency, schedule.local_hour, schedule.local_minute,
+                schedule.weekday, schedule.monthday,
+            )
+            _notify(db, family_id=schedule.family_id, recipient_user_id=schedule.created_by,
+                    actor_user_id=None, notification_type="export.completed",
+                    title="定期家庭資料匯出完成",
+                    body=f"排程「{schedule.name}」已完成，使用範本最新已發布版本 {published.version}。",
+                    payload={"schedule_id": schedule.id, "run_id": run.id, "template_version": published.version})
+            add_audit_log(db, family_id=schedule.family_id, actor_user_id=None,
+                          action="scheduled_export", entity_type="export_run", entity_id=run.id,
+                          new_values={"schedule_id": schedule.id, "template_version": published.version,
+                                      "sha256": digest, "file_size": len(content)},
+                          description="定期匯出成功；執行時重新驗證權限並使用最新已發布範本")
+            db.commit()
+            result["succeeded"] += 1
+        except Exception as exc:
+            db.rollback()
+            current = db.query(ExportSchedule).filter(
+                ExportSchedule.id == schedule.id, ExportSchedule.family_id == schedule.family_id,
+            ).with_for_update().first()
+            if current is not None:
+                failed = ExportRun(
+                    family_id=current.family_id, template_id=current.template_id,
+                    schedule_id=current.id, requested_by=current.created_by,
+                    template_version=template.version if "template" in locals() else 1,
+                    template_snapshot=_snapshot(template) if "template" in locals() else {"config": {"dataset": "transactions"}, "data_scope": "own"},
+                    status="failed", error_code=type(exc).__name__[:80],
+                    completed_at=datetime.now(timezone.utc),
+                )
+                db.add(failed)
+                _notify(db, family_id=current.family_id, recipient_user_id=current.created_by,
+                        actor_user_id=None, notification_type="export.failed",
+                        title="定期家庭資料匯出失敗",
+                        body="排程執行失敗，請檢查範本、權限及儲存服務設定。",
+                        payload={"schedule_id": current.id})
+                add_audit_log(db, family_id=current.family_id, actor_user_id=None,
+                              action="scheduled_export_failed", entity_type="export_schedule", entity_id=current.id,
+                              new_values={"error_code": type(exc).__name__[:80]},
+                              description="定期匯出執行失敗")
+                current.last_run_at = now
+                current.next_run_at = _next_run(
+                    current.frequency, current.local_hour, current.local_minute,
+                    current.weekday, current.monthday,
+                )
+                db.commit()
+            result["failed"] += 1
+    return result
