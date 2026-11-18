@@ -1,0 +1,179 @@
+name: G-01-08 Production Read-only Preflight
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: g01-08-production-preflight
+  cancel-in-progress: false
+
+jobs:
+  production-preflight:
+    name: Simulate migrations and inspect production read-only
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: g01_preflight
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d g01_preflight"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout workflow revision
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Simulate complete migration chain on disposable PostgreSQL
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/g01_preflight
+        run: |
+          set -euo pipefail
+          mkdir -p preflight-artifacts
+          pg_isready --host=localhost --port=5432 --username=postgres --dbname=g01_preflight
+          {
+            echo "=== Alembic heads ==="
+            python -m alembic heads
+            echo "=== Full migration simulation on disposable PostgreSQL 18 ==="
+            python -m alembic upgrade head
+            echo "=== Final disposable database revision ==="
+            python -m alembic current
+          } 2>&1 | tee preflight-artifacts/migration-simulation.log
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+          from sqlalchemy.engine import make_url
+
+          engine = create_engine(make_url(os.environ["DATABASE_URL"]))
+          expected_tables = {
+              "users", "families", "family_members", "roles", "permissions",
+              "accounts", "transactions", "categories", "transfers",
+              "bills", "recurring_bills", "bill_payments", "attachments",
+              "ocr_tasks", "notifications", "export_templates",
+              "export_template_versions", "export_schedules", "export_runs",
+          }
+          with engine.connect() as connection:
+              tables = set(connection.execute(text("""
+                  SELECT tablename FROM pg_catalog.pg_tables
+                  WHERE schemaname = 'public'
+              """)).scalars())
+              missing = sorted(expected_tables - tables)
+              if missing:
+                  raise SystemExit(f"Disposable migration simulation missing tables: {missing}")
+              print(f"Disposable migration simulation passed: {len(tables)} public tables.")
+          engine.dispose()
+          PY
+
+      - name: Inspect production migration state and required tables (read-only)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee preflight-artifacts/production-read-only-inspection.txt
+          import os
+          from sqlalchemy import create_engine, text
+          from sqlalchemy.engine import make_url
+          from alembic.config import Config
+          from alembic.script import ScriptDirectory
+          from alembic.runtime.migration import MigrationContext
+
+          raw_url = os.environ["DATABASE_URL"]
+          url = make_url(raw_url)
+          if url.drivername in {"postgres", "postgresql"}:
+              url = url.set(drivername="postgresql+psycopg")
+          engine = create_engine(url, pool_pre_ping=True, connect_args={"connect_timeout": 10})
+          scripts = ScriptDirectory.from_config(Config("alembic.ini"))
+          expected_heads = set(scripts.get_heads())
+          required_tables = {
+              "users", "families", "family_members", "roles", "permissions",
+              "accounts", "transactions", "categories", "transfers",
+              "bills", "recurring_bills", "bill_payments", "attachments",
+              "ocr_tasks", "notifications", "export_templates",
+              "export_template_versions", "export_schedules", "export_runs",
+          }
+
+          try:
+              with engine.connect() as connection:
+                  with connection.begin():
+                      connection.exec_driver_sql("SET TRANSACTION READ ONLY")
+                      database_name = connection.execute(text("SELECT current_database()")).scalar_one()
+                      server_version = connection.execute(text("SHOW server_version")).scalar_one()
+                      current_heads = set(MigrationContext.configure(connection).get_current_heads())
+                      tables = set(connection.execute(text("""
+                          SELECT tablename FROM pg_catalog.pg_tables
+                          WHERE schemaname = 'public'
+                      """)).scalars())
+                      version_table_exists = "alembic_version" in tables
+                      missing_tables = sorted(required_tables - tables)
+                      row_counts = {}
+                      for table in ("families", "users", "bills", "transactions", "attachments"):
+                          if table in tables:
+                              row_counts[table] = connection.execute(
+                                  text(f'SELECT count(*) FROM "{table}"')
+                              ).scalar_one()
+
+              print(f"Database name: {database_name}")
+              print(f"PostgreSQL version: {server_version}")
+              print(f"Current Alembic revisions: {sorted(current_heads) if current_heads else 'none'}")
+              print(f"Repository Alembic heads: {sorted(expected_heads)}")
+              print(f"Public table count: {len(tables)}")
+              print(f"Required table gaps: {missing_tables}")
+              print(f"Selected table row counts: {row_counts}")
+
+              if not version_table_exists:
+                  raise SystemExit("FAIL: alembic_version table is missing.")
+              if not current_heads:
+                  raise SystemExit("FAIL: production database has no recorded Alembic revision.")
+              unknown_revisions = []
+              for revision in current_heads:
+                  try:
+                      scripts.get_revision(revision)
+                  except Exception:
+                      unknown_revisions.append(revision)
+              if unknown_revisions:
+                  raise SystemExit(f"FAIL: production has revisions unknown to this repository: {unknown_revisions}")
+
+              pending_revisions = list(scripts.iterate_revisions("heads", tuple(current_heads)))
+              print(f"Pending migration revisions: {[revision.revision for revision in pending_revisions]}")
+              if pending_revisions:
+                  print("PREFLIGHT RESULT: production is behind repository head; migration is pending.")
+              else:
+                  print("PREFLIGHT RESULT: production migration revisions match repository heads.")
+                  if missing_tables:
+                      raise SystemExit("FAIL: repository head is recorded but required application tables are missing.")
+          finally:
+              engine.dispose()
+          PY
+
+      - name: Upload preflight reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: g01-08-production-preflight-reports
+          path: preflight-artifacts/*
+          if-no-files-found: error
+          retention-days: 7
