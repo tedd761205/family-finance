@@ -27,10 +27,11 @@ def test_financial_reports_ui_uses_existing_report_endpoints():
 def test_financial_reports_ui_supports_currency_separation():
     with TestClient(app) as client:
         javascript = client.get("/static/app.js").text
+        html = client.get("/").text
 
     assert "function reportCurrencies(...groups)" in javascript
     assert "function reportAmountMap(rows)" in javascript
-    assert "不同幣別分開顯示" in client.get("/").text
+    assert "不同幣別分開顯示" in html
 
 
 def test_financial_reports_ui_renders_monthly_income_expense_and_net():
