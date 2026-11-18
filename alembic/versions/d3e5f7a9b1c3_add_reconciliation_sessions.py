@@ -101,7 +101,7 @@ def upgrade() -> None:
         sa.CheckConstraint("allocated_amount > 0", name="ck_reconciliation_matches_amount_positive"),
         sa.CheckConstraint("status IN ('active','voided')", name="ck_reconciliation_matches_status"),
         sa.CheckConstraint(
-            "(status = 'active' AND voided_at IS NULL AND voided_by IS NULL) OR "
+            "(status = 'active' AND voided_at IS NULL AND voided_by IS NULL AND void_reason IS NULL) OR "
             "(status = 'voided' AND voided_at IS NOT NULL AND voided_by IS NOT NULL AND void_reason IS NOT NULL)",
             name="ck_reconciliation_matches_void_metadata",
         ),
