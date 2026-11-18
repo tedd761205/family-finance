@@ -66,6 +66,7 @@
         <button class="quick-card quick-card-button" id="open-accounts" type="button"><span class="quick-icon">帳</span><span class="quick-card-title">帳戶管理</span><span class="quick-card-description">銀行、現金、信用卡與電子支付。</span><span class="coming">管理帳戶 →</span></button>
         <button class="quick-card quick-card-button" id="open-transactions" type="button"><span class="quick-icon">收</span><span class="quick-card-title">收支紀錄</span><span class="quick-card-description">新增收入、支出，查詢及管理交易。</span><span class="coming">管理收支 →</span></button>
         <button class="quick-card quick-card-button" id="open-transfers" type="button"><span class="quick-icon">轉</span><span class="quick-card-title">帳戶轉帳</span><span class="quick-card-description">管理帳戶間轉入、轉出與手續費。</span><span class="coming">管理轉帳 →</span></button>
+        <button class="quick-card quick-card-button" id="open-credit-card-payments" type="button"><span class="quick-icon">卡</span><span class="quick-card-title">信用卡繳款</span><span class="quick-card-description">記錄繳款、同步來源帳戶與信用卡負債。</span><span class="coming">管理信用卡繳款 →</span></button>
       </section>
 
       <section id="transactions-view" class="panel transactions-panel hidden">
@@ -135,6 +136,40 @@
             <p class="tiny muted" id="transfer-currency-hint">轉帳幣別依轉出帳戶自動決定，轉入及手續費帳戶必須使用相同幣別。</p>
             <label class="field">備註<textarea id="transfer-note" rows="2" placeholder="選填"></textarea></label>
             <div class="form-actions"><button class="primary" id="transfer-submit" type="submit">新增轉帳</button><button class="secondary" id="transfer-cancel" type="button">取消</button></div>
+          </form>
+        </div>
+      </section>
+      <section id="credit-card-payments-view" class="panel credit-card-payments-panel hidden">
+        <div class="accounts-heading">
+          <div><p class="eyebrow">CREDIT CARD PAYMENTS</p><h2>信用卡繳款</h2><p class="muted">繳款會同時建立來源帳戶支出及信用卡帳戶收入，信用卡收入代表償還負債，不會計入家庭收入。</p></div>
+          <div class="heading-actions"><button class="secondary small" id="close-credit-card-payments" type="button">收起</button><button class="primary small" id="add-credit-payment-button" type="button">＋ 新增繳款</button></div>
+        </div>
+        <div id="credit-payment-notice" class="notice" role="status" aria-live="polite"></div>
+        <div class="transaction-filters">
+          <label class="field">帳戶<select id="credit-payment-filter-account"><option value="">全部帳戶</option></select></label>
+          <label class="field">開始日期<input id="credit-payment-filter-start" type="date"></label>
+          <label class="field">結束日期<input id="credit-payment-filter-end" type="date"></label>
+          <label class="field transaction-void-filter"><span>顯示已作廢</span><input id="credit-payment-include-voided" type="checkbox"></label>
+          <button class="secondary small" id="apply-credit-payment-filters" type="button">套用篩選</button>
+        </div>
+        <div class="accounts-summary"><strong id="credit-card-payments-count">0 筆繳款</strong><span class="muted tiny">不同幣別分開顯示，不跨幣別加總。</span></div>
+        <p id="credit-card-payments-loading" class="muted hidden">正在載入信用卡繳款…</p>
+        <div id="credit-card-payments-list" class="transactions-list"></div>
+        <div id="credit-card-payments-empty" class="empty-state hidden"><div class="empty-icon">卡</div><h3>尚無信用卡繳款</h3><p class="muted">新增第一筆繳款，系統會自動同步兩個帳戶的交易明細。</p></div>
+        <div id="credit-payment-form-panel" class="subpanel hidden">
+          <h3 id="credit-payment-form-title">新增信用卡繳款</h3>
+          <form id="credit-payment-form">
+            <div class="account-form-grid">
+              <label class="field">扣款來源帳戶<select id="credit-payment-source" required></select></label>
+              <label class="field">信用卡帳戶<select id="credit-payment-card" required></select></label>
+              <label class="field">繳款金額<input id="credit-payment-amount" type="number" min="0.0001" step="0.0001" required placeholder="輸入金額"></label>
+              <label class="field">繳款日期<input id="credit-payment-date" type="date" required></label>
+              <label class="field">繳款說明<input id="credit-payment-description" maxlength="255" placeholder="例如：11 月信用卡帳單"></label>
+            </div>
+            <p class="tiny muted" id="credit-payment-currency-hint">繳款幣別依來源帳戶自動決定，兩個帳戶必須使用相同幣別。</p>
+            <label class="field">備註<textarea id="credit-payment-note" rows="2" placeholder="選填"></textarea></label>
+            <p class="tiny muted" id="credit-payment-edit-hint">修改時僅調整金額、日期與說明；來源帳戶及信用卡帳戶建立後不可變更。</p>
+            <div class="form-actions"><button class="primary" id="credit-payment-submit" type="submit">新增繳款</button><button class="secondary" id="credit-payment-cancel" type="button">取消</button></div>
           </form>
         </div>
       </section>

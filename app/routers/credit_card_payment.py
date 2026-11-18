@@ -197,7 +197,7 @@ def validate_payment_accounts(
     if from_account.account_type not in (
         "bank",
         "cash",
-        "e_payment",
+        "e_wallet",
     ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
