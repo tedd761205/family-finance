@@ -380,7 +380,7 @@ def void_attachment(
     scope = _authorize(db, current_user.id, family_id, "void")
     attachment = _get_attachment(db, family_id, attachment_id)
     _check_attachment_access(attachment, current_user, scope)
-    _check_parent_for_attachment(db, current_user, attachment)
+    _check_parent_for_attachment(db, current_user, attachment, allow_voided=True)
     if attachment.is_voided:
         raise HTTPException(status_code=409, detail="此附件已經作廢")
 
