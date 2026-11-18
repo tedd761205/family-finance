@@ -14,6 +14,7 @@ from app.dependencies.auth import get_current_user
 from app.dependencies.permissions import require_permission, require_data_scope
 from app.models.bill import Bill
 from app.models.export_template import ExportTemplate, ExportTemplateVersion, ExportSchedule, ExportRun
+from app.models.family_member import FamilyMember
 from app.models.notification import Notification
 from app.models.transaction import Transaction
 from app.models.user import User
@@ -46,6 +47,18 @@ def _notify(db: Session, *, family_id: int, recipient_user_id: int, actor_user_i
     )
     db.add(item)
     return item
+
+
+def _notify_family_members(db: Session, *, family_id: int, actor_user_id: int,
+                           notification_type: str, title: str, body: str, payload: dict):
+    members = db.query(FamilyMember).filter(
+        FamilyMember.family_id == family_id, FamilyMember.status == "active",
+    ).all()
+    for member in members:
+        if member.user_id != actor_user_id:
+            _notify(db, family_id=family_id, recipient_user_id=member.user_id,
+                    actor_user_id=actor_user_id, notification_type=notification_type,
+                    title=title, body=body, payload=payload)
 
 
 def _template(db: Session, family_id: int, template_id: int, lock: bool = False) -> ExportTemplate:
@@ -295,6 +308,12 @@ def publish_export_template(
     add_audit_log(db, family_id=family_id, actor_user_id=current_user.id,
                   action="publish", entity_type="export_template", entity_id=template.id,
                   new_values=_snapshot(template), description="發布家庭共用匯出範本版本")
+    _notify_family_members(
+        db, family_id=family_id, actor_user_id=current_user.id,
+        notification_type="export_template.published", title="家庭匯出範本已更新",
+        body=f"家庭成員已發布範本「{template.name}」第 {template.version} 版。",
+        payload={"template_id": template.id, "version": template.version},
+    )
     db.commit()
     db.refresh(template)
     return template
@@ -342,6 +361,12 @@ def create_export_schedule(
                   new_values={"template_id": template.id, "frequency": body.frequency,
                               "timezone": "Asia/Taipei", "next_run_at": next_run},
                   description="建立定期匯出排程")
+    _notify_family_members(
+        db, family_id=family_id, actor_user_id=current_user.id,
+        notification_type="export_schedule.created", title="家庭定期匯出排程已建立",
+        body=f"已建立排程「{schedule.name}」，時區為 Asia/Taipei。",
+        payload={"schedule_id": schedule.id, "template_id": template.id},
+    )
     db.commit()
     db.refresh(schedule)
     return schedule
