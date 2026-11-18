@@ -102,6 +102,9 @@ def test_partial_payments_refunds_and_bill_balance_are_atomic(bill_payment_clien
     from app.models.audit_log import AuditLog
     from app.models.bill_payment import BillPayment
     from app.models.transaction import Transaction
+    from app.models.account import Account
+    from app.services.account_balance import calculate_account_balance
+    from decimal import Decimal
 
     suffix = uuid4().hex
     headers, family_id, account_id = setup_family_and_account(bill_payment_client, suffix)
@@ -184,6 +187,11 @@ def test_partial_payments_refunds_and_bill_balance_are_atomic(bill_payment_clien
         assert len(transactions) == 3
         assert sorted(item.transaction_type for item in transactions) == ["expense", "expense", "income"]
         assert all(not item.is_voided for item in transactions)
+        account = db.get(Account, account_id)
+        balance = calculate_account_balance(db, account)
+        assert balance["total_expense"] == Decimal("1000.0000")
+        assert balance["total_income"] == Decimal("150.0000")
+        assert balance["balance"] == Decimal("-850.0000")
         audit_count = db.scalar(select(func.count(AuditLog.id)).where(
             AuditLog.family_id == family_id,
             AuditLog.entity_type == "bill_payment",
@@ -213,6 +221,10 @@ def test_partial_payments_refunds_and_bill_balance_are_atomic(bill_payment_clien
     )
     assert final_bill.json()["paid_amount"] == "600.0000"
     assert final_bill.json()["remaining_amount"] == "400.0000"
+    with Session(engine) as db:
+        account = db.get(Account, account_id)
+        balance = calculate_account_balance(db, account)
+        assert balance["balance"] == Decimal("-600.0000")
 
 
 def test_bill_cannot_be_reduced_below_net_paid_or_voided_with_balance(bill_payment_client):
