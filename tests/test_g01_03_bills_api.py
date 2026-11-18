@@ -202,3 +202,63 @@ def test_bill_api_own_scope_isolates_member_records(bill_api_client):
     assert own_list.status_code == 200
     assert own_list.json()["total"] == 1
     assert own_list.json()["bills"][0]["id"] == member_bill.json()["id"]
+
+
+def test_bill_api_rejects_category_from_another_family(bill_api_client):
+    seed_bill_permissions(__import__("app.database", fromlist=["engine"]).engine)
+    suffix = uuid4().hex
+    _, first_headers = register_user(bill_api_client, suffix, "first-family")
+    _, second_headers = register_user(bill_api_client, suffix, "second-family")
+    first_family_id = create_family(bill_api_client, first_headers, f"{suffix}-one")
+    second_family_id = create_family(bill_api_client, second_headers, f"{suffix}-two")
+
+    foreign_category = bill_api_client.post(
+        f"/categories?family_id={second_family_id}",
+        headers=second_headers,
+        json={"category_type": "expense", "name": f"外家庭分類-{suffix}"},
+    )
+    assert foreign_category.status_code == 201, foreign_category.text
+
+    rejected = bill_api_client.post(
+        f"/bills?family_id={first_family_id}",
+        headers=first_headers,
+        json={
+            **bill_payload("FOREIGN-CATEGORY-001", "跨家庭分類測試"),
+            "category_id": foreign_category.json()["id"],
+        },
+    )
+    assert rejected.status_code == 404
+
+
+def test_bill_number_can_be_reused_only_after_previous_bill_is_voided(bill_api_client):
+    seed_bill_permissions(__import__("app.database", fromlist=["engine"]).engine)
+    suffix = uuid4().hex
+    _, headers = register_user(bill_api_client, suffix, "number-owner")
+    family_id = create_family(bill_api_client, headers, suffix)
+
+    first = bill_api_client.post(
+        f"/bills?family_id={family_id}",
+        headers=headers,
+        json=bill_payload("SAME-NUMBER", "第一張帳單"),
+    )
+    assert first.status_code == 201, first.text
+
+    duplicate = bill_api_client.post(
+        f"/bills?family_id={family_id}",
+        headers=headers,
+        json=bill_payload("SAME-NUMBER", "重複帳單"),
+    )
+    assert duplicate.status_code == 409
+
+    voided = bill_api_client.delete(
+        f"/bills/{first.json()['id']}?family_id={family_id}",
+        headers=headers,
+    )
+    assert voided.status_code == 200
+
+    reused = bill_api_client.post(
+        f"/bills?family_id={family_id}",
+        headers=headers,
+        json=bill_payload("SAME-NUMBER", "作廢後重用編號"),
+    )
+    assert reused.status_code == 201, reused.text
