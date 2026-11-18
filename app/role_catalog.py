@@ -55,6 +55,7 @@ FINANCE_PERMISSIONS = [
     "reconciliation.match",
     "reconciliation.unmatch",
     "reconciliation.close",
+    "reconciliation.exclude",
 
     "reports.view",
     "reports.export",
@@ -165,6 +166,7 @@ BOOKKEEPER_PERMISSIONS = [
     "reconciliation.create",
     "reconciliation.match",
     "reconciliation.unmatch",
+    "reconciliation.exclude",
 
     "reports.view",
     "notifications.view", "exports.view", "exports.create", "exports.download",

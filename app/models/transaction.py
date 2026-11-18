@@ -111,6 +111,12 @@ class Transaction(Base):
             "id",
             name="uq_transactions_family_id_id",
         ),
+        UniqueConstraint(
+            "family_id",
+            "account_id",
+            "id",
+            name="uq_transactions_family_account_id",
+        ),
         CheckConstraint(
             "amount > 0",
             name="ck_transactions_amount_positive",

@@ -31,7 +31,7 @@ G-03-01 負責將 CSV 轉成不可直接影響帳戶餘額的暫存資料，經�
 ### 2.2 reconciliation_matches（銀行列與帳務交易配對明細）
 
 配對表採「一筆銀行對帳列可配對多筆正式交易」設計，支援拆分入帳。建議欄位：
-- id、family_id、session_id、bank_import_row_id、transaction_id
+- id、family_id、session_id、batch_id、bank_import_row_id、transaction_id
 - allocated_amount（Numeric(20,4)，必須大於 0）
 - status：active、voided
 - matched_by、matched_at、voided_by、voided_at、void_reason
@@ -101,7 +101,7 @@ G-03-01 負責將 CSV 轉成不可直接影響帳戶餘額的暫存資料，經�
 - reconciliation.match
 - reconciliation.unmatch
 - reconciliation.exclude
-- reconciliation.complete
+- reconciliation.close
 - reconciliation.reopen
 
 資料範圍以 reconciliation 資源或明確映射至 accounts／transactions 的 own/family 規則實作，不可只檢查 imports 權限。配對建立、解除、排除、完成及重新開啟均寫入 audit_logs，保存操作者、時間、對象、舊值／新值及原因。
