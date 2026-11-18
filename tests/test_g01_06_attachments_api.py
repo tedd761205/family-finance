@@ -229,3 +229,95 @@ def test_rejects_cross_family_bill_and_requires_one_parent(attachment_client):
     )
     assert both_parents.status_code == 422
     assert stored == {}
+
+
+
+def test_ocr_task_lifecycle_requires_human_confirmation(attachment_client, monkeypatch):
+    from sqlalchemy import select, func
+    from sqlalchemy.orm import Session
+    from app.database import engine
+    from app.models.bill import Bill
+    from app.models.ocr_task import OcrTask
+    from app.services import ocr_provider
+
+    client, stored = attachment_client
+    headers, family_id, bill_id = _setup_family(client, uuid4().hex)
+    uploaded = client.post(
+        f"/attachments?family_id={family_id}&bill_id={bill_id}",
+        headers=headers,
+        files={"file": ("utility.png", _png_bytes(), "image/png")},
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    attachment_id = uploaded.json()["id"]
+
+    created = client.post(
+        f"/ocr/tasks?family_id={family_id}&attachment_id={attachment_id}",
+        headers=headers,
+    )
+    assert created.status_code == 201, created.text
+    task = created.json()["task"]
+    assert task["status"] == "queued"
+    assert task["attempts"] == 0
+
+    monkeypatch.setattr(ocr_provider, "recognize_image", lambda content, content_type: {
+        "text": "台灣電力公司\n帳單編號：ABCD1234\n應繳金額：1,280\n2026年11月18日",
+        "suggested_fields": {
+            "bill_number_candidate": "ABCD1234",
+            "amount_candidate": "1280",
+            "date_candidate": "2026-11-18",
+        },
+    })
+    processed = client.post(
+        f"/ocr/tasks/{task['id']}/process?family_id={family_id}",
+        headers=headers,
+    )
+    assert processed.status_code == 200, processed.text
+    result = processed.json()["task"]
+    assert result["status"] == "succeeded"
+    assert result["attempts"] == 1
+    assert result["suggested_fields"]["amount_candidate"] == "1280"
+
+    # OCR suggestions are not silently converted into a bill or financial transaction.
+    with Session(engine) as db:
+        assert db.scalar(select(func.count(Bill.id)).where(Bill.family_id == family_id)) == 1
+
+    confirmed = client.post(
+        f"/ocr/tasks/{task['id']}/confirm?family_id={family_id}",
+        headers=headers,
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    assert confirmed.json()["task"]["status"] == "confirmed"
+    assert confirmed.json()["task"]["confirmed_by"] is not None
+
+    repeated = client.post(
+        f"/ocr/tasks/{task['id']}/process?family_id={family_id}",
+        headers=headers,
+    )
+    assert repeated.status_code == 409
+
+
+def test_ocr_provider_missing_key_fails_closed(attachment_client, monkeypatch):
+    client, stored = attachment_client
+    headers, family_id, bill_id = _setup_family(client, uuid4().hex)
+    uploaded = client.post(
+        f"/attachments?family_id={family_id}&bill_id={bill_id}",
+        headers=headers,
+        files={"file": ("utility.png", _png_bytes(), "image/png")},
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    task = client.post(
+        f"/ocr/tasks?family_id={family_id}&attachment_id={uploaded.json()['id']}",
+        headers=headers,
+    )
+    assert task.status_code == 201, task.text
+
+    from app.services import ocr_provider
+    monkeypatch.delenv("GOOGLE_CLOUD_VISION_API_KEY", raising=False)
+    monkeypatch.setattr(ocr_provider, "recognize_image", ocr_provider.recognize_image)
+    failed = client.post(
+        f"/ocr/tasks/{task.json()['task']['id']}/process?family_id={family_id}",
+        headers=headers,
+    )
+    assert failed.status_code == 200, failed.text
+    assert failed.json()["task"]["status"] == "failed"
+    assert failed.json()["task"]["error_code"] == "OcrProviderNotConfigured"
