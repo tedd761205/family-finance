@@ -147,6 +147,13 @@ def test_upload_list_download_and_void_attachment(attachment_client):
         ))
         assert audit_downloads == 1
 
+    # 即使父帳單已作廢，附件仍可由授權人員作廢；原始物件仍保留。
+    bill_void = client.delete(
+        f"/bills/{bill_id}?family_id={family_id}",
+        headers=headers,
+    )
+    assert bill_void.status_code == 200, bill_void.text
+
     voided = client.delete(
         f"/attachments/{item['id']}?family_id={family_id}&reason=duplicate",
         headers=headers,
