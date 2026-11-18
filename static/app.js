@@ -43,3 +43,249 @@ $("create-family-form").addEventListener("submit",async(event)=>{event.preventDe
 $("logout-button").addEventListener("click",async()=>{let revoked=false;try{await api("/auth/logout",{method:"POST"});revoked=true;}catch{}sessionStorage.removeItem(TOKEN_KEY);selectedFamilyId=null;accounts=[];accountBalances.clear();$("accounts-view").classList.add("hidden");showAuth();setMode("login");if(revoked){notice("notice","已安全登出。","success");}else{notice("notice","已清除此瀏覽器的登入狀態，但伺服器端 Token 撤銷未確認；請確認網路連線後重新登入。","error");}});
 async function init(){if(token()){await loadApp();}else{showAuth();}try{const cfg=await fetch("/app-config").then(r=>r.json());if(cfg.google_client_id){const script=document.createElement("script");script.src="https://accounts.google.com/gsi/client";script.async=true;script.defer=true;script.onload=()=>{google.accounts.id.initialize({client_id:cfg.google_client_id,callback:async(response)=>{try{const result=await api("/auth/google",{method:"POST",body:JSON.stringify({id_token:response.credential})});sessionStorage.setItem(TOKEN_KEY,result.access_token);await loadApp();}catch(error){notice("notice",error.message,"error");}}});google.accounts.id.renderButton($("google-button"),{theme:"outline",size:"large",shape:"rectangular",width:300,text:"continue_with",locale:"zh_TW"});$("google-hint").classList.add("hidden");};document.head.append(script);}}catch{}}
 init();
+
+// --------------------------------------------------
+// G-02-03：收入與支出交易管理
+// --------------------------------------------------
+let editingTransactionId = null;
+let transactionRows = [];
+let transactionAccounts = [];
+let transactionCategories = [];
+
+function transactionTypeLabel(type) {
+  return ({income:"收入",expense:"支出",opening_balance:"期初餘額"})[type] || type;
+}
+
+function transactionDateInput(value) {
+  if (!value) return localDateString();
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return localDateString();
+  return date.getFullYear()+"-"+String(date.getMonth()+1).padStart(2,"0")+"-"+String(date.getDate()).padStart(2,"0");
+}
+
+function transactionDateTime(value, endOfDay=false) {
+  return value ? value+(endOfDay ? "T23:59:59" : "T00:00:00") : "";
+}
+
+function populateTransactionAccountSelects() {
+  const formSelect=$("transaction-account");
+  const filterSelect=$("transaction-filter-account");
+  formSelect.replaceChildren();
+  filterSelect.replaceChildren(new Option("全部帳戶",""));
+  for (const account of transactionAccounts) {
+    const label=account.name+" · "+account.currency_code;
+    formSelect.add(new Option(label,String(account.id)));
+    filterSelect.add(new Option(label,String(account.id)));
+  }
+}
+
+function populateTransactionCategories(type, selectedId=null) {
+  const select=$("transaction-category");
+  select.replaceChildren(new Option("未指定分類",""));
+  for (const category of transactionCategories.filter(item=>item.category_type===type)) {
+    select.add(new Option(category.name,String(category.id)));
+  }
+  if (selectedId!==null && selectedId!==undefined) select.value=String(selectedId);
+}
+
+async function loadTransactionSupportData() {
+  const [accountResult,categoryResult]=await Promise.all([
+    api("/accounts?family_id="+selectedFamilyId),
+    api("/categories?family_id="+selectedFamilyId)
+  ]);
+  transactionAccounts=accountResult.accounts||[];
+  transactionCategories=categoryResult.categories||[];
+  populateTransactionAccountSelects();
+  populateTransactionCategories($("transaction-type").value);
+}
+
+function transactionQuery() {
+  const params=new URLSearchParams({family_id:String(selectedFamilyId),limit:"200"});
+  const type=$("transaction-filter-type").value;
+  const accountId=$("transaction-filter-account").value;
+  const start=$("transaction-filter-start").value;
+  const end=$("transaction-filter-end").value;
+  if(type)params.set("transaction_type",type);
+  if(accountId)params.set("account_id",accountId);
+  if(start)params.set("start_date",transactionDateTime(start));
+  if(end)params.set("end_date",transactionDateTime(end,true));
+  if($("transaction-include-voided").checked)params.set("include_voided","true");
+  return params.toString();
+}
+
+function renderTransactions() {
+  const list=$("transactions-list");
+  list.replaceChildren();
+  $("transactions-count").textContent=transactionRows.length+" 筆紀錄";
+  $("transactions-empty").classList.toggle("hidden",transactionRows.length!==0);
+  for(const item of transactionRows) {
+    const account=transactionAccounts.find(row=>row.id===item.account_id);
+    const category=transactionCategories.find(row=>row.id===item.category_id);
+    const card=document.createElement("article");
+    card.className="transaction-card"+(item.is_voided?" transaction-voided":"");
+    const top=document.createElement("div");
+    top.className="transaction-card-top";
+    const main=document.createElement("div");
+    const title=document.createElement("strong");
+    title.textContent=item.description||transactionTypeLabel(item.transaction_type);
+    const meta=document.createElement("p");
+    meta.className="muted tiny";
+    meta.textContent=[transactionTypeLabel(item.transaction_type),transactionDateInput(item.transaction_date),account?account.name:"帳戶 #"+item.account_id,category?category.name:"未分類"].join(" · ");
+    main.append(title,meta);
+    const amount=document.createElement("strong");
+    amount.className="transaction-amount "+(item.transaction_type==="income"?"income":"expense");
+    amount.textContent=(item.transaction_type==="expense"?"−":item.transaction_type==="income"?"+":"")+money(item.amount,item.currency_code);
+    top.append(main,amount);
+    card.append(top);
+    if(item.is_voided) {
+      const status=document.createElement("span");
+      status.className="transaction-status";
+      status.textContent="已作廢";
+      card.append(status);
+    }
+    const managed=item.transfer_id!==null||item.credit_card_payment_id!==null||item.bill_payment_id!==null;
+    if(!item.is_voided&&!managed) {
+      const actions=document.createElement("div");
+      actions.className="account-actions";
+      const edit=document.createElement("button");
+      edit.type="button";edit.className="secondary small";edit.textContent="修改";
+      edit.addEventListener("click",()=>startEditTransaction(item));
+      const voidButton=document.createElement("button");
+      voidButton.type="button";voidButton.className="danger small";voidButton.textContent="作廢";
+      voidButton.addEventListener("click",()=>voidTransaction(item));
+      actions.append(edit,voidButton);
+      card.append(actions);
+    } else if(managed&&!item.is_voided) {
+      const hint=document.createElement("p");
+      hint.className="tiny muted";
+      hint.textContent="此筆紀錄由轉帳／繳款功能管理，請至對應功能修改或作廢。";
+      card.append(hint);
+    }
+    list.append(card);
+  }
+}
+
+async function loadTransactions() {
+  if(!selectedFamilyId)return;
+  clearNotice("transaction-notice");
+  $("transactions-loading").classList.remove("hidden");
+  try {
+    const result=await api("/transactions?"+transactionQuery());
+    transactionRows=result.transactions||[];
+    renderTransactions();
+  } catch(error) {
+    notice("transaction-notice","收支紀錄載入失敗："+error.message,"error");
+  } finally {
+    $("transactions-loading").classList.add("hidden");
+  }
+}
+
+async function showTransactions() {
+  if(!selectedFamilyId){notice("notice-app","請先建立或選擇家庭，再管理收支紀錄。","error");return;}
+  $("transactions-view").classList.remove("hidden");
+  $("transactions-view").scrollIntoView({behavior:"smooth",block:"start"});
+  try {
+    await loadTransactionSupportData();
+    await loadTransactions();
+  } catch(error) {
+    notice("transaction-notice","收支管理初始化失敗："+error.message,"error");
+  }
+}
+
+function resetTransactionForm() {
+  editingTransactionId=null;
+  $("transaction-form").reset();
+  $("transaction-form-title").textContent="新增收支";
+  $("transaction-submit").textContent="新增紀錄";
+  $("transaction-type").disabled=false;
+  $("transaction-account").disabled=false;
+  $("transaction-date").value=localDateString();
+  $("transaction-form-panel").classList.add("hidden");
+  populateTransactionCategories($("transaction-type").value);
+}
+
+function startEditTransaction(item) {
+  editingTransactionId=item.id;
+  $("transaction-form-title").textContent="修改收支";
+  $("transaction-submit").textContent="儲存修改";
+  $("transaction-type").value=item.transaction_type;
+  $("transaction-type").disabled=item.transaction_type==="opening_balance";
+  $("transaction-account").value=String(item.account_id);
+  $("transaction-account").disabled=true;
+  $("transaction-amount").value=item.amount;
+  $("transaction-date").value=transactionDateInput(item.transaction_date);
+  $("transaction-description").value=item.description||"";
+  $("transaction-reference").value=item.external_reference||"";
+  $("transaction-note").value=item.note||"";
+  populateTransactionCategories(item.transaction_type,item.category_id);
+  $("transaction-form-panel").classList.remove("hidden");
+  $("transaction-form-panel").scrollIntoView({behavior:"smooth",block:"start"});
+}
+
+$("open-transactions").addEventListener("click",showTransactions);
+$("close-transactions").addEventListener("click",()=>{
+  $("transactions-view").classList.add("hidden");
+  resetTransactionForm();
+});
+$("add-transaction-button").addEventListener("click",()=>{
+  resetTransactionForm();
+  if(!transactionAccounts.length){notice("transaction-notice","請先建立至少一個啟用中的帳戶。","error");return;}
+  $("transaction-form-panel").classList.remove("hidden");
+  $("transaction-form-panel").scrollIntoView({behavior:"smooth",block:"start"});
+});
+$("transaction-cancel").addEventListener("click",resetTransactionForm);
+$("transaction-type").addEventListener("change",()=>{
+  populateTransactionCategories($("transaction-type").value);
+});
+$("apply-transaction-filters").addEventListener("click",loadTransactions);
+$("transaction-filter-type").addEventListener("change",loadTransactions);
+$("transaction-filter-account").addEventListener("change",loadTransactions);
+$("transaction-include-voided").addEventListener("change",loadTransactions);
+$("transaction-form").addEventListener("submit",async(event)=>{
+  event.preventDefault();
+  const button=$("transaction-submit");
+  button.disabled=true;
+  clearNotice("transaction-notice");
+  try {
+    const account=transactionAccounts.find(row=>row.id===Number($("transaction-account").value));
+    if(!account)throw new Error("請選擇有效帳戶。");
+    const type=$("transaction-type").value;
+    const categoryId=$("transaction-category").value;
+    const payload={
+      transaction_type:type,
+      amount:$("transaction-amount").value,
+      currency_code:account.currency_code,
+      transaction_date:new Date($("transaction-date").value+"T12:00:00").toISOString(),
+      description:$("transaction-description").value.trim()||null,
+      category_id:categoryId?Number(categoryId):null,
+      external_reference:$("transaction-reference").value.trim()||null,
+      note:$("transaction-note").value.trim()||null
+    };
+    if(editingTransactionId) {
+      await api("/transactions/"+editingTransactionId+"?family_id="+selectedFamilyId,{method:"PATCH",body:JSON.stringify(payload)});
+    } else {
+      payload.account_id=account.id;
+      await api("/transactions?family_id="+selectedFamilyId,{method:"POST",body:JSON.stringify(payload)});
+    }
+    resetTransactionForm();
+    await loadTransactions();
+    await loadAccounts();
+    notice("transaction-notice",editingTransactionId?"收支紀錄已更新。":"收支紀錄已新增。","success");
+  } catch(error) {
+    notice("transaction-notice",error.message,"error");
+  } finally {
+    button.disabled=false;
+  }
+});
+
+async function voidTransaction(item) {
+  if(!window.confirm("確定要作廢這筆"+transactionTypeLabel(item.transaction_type)+"紀錄？作廢後不會刪除歷史資料。"))return;
+  try {
+    await api("/transactions/"+item.id+"?family_id="+selectedFamilyId,{method:"DELETE"});
+    await loadTransactions();
+    await loadAccounts();
+    notice("transaction-notice","收支紀錄已作廢，歷史資料仍會保留。","success");
+  } catch(error) {
+    notice("transaction-notice",error.message,"error");
+  }
+}
