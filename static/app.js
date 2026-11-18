@@ -2264,3 +2264,29 @@ $("audit-log-next").addEventListener("click", () => {
   auditLogOffset += AUDIT_LOG_LIMIT;
   loadAuditLogs();
 });
+
+/* G-02-13: family category management */
+let categoryRows = [], editingCategoryId = null;
+function renderCategories(){
+ const host=$("categories-list");host.replaceChildren();$("categories-empty").classList.toggle("hidden",categoryRows.length>0);$("categories-count").textContent=categoryRows.length+" 個分類";
+ for(const row of categoryRows){
+  const card=document.createElement("article");card.className="category-admin-card";
+  const info=document.createElement("div");info.className="category-admin-info";
+  const name=document.createElement("strong");name.textContent=(row.icon?row.icon+" ":"")+row.name;
+  const parent=categoryRows.find(item=>item.id===row.parent_id);
+  const meta=document.createElement("p");meta.className="tiny muted";meta.textContent=(row.category_type==="income"?"收入":"支出")+(parent?" · 上層："+parent.name:" · 頂層")+" · 排序 "+row.sort_order+(row.is_system?" · 系統分類":" · 家庭自訂")+(row.is_active?"":" · 已停用");
+  info.append(name,meta);card.append(info);const actions=document.createElement("div");actions.className="category-admin-actions";
+  if(!row.is_system&&row.family_id===selectedFamilyId&&row.is_active){
+   const edit=document.createElement("button");edit.type="button";edit.className="secondary small";edit.textContent="編輯";edit.addEventListener("click",()=>openCategoryForm(row));
+   const disable=document.createElement("button");disable.type="button";disable.className="secondary small";disable.textContent="停用";disable.addEventListener("click",async()=>{if(!window.confirm("確定停用「"+row.name+"」？歷史資料會保留。"))return;try{await api("/categories/"+row.id+"?family_id="+selectedFamilyId,{method:"DELETE"});notice("categories-notice","分類已停用。");await loadCategories();}catch(error){notice("categories-notice",error.message,"error");}});
+   actions.append(edit,disable);
+  }else{const tag=document.createElement("span");tag.className="tiny muted";tag.textContent=row.is_system?"唯讀":"已停用（保留紀錄）";actions.append(tag);}
+  card.append(actions);host.append(card);
+ }
+}
+function populateCategoryParents(type,id=null){const select=$("category-parent");select.replaceChildren(new Option("無（頂層分類）",""));for(const row of categoryRows.filter(x=>x.is_active&&x.category_type===type&&x.id!==id))select.add(new Option((row.is_system?"系統 · ":"")+row.name,String(row.id)));}
+async function loadCategories(){if(!selectedFamilyId)return;$("categories-loading").classList.remove("hidden");clearNotice("categories-notice");try{const params=new URLSearchParams({family_id:String(selectedFamilyId),include_inactive:String($("category-include-inactive").checked)});if($("category-filter-type").value)params.set("category_type",$("category-filter-type").value);const result=await api("/categories?"+params.toString());categoryRows=result.categories||[];renderCategories();}catch(error){categoryRows=[];renderCategories();notice("categories-notice","分類載入失敗："+error.message,"error");}finally{$("categories-loading").classList.add("hidden");}}
+function openCategoryForm(row=null){editingCategoryId=row?row.id:null;$("category-form").reset();$("category-form-title").textContent=row?"編輯分類":"新增分類";$("category-submit").textContent=row?"儲存修改":"新增分類";$("category-type").disabled=Boolean(row);$("category-type").value=row?row.category_type:($("category-filter-type").value||"expense");populateCategoryParents($("category-type").value,row?row.id:null);$("category-parent").value=row&&row.parent_id?String(row.parent_id):"";$("category-name").value=row?row.name:"";$("category-sort-order").value=row?String(row.sort_order):"0";$("category-icon").value=row&&row.icon?row.icon:"";$("category-color").value=row&&row.color?row.color:"";$("category-note").value=row&&row.note?row.note:"";$("category-form-panel").classList.remove("hidden");$("category-form-panel").scrollIntoView({behavior:"smooth",block:"center"});}
+async function openCategories(){if(!selectedFamilyId){notice("notice-app","請先建立或選擇家庭，再管理收支分類。","error");return;}$("categories-view").classList.remove("hidden");$("categories-view").scrollIntoView({behavior:"smooth",block:"start"});await loadCategories();}
+$("open-categories").addEventListener("click",openCategories);$("close-categories").addEventListener("click",()=>$("categories-view").classList.add("hidden"));$("add-category-button").addEventListener("click",()=>openCategoryForm());$("category-cancel").addEventListener("click",()=>{$("category-form-panel").classList.add("hidden");editingCategoryId=null;});$("refresh-categories").addEventListener("click",loadCategories);$("category-filter-type").addEventListener("change",loadCategories);$("category-include-inactive").addEventListener("change",loadCategories);$("category-type").addEventListener("change",()=>populateCategoryParents($("category-type").value,editingCategoryId));
+$("category-form").addEventListener("submit",async event=>{event.preventDefault();const payload={category_type:$("category-type").value,name:$("category-name").value.trim(),parent_id:$("category-parent").value?Number($("category-parent").value):null,sort_order:Number($("category-sort-order").value),icon:$("category-icon").value.trim()||null,color:$("category-color").value.trim()||null,note:$("category-note").value.trim()||null};try{const path="/categories"+(editingCategoryId?"/"+editingCategoryId:"")+"?family_id="+selectedFamilyId;await api(path,{method:editingCategoryId?"PATCH":"POST",body:JSON.stringify(payload)});$("category-form-panel").classList.add("hidden");editingCategoryId=null;notice("categories-notice","分類已成功儲存。");await loadCategories();}catch(error){notice("categories-notice","儲存分類失敗："+error.message,"error");}});
