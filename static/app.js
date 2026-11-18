@@ -2394,3 +2394,122 @@ $("attachment-upload-form").addEventListener("submit",async event=>{
   } catch(error){notice("attachments-notice","上傳附件失敗："+error.message,"error");}
   finally{$("attachment-upload-submit").disabled=false;}
 });
+
+/* G-02-15: notifications and export management */
+const exportColumns={
+ transactions:[["id","交易編號"],["occurred_on","日期"],["type","類型"],["amount","金額"],["currency_code","幣別"],["description","說明"],["category_id","分類 ID"],["account_id","帳戶 ID"],["created_by","建立者 ID"]],
+ bills:[["id","帳單編號"],["bill_number","帳單號碼"],["title","帳單名稱"],["bill_date","帳單日期"],["due_date","到期日"],["original_amount","金額"],["currency_code","幣別"],["status","狀態"],["created_by","建立者 ID"]]
+};
+let exportTemplates=[],exportSchedules=[],exportRuns=[],editingExportTemplate=null;
+const exportStatusLabel={draft:"草稿",published:"已發布",disabled:"已停用",queued:"排隊中",running:"執行中",succeeded:"成功",failed:"失敗",revoked:"已撤銷"};
+function renderExportColumnChoices(selected=[]){
+ const host=$("export-template-columns");host.replaceChildren();
+ for(const [value,label] of exportColumns[$("export-template-dataset").value]){
+  const wrap=document.createElement("label");wrap.className="export-column-option";
+  const input=document.createElement("input");input.type="checkbox";input.value=value;input.checked=selected.includes(value);
+  const text=document.createElement("span");text.textContent=label+"（"+value+"）";wrap.append(input,text);host.append(wrap);
+ }
+}
+function renderExportTemplates(){
+ const host=$("export-templates-list");host.replaceChildren();$("export-templates-empty").classList.toggle("hidden",exportTemplates.length>0);
+ for(const item of exportTemplates){
+  const card=document.createElement("article");card.className="export-admin-card";
+  const info=document.createElement("div");const title=document.createElement("strong");title.textContent=item.name;
+  const meta=document.createElement("p");meta.className="tiny muted";meta.textContent=(item.config.dataset==="transactions"?"交易資料":"帳單資料")+" · v"+item.version+" · "+(exportStatusLabel[item.status]||item.status)+" · "+(item.config.columns||[]).length+" 欄";
+  info.append(title,meta);if(item.description){const desc=document.createElement("p");desc.className="tiny muted";desc.textContent=item.description;info.append(desc);}card.append(info);
+  const actions=document.createElement("div");actions.className="export-admin-actions";
+  const edit=document.createElement("button");edit.type="button";edit.className="secondary small";edit.textContent="編輯";edit.disabled=item.status==="disabled";edit.addEventListener("click",()=>openExportTemplateForm(item));actions.append(edit);
+  if(item.status==="draft"){
+   const publish=document.createElement("button");publish.type="button";publish.className="primary small";publish.textContent="發布";publish.addEventListener("click",async()=>{if(!window.confirm("發布範本「"+item.name+"」第 "+item.version+" 版？"))return;try{await api("/exports/templates/"+item.id+"/publish?family_id="+selectedFamilyId+"&expected_version="+item.version,{method:"POST"});notice("notifications-exports-notice","匯出範本已發布。");await loadExportWorkspace();}catch(error){notice("notifications-exports-notice",error.message,"error");}});actions.append(publish);
+  }
+  if(item.status==="published"){
+   const run=document.createElement("button");run.type="button";run.className="primary small";run.textContent="立即匯出";run.addEventListener("click",async()=>{if(!window.confirm("立即執行「"+item.name+"」並產生 CSV 檔案？"))return;try{await api("/exports/templates/"+item.id+"/run?family_id="+selectedFamilyId,{method:"POST"});notice("notifications-exports-notice","匯出已完成，請至執行紀錄下載。");await loadExportWorkspace();}catch(error){notice("notifications-exports-notice","匯出失敗："+error.message,"error");}});actions.append(run);
+   const disable=document.createElement("button");disable.type="button";disable.className="secondary small";disable.textContent="停用";disable.addEventListener("click",async()=>{if(!window.confirm("停用範本後，相關定期排程也會停止。確定繼續？"))return;try{await api("/exports/templates/"+item.id+"/disable?family_id="+selectedFamilyId+"&expected_version="+item.version,{method:"POST"});notice("notifications-exports-notice","範本已停用。");await loadExportWorkspace();}catch(error){notice("notifications-exports-notice",error.message,"error");}});actions.append(disable);
+  }
+  card.append(actions);host.append(card);
+ }
+ const select=$("export-schedule-template"),previous=select.value;select.replaceChildren(new Option("請選擇已發布範本",""));
+ for(const item of exportTemplates.filter(x=>x.status==="published"))select.add(new Option(item.name+"（v"+item.version+"）",String(item.id)));
+ if(previous&&Array.from(select.options).some(x=>x.value===previous))select.value=previous;
+}
+function openExportTemplateForm(item=null){
+ editingExportTemplate=item; $("export-template-form").reset();$("export-template-form-title").textContent=item?"編輯範本草稿":"新增匯出範本";
+ $("export-template-submit").textContent=item?"儲存新版本草稿":"建立草稿";
+ $("export-template-name").value=item?item.name:"";$("export-template-description").value=item?(item.description||""):"";
+ $("export-template-dataset").disabled=Boolean(item);$("export-template-dataset").value=item?item.config.dataset:"transactions";
+ renderExportColumnChoices(item?item.config.columns:[]);$("export-template-form-panel").classList.remove("hidden");
+}
+async function loadNotificationItems(){
+ const result=await api("/notifications?family_id="+selectedFamilyId+"&limit=100");
+ $("notification-unread-count").textContent="未讀 "+result.unread+" 則";
+ const host=$("notifications-list");host.replaceChildren();$("notifications-empty").classList.toggle("hidden",(result.notifications||[]).length>0);
+ for(const item of result.notifications||[]){
+  const card=document.createElement("article");card.className="notification-admin-card"+(item.read_at?"":" notification-unread");
+  const body=document.createElement("div");const title=document.createElement("strong");title.textContent=item.title;
+  const desc=document.createElement("p");desc.className="tiny muted";desc.textContent=item.body||"";
+  const meta=document.createElement("span");meta.className="tiny muted";meta.textContent=(item.created_at?new Date(item.created_at).toLocaleString("zh-TW",{hour12:false}):"時間未知")+" · "+item.notification_type;
+  body.append(title,desc,meta);card.append(body);
+  if(!item.read_at){const read=document.createElement("button");read.type="button";read.className="secondary small";read.textContent="標記已讀";read.addEventListener("click",async()=>{try{await api("/notifications/"+item.id+"/read?family_id="+selectedFamilyId,{method:"POST"});await loadNotificationItems();}catch(error){notice("notifications-exports-notice",error.message,"error");}});card.append(read);}
+  host.append(card);
+ }
+}
+async function loadExportTemplates(){
+ const result=await api("/exports/templates?family_id="+selectedFamilyId);exportTemplates=result.templates||[];renderExportTemplates();
+}
+async function loadExportSchedules(){
+ const result=await api("/exports/schedules?family_id="+selectedFamilyId);exportSchedules=result.schedules||[];
+ const host=$("export-schedules-list");host.replaceChildren();$("export-schedules-empty").classList.toggle("hidden",exportSchedules.length>0);
+ for(const item of exportSchedules){
+  const card=document.createElement("article");card.className="export-admin-card";const info=document.createElement("div");
+  const title=document.createElement("strong");title.textContent=item.name;const meta=document.createElement("p");meta.className="tiny muted";
+  const frequency={daily:"每日",weekly:"每週",monthly:"每月"}[item.frequency]||item.frequency;
+  meta.textContent=frequency+" · "+String(item.local_hour).padStart(2,"0")+":"+String(item.local_minute).padStart(2,"0")+"（台灣時間） · 下次："+new Date(item.next_run_at).toLocaleString("zh-TW",{hour12:false})+" · "+(item.enabled?"啟用":"已停用");
+  info.append(title,meta);card.append(info);
+  if(item.enabled){const disable=document.createElement("button");disable.type="button";disable.className="secondary small";disable.textContent="停用排程";disable.addEventListener("click",async()=>{if(!window.confirm("確定停用此排程？"))return;try{await api("/exports/schedules/"+item.id+"/disable?family_id="+selectedFamilyId,{method:"POST"});await loadExportSchedules();}catch(error){notice("notifications-exports-notice",error.message,"error");}});card.append(disable);}
+  host.append(card);
+ }
+}
+async function loadExportRuns(){
+ const [result,dashboard]=await Promise.all([api("/exports/runs?family_id="+selectedFamilyId+"&limit=100"),api("/exports/dashboard?family_id="+selectedFamilyId)]);
+ exportRuns=result.runs||[];$("export-runs-summary").textContent="共 "+result.total+" 筆 · 失敗 "+(dashboard.alert_count||0)+" 筆";
+ const host=$("export-runs-list");host.replaceChildren();$("export-runs-empty").classList.toggle("hidden",exportRuns.length>0);
+ for(const item of exportRuns){
+  const card=document.createElement("article");card.className="export-admin-card";const info=document.createElement("div");
+  const title=document.createElement("strong");title.textContent="匯出 #"+item.id+" · "+(exportStatusLabel[item.status]||item.status);
+  const meta=document.createElement("p");meta.className="tiny muted";meta.textContent="範本 #"+item.template_id+" · v"+item.template_version+" · "+new Date(item.created_at).toLocaleString("zh-TW",{hour12:false})+(item.file_size?" · "+Math.ceil(item.file_size/1024)+" KB":"")+(item.error_code?" · "+item.error_code:"");
+  info.append(title,meta);card.append(info);
+  if(item.status==="succeeded"){const download=document.createElement("button");download.type="button";download.className="primary small";download.textContent="下載 CSV";download.addEventListener("click",()=>downloadExportRun(item.id));card.append(download);}
+  host.append(card);
+ }
+}
+async function downloadExportRun(id){
+ try{const response=await fetch("/exports/runs/"+id+"/download?family_id="+selectedFamilyId,{headers:token()?{Authorization:"Bearer "+token()}:{}});
+  if(!response.ok){let data={};try{data=await response.json();}catch{}throw new Error(data.detail||"下載失敗");}
+  const blob=await response.blob(),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="family-export-"+id+".csv";a.click();URL.revokeObjectURL(url);
+ }catch(error){notice("notifications-exports-notice","下載失敗："+error.message,"error");}
+}
+async function loadExportWorkspace(){await Promise.all([loadNotificationItems(),loadExportTemplates(),loadExportSchedules(),loadExportRuns()]);}
+async function openNotificationsExports(){if(!selectedFamilyId){notice("notice-app","請先建立或選擇家庭。","error");return;}$("notifications-exports-view").classList.remove("hidden");$("notifications-exports-view").scrollIntoView({behavior:"smooth",block:"start"});try{await loadExportWorkspace();}catch(error){notice("notifications-exports-notice","載入通知或匯出資料失敗："+error.message,"error");}}
+$("open-notifications-exports").addEventListener("click",openNotificationsExports);
+$("close-notifications-exports").addEventListener("click",()=>$("notifications-exports-view").classList.add("hidden"));
+$("refresh-notifications-exports").addEventListener("click",openNotificationsExports);
+$("new-export-template").addEventListener("click",()=>openExportTemplateForm());
+$("export-template-cancel").addEventListener("click",()=>{$("export-template-form-panel").classList.add("hidden");editingExportTemplate=null;});
+$("export-template-dataset").addEventListener("change",()=>renderExportColumnChoices());
+$("export-template-form").addEventListener("submit",async event=>{
+ event.preventDefault();const columns=Array.from($("export-template-columns").querySelectorAll("input:checked")).map(x=>x.value);
+ if(!columns.length){notice("notifications-exports-notice","請至少選擇一個匯出欄位。","error");return;}
+ const body={name:$("export-template-name").value.trim(),description:$("export-template-description").value.trim()||null,config:{dataset:$("export-template-dataset").value,columns}};
+ try{const path="/exports/templates"+(editingExportTemplate?"/"+editingExportTemplate.id:"")+"?family_id="+selectedFamilyId;
+  if(editingExportTemplate)body.expected_version=editingExportTemplate.version;
+  await api(path,{method:editingExportTemplate?"PUT":"POST",body:JSON.stringify(body)});
+  $("export-template-form-panel").classList.add("hidden");editingExportTemplate=null;notice("notifications-exports-notice","匯出範本草稿已儲存。");await loadExportWorkspace();
+ }catch(error){notice("notifications-exports-notice","儲存範本失敗："+error.message,"error");}
+});
+$("export-schedule-frequency").addEventListener("change",()=>{$("export-schedule-weekday-wrap").classList.toggle("hidden",$("export-schedule-frequency").value!=="weekly");$("export-schedule-monthday-wrap").classList.toggle("hidden",$("export-schedule-frequency").value!=="monthly");});
+$("export-schedule-form").addEventListener("submit",async event=>{
+ event.preventDefault();const frequency=$("export-schedule-frequency").value,body={template_id:Number($("export-schedule-template").value),name:$("export-schedule-name").value.trim(),frequency,local_hour:Number($("export-schedule-hour").value),local_minute:Number($("export-schedule-minute").value),enabled:true};
+ if(frequency==="weekly")body.weekday=Number($("export-schedule-weekday").value);if(frequency==="monthly")body.monthday=Number($("export-schedule-monthday").value);
+ try{await api("/exports/schedules?family_id="+selectedFamilyId,{method:"POST",body:JSON.stringify(body)});$("export-schedule-form").reset();notice("notifications-exports-notice","定期匯出排程已建立。");await loadExportSchedules();}
+ catch(error){notice("notifications-exports-notice","建立排程失敗："+error.message,"error");}
+});
