@@ -215,3 +215,10 @@
 .ocr-extracted-text{white-space:pre-wrap;overflow-wrap:anywhere;max-height:360px;overflow:auto;padding:14px;border-radius:12px;background:var(--surface-soft,#f4f7f5);font:inherit;font-size:.9rem}
 .ocr-suggested-fields pre{white-space:pre-wrap;overflow-wrap:anywhere}
 @media(max-width:760px){.attachment-target-grid{grid-template-columns:1fr}.attachment-admin-card{align-items:flex-start;flex-direction:column}.attachment-admin-actions{width:100%}.attachment-admin-actions button{flex:1}}
+
+/* G-02-15 notifications and export manager */
+.notifications-list,.export-templates-list,.export-schedules-list,.export-runs-list{display:grid;gap:10px}
+.notification-admin-card,.export-admin-card{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px;border:1px solid var(--line,#dce5e1);border-radius:12px;background:var(--surface,#fff)}
+.notification-admin-card>div,.export-admin-card>div{min-width:0}.notification-admin-card p,.export-admin-card p{margin:5px 0}.notification-unread{border-color:var(--accent,#397d69);background:var(--surface-soft,#f4f7f5)}
+.export-admin-actions{display:flex;gap:8px;flex-wrap:wrap}.export-columns-field{border:1px solid var(--line,#dce5e1);border-radius:12px;padding:12px;margin:12px 0}.export-columns{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.export-column-option{display:flex;align-items:center;gap:8px;font-size:.9rem}
+@media(max-width:760px){.notification-admin-card,.export-admin-card{align-items:flex-start;flex-direction:column}.notification-admin-card>button,.export-admin-card>button,.export-admin-actions button{width:100%}.export-admin-actions{width:100%;flex-direction:column}.export-columns{grid-template-columns:repeat(2,minmax(0,1fr))}}
