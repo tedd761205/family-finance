@@ -129,3 +129,14 @@
 .category-report-fill{height:100%;background:#648dba;border-radius:20px}
 .category-report-meta{display:flex;justify-content:space-between;gap:10px;margin-top:6px}
 @media(max-width:760px){.reports-panel{padding:21px 17px}.report-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.report-filter-button{width:100%}.yearly-month-row{grid-template-columns:34px minmax(0,1fr);gap:8px}.yearly-month-net{grid-column:2;text-align:left}.report-heading{align-items:flex-start}.report-summary-grid{grid-template-columns:1fr}}
+
+
+/* G-02-10 family members */
+.member-invite-form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end;padding:16px;border:1px solid var(--border);border-radius:14px;background:var(--surface)}
+.family-members-list{display:grid;gap:10px;margin-top:12px}
+.family-member-card{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:15px;border:1px solid var(--border);border-radius:12px;background:var(--surface)}
+.family-member-identity{display:grid;gap:4px;min-width:0}
+.family-member-identity strong{overflow-wrap:anywhere}
+.family-member-roles{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
+.member-role-tag{display:inline-flex;padding:5px 9px;border-radius:999px;background:var(--surface-soft,#eef3f1);font-size:.82rem;color:var(--text)}
+@media(max-width:760px){.member-invite-form{grid-template-columns:1fr}.family-member-card{align-items:flex-start;flex-direction:column}.family-member-roles{justify-content:flex-start}}
