@@ -129,7 +129,7 @@ def _check_parent_for_attachment(db: Session, user: User, attachment: Attachment
 
 def _safe_filename(value: str | None) -> str:
     name = (value or "attachment").replace("\\", "/").split("/")[-1]
-    name = re.sub(r"[\\x00-\\x1f\\x7f]", "", name).strip()
+    name = re.sub(r"[\x00-\x1f\x7f]", "", name).strip()
     return (name or "attachment")[:255]
 
 
