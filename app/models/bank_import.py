@@ -52,6 +52,7 @@ class BankImportRow(Base):
     __tablename__ = "bank_import_rows"
     __table_args__ = (
         UniqueConstraint("family_id", "id", name="uq_bank_import_rows_family_id_id"),
+        UniqueConstraint("family_id", "batch_id", "id", name="uq_bank_import_rows_family_batch_id"),
         UniqueConstraint("family_id", "batch_id", "row_number", name="uq_bank_import_rows_batch_row"),
         ForeignKeyConstraint(
             ["family_id", "batch_id"], ["bank_import_batches.family_id", "bank_import_batches.id"],
