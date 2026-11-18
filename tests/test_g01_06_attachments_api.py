@@ -321,3 +321,13 @@ def test_ocr_provider_missing_key_fails_closed(attachment_client, monkeypatch):
     assert failed.status_code == 200, failed.text
     assert failed.json()["task"]["status"] == "failed"
     assert failed.json()["task"]["error_code"] == "OcrProviderNotConfigured"
+
+
+
+def test_ocr_suggestions_support_taiwan_roc_dates_and_amount_labels():
+    from app.services.ocr_provider import _suggest_fields
+
+    result = _suggest_fields("繳費通知\n民國115年11月18日\n應繳金額：1,280\n帳單編號：ABCD1234")
+    assert result["date_candidate"] == "2026-11-18"
+    assert result["amount_candidate"] == "1280"
+    assert result["bill_number_candidate"] == "ABCD1234"
