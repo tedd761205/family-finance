@@ -76,3 +76,10 @@ def test_recurring_bill_generate_date_uses_iso_date_validation():
 
     assert r"/^\d{4}-\d{2}-\d{2}$/" in javascript
     assert r"/^\\d{4}-\\d{2}-\\d{2}$/" not in javascript
+
+
+def test_recurring_bill_next_run_date_is_required():
+    with TestClient(app) as client:
+        html = client.get("/").text
+
+    assert 'id="recurring-bill-next" type="date" required' in html
