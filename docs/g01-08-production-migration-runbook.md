@@ -30,15 +30,17 @@ Supply three successful GitHub Actions run IDs:
 2. `Neon Restore Test` — completed successfully after that backup, restoring into `g01-restore-test`.
 3. `G-01-08 Restored Production Snapshot Migration Rehearsal` — completed successfully after the restore test, with its verification report still available.
 
-The workflow verifies each run's repository, workflow path, branch, status, conclusion, chronology, and required artifact. It also compares the migration source files in the rehearsal commit with the current `main` branch. Documentation-only or workflow-only commits do not force a needless rehearsal; changes to migration sources, dependencies, Alembic configuration, or the role-catalog validator do.
+The workflow verifies each run's repository, workflow path, branch, status, conclusion, chronology, and required artifacts. The restore workflow also records a provenance artifact containing the exact backup run ID and the `g01-restore-test` confirmation; the production gate downloads it and requires it to match the selected backup run. It also compares migration source files in the rehearsal commit with current `main`. Documentation-only or workflow-only commits do not force a needless rehearsal; changes to migration sources, dependencies, Alembic configuration, or the role-catalog validator do.
+
+The restore provenance artifact was added by this hardening change. Therefore, the previously successful restore run `44294853198` predates that artifact and cannot be used for a future production migration dispatch. After this PR is merged, run a fresh backup if the existing backup is older than 24 hours, then run Neon Restore Test and the restored-snapshot Migration Rehearsal again. The new restore test resets the isolated branch to the baseline, so the rehearsal must run after it.
 
 Latest successful evidence at the time this runbook was written:
 
 | Evidence | Run ID |
 |---|---:|
 | Neon Database Backup | `44294415773` |
-| Neon Restore Test | `44294853198` |
-| Restored-snapshot Migration Rehearsal | `44296697831` |
+| Neon Restore Test | `44294853198` (pre-provenance; historical evidence only) |
+| Restored-snapshot Migration Rehearsal | `44296697831` (historical evidence; rerun after the fresh restore) |
 
 The backup evidence expires as a production gate after 24 hours. Generate a fresh backup and repeat restore/rehearsal if the evidence is no longer current or the restore branch has changed.
 
