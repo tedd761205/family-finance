@@ -1,0 +1,59 @@
+name: Neon Object Storage Smoke Test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neon-object-storage-smoke-test
+  cancel-in-progress: false
+
+jobs:
+  storage-smoke-test:
+    name: Private object storage upload/download/delete
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install S3 client dependency
+        run: |
+          python -m pip install --disable-pip-version-check "boto3>=1.35,<2.0"
+
+      - name: Verify private object storage
+        env:
+          ATTACHMENT_STORAGE_ENDPOINT_URL: ${{ secrets.ATTACHMENT_STORAGE_ENDPOINT_URL }}
+          ATTACHMENT_STORAGE_REGION: ${{ secrets.ATTACHMENT_STORAGE_REGION }}
+          ATTACHMENT_STORAGE_BUCKET: ${{ secrets.ATTACHMENT_STORAGE_BUCKET }}
+          ATTACHMENT_STORAGE_ACCESS_KEY_ID: ${{ secrets.ATTACHMENT_STORAGE_ACCESS_KEY_ID }}
+          ATTACHMENT_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.ATTACHMENT_STORAGE_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+
+          missing=0
+          for name in \
+            ATTACHMENT_STORAGE_ENDPOINT_URL \
+            ATTACHMENT_STORAGE_REGION \
+            ATTACHMENT_STORAGE_BUCKET \
+            ATTACHMENT_STORAGE_ACCESS_KEY_ID \
+            ATTACHMENT_STORAGE_SECRET_ACCESS_KEY; do
+            if [ -z "${!name:-}" ]; then
+              echo "Missing GitHub Actions secret: ${name}"
+              missing=1
+            fi
+          done
+
+          if [ "$missing" -ne 0 ]; then
+            echo "Add all five ATTACHMENT_STORAGE_* repository secrets before running this workflow."
+            exit 2
+          fi
+
+          python scripts/check_attachment_storage.py
