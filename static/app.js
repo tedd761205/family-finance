@@ -176,8 +176,10 @@ async function loadTransactions() {
     const result=await api("/transactions?"+transactionQuery());
     transactionRows=result.transactions||[];
     renderTransactions();
+    return true;
   } catch(error) {
     notice("transaction-notice","收支紀錄載入失敗："+error.message,"error");
+    return false;
   } finally {
     $("transactions-loading").classList.add("hidden");
   }
@@ -273,9 +275,9 @@ $("transaction-form").addEventListener("submit",async(event)=>{
       await api("/transactions?family_id="+selectedFamilyId,{method:"POST",body:JSON.stringify(payload)});
     }
     resetTransactionForm();
-    await loadTransactions();
+    const refreshed=await loadTransactions();
     await loadAccounts();
-    notice("transaction-notice",wasEditing?"收支紀錄已更新。":"收支紀錄已新增。","success");
+    notice("transaction-notice",refreshed?(wasEditing?"收支紀錄已更新。":"收支紀錄已新增。"):"資料已儲存，但收支清單重新載入失敗，請重新整理。",refreshed?"success":"error");
   } catch(error) {
     notice("transaction-notice",error.message,"error");
   } finally {
@@ -287,9 +289,9 @@ async function voidTransaction(item) {
   if(!window.confirm("確定要作廢這筆"+transactionTypeLabel(item.transaction_type)+"紀錄？作廢後不會刪除歷史資料。"))return;
   try {
     await api("/transactions/"+item.id+"?family_id="+selectedFamilyId,{method:"DELETE"});
-    await loadTransactions();
+    const refreshed=await loadTransactions();
     await loadAccounts();
-    notice("transaction-notice","收支紀錄已作廢，歷史資料仍會保留。","success");
+    notice("transaction-notice",refreshed?"收支紀錄已作廢，歷史資料仍會保留。":"已完成作廢，但收支清單重新載入失敗，請重新整理。",refreshed?"success":"error");
   } catch(error) {
     notice("transaction-notice",error.message,"error");
   }
