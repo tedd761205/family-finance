@@ -251,6 +251,7 @@ $("transaction-form").addEventListener("submit",async(event)=>{
     if(!account)throw new Error("請選擇有效帳戶。");
     const type=$("transaction-type").value;
     const categoryId=$("transaction-category").value;
+    const wasEditing=Boolean(editingTransactionId);
     const payload={
       transaction_type:type,
       amount:$("transaction-amount").value,
@@ -261,7 +262,8 @@ $("transaction-form").addEventListener("submit",async(event)=>{
       external_reference:$("transaction-reference").value.trim()||null,
       note:$("transaction-note").value.trim()||null
     };
-    if(editingTransactionId) {
+    if(wasEditing) {
+      delete payload.currency_code;
       await api("/transactions/"+editingTransactionId+"?family_id="+selectedFamilyId,{method:"PATCH",body:JSON.stringify(payload)});
     } else {
       payload.account_id=account.id;
@@ -270,7 +272,7 @@ $("transaction-form").addEventListener("submit",async(event)=>{
     resetTransactionForm();
     await loadTransactions();
     await loadAccounts();
-    notice("transaction-notice",editingTransactionId?"收支紀錄已更新。":"收支紀錄已新增。","success");
+    notice("transaction-notice",wasEditing?"收支紀錄已更新。":"收支紀錄已新增。","success");
   } catch(error) {
     notice("transaction-notice",error.message,"error");
   } finally {
