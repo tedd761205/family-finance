@@ -707,3 +707,112 @@ def test_api_non_member_cannot_invite_into_another_users_family(api_client):
         json={"email": invitee["email"]},
     )
     assert denied.status_code == 403
+
+
+def test_api_logout_revokes_the_current_access_token(api_client):
+    suffix = uuid4().hex
+    _, headers = _register_and_login(
+        api_client,
+        f"api-logout-{suffix}@example.com",
+        "登出撤銷測試",
+    )
+
+    before_logout = api_client.get("/auth/me", headers=headers)
+    assert before_logout.status_code == 200, before_logout.text
+
+    logout = api_client.post("/auth/logout", headers=headers)
+    assert logout.status_code == 200, logout.text
+
+    after_logout = api_client.get("/auth/me", headers=headers)
+    assert after_logout.status_code == 401
+
+
+def test_api_inactive_family_membership_loses_family_access(api_client):
+    from app.models.family_member import FamilyMember
+
+    suffix = uuid4().hex
+    owner, owner_headers = _register_and_login(
+        api_client,
+        f"api-left-owner-{suffix}@example.com",
+        "已退出家庭的管理員",
+    )
+    invitee, _ = _register_and_login(
+        api_client,
+        f"api-left-invitee-{suffix}@example.com",
+        "邀請目標",
+    )
+
+    with Session(engine) as db:
+        _seed_api_permission_catalog(db)
+        db.commit()
+
+    created = api_client.post(
+        "/families",
+        headers=owner_headers,
+        json={"name": f"成員狀態測試家庭 {suffix}", "currency": "TWD"},
+    )
+    assert created.status_code == 201, created.text
+    family_id = created.json()["family_id"]
+
+    with Session(engine) as db:
+        member = db.query(FamilyMember).filter(
+            FamilyMember.family_id == family_id,
+            FamilyMember.user_id == owner["id"],
+        ).one()
+        member.status = "left"
+        member.left_at = datetime.now(timezone.utc)
+        db.commit()
+
+    family_list = api_client.get("/families/mine", headers=owner_headers)
+    assert family_list.status_code == 200, family_list.text
+    assert family_list.json()["total"] == 0
+
+    denied = api_client.post(
+        f"/families/{family_id}/members",
+        headers=owner_headers,
+        json={"email": invitee["email"]},
+    )
+    assert denied.status_code == 403
+
+
+def test_api_family_list_does_not_leak_other_users_families(api_client):
+    suffix = uuid4().hex
+    first_user, first_headers = _register_and_login(
+        api_client,
+        f"api-isolation-first-{suffix}@example.com",
+        "第一個家庭使用者",
+    )
+    second_user, second_headers = _register_and_login(
+        api_client,
+        f"api-isolation-second-{suffix}@example.com",
+        "第二個家庭使用者",
+    )
+
+    with Session(engine) as db:
+        _seed_api_permission_catalog(db)
+        db.commit()
+
+    first_family = api_client.post(
+        "/families",
+        headers=first_headers,
+        json={"name": f"第一個家庭 {suffix}", "currency": "TWD"},
+    )
+    second_family = api_client.post(
+        "/families",
+        headers=second_headers,
+        json={"name": f"第二個家庭 {suffix}", "currency": "TWD"},
+    )
+    assert first_family.status_code == 201, first_family.text
+    assert second_family.status_code == 201, second_family.text
+
+    first_list = api_client.get("/families/mine", headers=first_headers)
+    second_list = api_client.get("/families/mine", headers=second_headers)
+    assert first_list.status_code == 200, first_list.text
+    assert second_list.status_code == 200, second_list.text
+
+    first_ids = {item["family_id"] for item in first_list.json()["families"]}
+    second_ids = {item["family_id"] for item in second_list.json()["families"]}
+
+    assert first_ids == {first_family.json()["family_id"]}
+    assert second_ids == {second_family.json()["family_id"]}
+    assert first_user["id"] != second_user["id"]
