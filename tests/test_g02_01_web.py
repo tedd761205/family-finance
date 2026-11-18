@@ -35,3 +35,12 @@ def test_app_config_exposes_only_public_google_client_id(monkeypatch):
     assert response.json() == {
         "google_client_id": "public-client-id.apps.googleusercontent.com"
     }
+
+
+def test_frontend_handles_session_and_family_loading_errors_safely():
+    with TestClient(app) as client:
+        javascript = client.get("/static/app.js").text
+
+    assert "家庭清單載入失敗：" in javascript
+    assert "伺服器端 Token 撤銷未確認" in javascript
+    assert "let revoked=false" in javascript
