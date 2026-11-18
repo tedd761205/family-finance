@@ -24,6 +24,7 @@ from app.models.ocr_task import OcrTask
 from app.models.notification import Notification
 from app.models.export_template import ExportTemplate, ExportTemplateVersion, ExportSchedule, ExportRun
 from app.models.bank_import import BankImportBatch, BankImportRow
+from app.models.reconciliation import ReconciliationSession, ReconciliationMatch
 
 __all__ = [
     "User", "Family", "FamilyMember", "Role", "Permission", "RolePermission",
@@ -32,4 +33,5 @@ __all__ = [
     "Category", "CreditCardPayment", "Bill", "BillPayment", "Attachment",
     "OcrTask", "RecurringBill", "Notification", "ExportTemplate",
     "ExportTemplateVersion", "ExportSchedule", "ExportRun", "BankImportBatch", "BankImportRow",
+    "ReconciliationSession", "ReconciliationMatch",
 ]
