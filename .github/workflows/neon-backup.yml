@@ -1,0 +1,76 @@
+name: Neon Database Backup
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 每日台灣時間 03:00（UTC 19:00）
+    - cron: "0 19 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neon-database-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Create and verify Neon backup
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show PostgreSQL client version
+        run: |
+          docker run --rm postgres:18-bookworm pg_dump --version
+          docker run --rm postgres:18-bookworm pg_restore --version
+
+      - name: Create custom-format database dump
+        id: dump
+        env:
+          DATABASE_URL: ${{ secrets.NEON_BACKUP_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${DATABASE_URL:-}" ]; then
+            echo "Missing GitHub Secret: NEON_BACKUP_DATABASE_URL"
+            exit 1
+          fi
+
+          mkdir -p "$GITHUB_WORKSPACE/backups"
+
+          BACKUP_FILE="family-finance-$(date -u +%Y%m%dT%H%M%SZ).dump"
+          echo "backup_file=$BACKUP_FILE" >> "$GITHUB_OUTPUT"
+
+          docker run --rm \
+            -e DATABASE_URL \
+            -e BACKUP_FILE \
+            -v "$GITHUB_WORKSPACE/backups:/backups" \
+            postgres:18-bookworm \
+            sh -c 'pg_dump --dbname="$DATABASE_URL" --format=custom --no-owner --no-acl --verbose --file="/backups/$BACKUP_FILE"'
+
+          test -s "$GITHUB_WORKSPACE/backups/$BACKUP_FILE"
+          ls -lh "$GITHUB_WORKSPACE/backups/$BACKUP_FILE"
+
+      - name: Verify dump archive
+        env:
+          BACKUP_FILE: ${{ steps.dump.outputs.backup_file }}
+        run: |
+          set -euo pipefail
+
+          docker run --rm \
+            -e BACKUP_FILE \
+            -v "$GITHUB_WORKSPACE/backups:/backups:ro" \
+            postgres:18-bookworm \
+            sh -c 'pg_restore --list "/backups/$BACKUP_FILE" > /tmp/restore-list.txt && test -s /tmp/restore-list.txt && head -n 20 /tmp/restore-list.txt'
+
+      - name: Upload backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: family-finance-neon-backup-${{ github.run_number }}
+          path: backups/*.dump
+          if-no-files-found: error
+          retention-days: 14
