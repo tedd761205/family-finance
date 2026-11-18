@@ -59,6 +59,24 @@ class Bill(Base):
             ondelete="RESTRICT",
             name="fk_bills_voided_by",
         ),
+        ForeignKeyConstraint(
+            ["recurring_bill_id"],
+            ["recurring_bills.id"],
+            ondelete="RESTRICT",
+            name="fk_bills_recurring_bill",
+        ),
+        CheckConstraint(
+            "(recurring_bill_id IS NULL AND recurring_occurrence_date IS NULL) OR "
+            "(recurring_bill_id IS NOT NULL AND recurring_occurrence_date IS NOT NULL)",
+            name="ck_bills_recurring_occurrence_pair",
+        ),
+        Index(
+            "uq_bills_recurring_occurrence",
+            "recurring_bill_id",
+            "recurring_occurrence_date",
+            unique=True,
+            postgresql_where=text("recurring_bill_id IS NOT NULL"),
+        ),
         CheckConstraint("original_amount > 0", name="ck_bills_original_amount_positive"),
         CheckConstraint("tax_amount >= 0", name="ck_bills_tax_amount_nonnegative"),
         CheckConstraint("discount_amount >= 0", name="ck_bills_discount_amount_nonnegative"),
@@ -90,6 +108,8 @@ class Bill(Base):
     bill_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     category_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    recurring_bill_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    recurring_occurrence_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     bill_date: Mapped[date] = mapped_column(Date, nullable=False)
     billing_period_start: Mapped[date | None] = mapped_column(Date, nullable=True)
