@@ -1,3 +1,4 @@
+import hashlib
 from io import BytesIO
 from uuid import uuid4
 
@@ -181,7 +182,8 @@ def test_real_neon_storage_attachment_and_ocr_flow(monkeypatch):
             )
             assert voided.status_code == 200, voided.text
             assert voided.json()["attachment"]["is_voided"] is True
-            assert attachment_storage.download_object(object_key)
+            retained_object = attachment_storage.download_object(object_key)
+            assert hashlib.sha256(retained_object).hexdigest() == expected_digest
             assert expected_digest == upload.json()["sha256"]
 
             hidden = client.get(
@@ -192,9 +194,11 @@ def test_real_neon_storage_attachment_and_ocr_flow(monkeypatch):
     finally:
         # This is a disposable test object created by this test only. Production
         # attachment voiding never deletes the original financial evidence.
-        if object_key:
-            attachment_storage.delete_object(object_key)
-        if previous_override is None:
-            app.dependency_overrides.pop(get_db, None)
-        else:
-            app.dependency_overrides[get_db] = previous_override
+        try:
+            if object_key:
+                attachment_storage.delete_object(object_key)
+        finally:
+            if previous_override is None:
+                app.dependency_overrides.pop(get_db, None)
+            else:
+                app.dependency_overrides[get_db] = previous_override
