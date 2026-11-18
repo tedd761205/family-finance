@@ -229,6 +229,7 @@ FINANCE_SCOPES = {
     "reports": "family",
     "imports": "family",
     "attachments": "family",
+    "ocr": "family",
     "audit_logs": "family",
 }
 
