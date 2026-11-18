@@ -210,6 +210,19 @@ PERMISSION_CATALOG = [
         "category": "reconciliation",
     },
 
+    {
+        "code": "reconciliation.exclude",
+        "name": "排除對帳明細",
+        "description": "將銀行明細標記為排除並保留原因",
+        "category": "reconciliation",
+    },
+    {
+        "code": "reconciliation.reopen",
+        "name": "重新開啟對帳",
+        "description": "重新開啟已完成的對帳工作階段",
+        "category": "reconciliation",
+    },
+
     # 報表分析
     {
         "code": "reports.view",
