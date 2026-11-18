@@ -95,11 +95,12 @@ def upgrade() -> None:
         postgresql_where=sa.text("is_voided = false AND bill_number IS NOT NULL"),
     )
 
-    op.execute("""
+    bind = op.get_bind()
+    bind.exec_driver_sql("""
         CREATE OR REPLACE FUNCTION check_bill_category_scope()
         RETURNS trigger
         LANGUAGE plpgsql
-        AS $
+        AS $bill_category_scope$
         DECLARE
             category_family_id BIGINT;
         BEGIN
@@ -122,9 +123,9 @@ def upgrade() -> None:
 
             RETURN NEW;
         END;
-        $;
+        $bill_category_scope$;
     """)
-    op.execute("""
+    bind.exec_driver_sql("""
         CREATE TRIGGER trg_check_bill_category_scope
         BEFORE INSERT OR UPDATE OF family_id, category_id
         ON bills
