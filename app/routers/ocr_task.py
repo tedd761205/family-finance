@@ -261,8 +261,8 @@ def run_ocr_task(
     if task is None:
         raise HTTPException(status_code=404, detail="找不到此 OCR 任務")
     _check_access(db, current_user, task, scope)
-    if task.status not in {"queued", "failed"}:
-        raise HTTPException(status_code=409, detail="目前任務狀態不可執行")
+    if task.status != "queued":
+        raise HTTPException(status_code=409, detail="只有排隊中的 OCR 任務可以執行；失敗任務請先使用重試功能")
     if task.attempts >= MAX_ATTEMPTS:
         raise HTTPException(status_code=409, detail="已達最大 OCR 重試次數")
     task.status = "processing"
