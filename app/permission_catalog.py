@@ -421,4 +421,14 @@ PERMISSION_CATALOG = [
         "description": "更新外幣匯率資料",
         "category": "exchange_rates",
     },
+    # 家庭協作、通知與匯出
+    {"code": "notifications.view", "name": "查看通知", "description": "查看本人收到的家庭通知", "category": "notifications"},
+    {"code": "notifications.manage", "name": "管理通知", "description": "管理家庭通知及通知狀態", "category": "notifications"},
+    {"code": "exports.view", "name": "查看匯出範本與紀錄", "description": "查看家庭匯出範本、排程及匯出紀錄", "category": "exports"},
+    {"code": "exports.create", "name": "建立匯出範本", "description": "建立家庭共用匯出範本", "category": "exports"},
+    {"code": "exports.update", "name": "修改匯出範本", "description": "修改草稿匯出範本及手動合併版本", "category": "exports"},
+    {"code": "exports.publish", "name": "發布匯出範本", "description": "發布及停用家庭共用匯出範本", "category": "exports"},
+    {"code": "exports.schedule", "name": "管理定期匯出", "description": "建立、修改及停用定期匯出排程", "category": "exports"},
+    {"code": "exports.download", "name": "下載匯出檔案", "description": "下載本人資料範圍內且仍有權限的匯出檔案", "category": "exports"},
+    {"code": "exports.dashboard", "name": "查看匯出管理統計", "description": "查看家庭匯出執行統計及管理追蹤", "category": "exports"},
 ]
