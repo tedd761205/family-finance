@@ -15,8 +15,6 @@ def process_task(db: Session, task: OcrTask) -> OcrTask:
     """Process one durable task. Caller owns transaction and authorization."""
     if task.status == "confirmed":
         raise ValueError("已確認的 OCR 結果不可重新辨識")
-    if task.attempts >= MAX_ATTEMPTS:
-        raise ValueError("已達 OCR 最大重試次數")
     attachment = db.query(Attachment).filter(
         Attachment.id == task.attachment_id,
         Attachment.family_id == task.family_id,
