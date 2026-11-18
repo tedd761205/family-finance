@@ -187,8 +187,6 @@ jobs:
 
 
       - name: Verify migration sources match rehearsal commit
-        env:
-          REHEARSAL_SHA: ${{ env.REHEARSAL_SHA }}
         run: |
           set -euo pipefail
           if [[ -z "${REHEARSAL_SHA}" ]]; then
