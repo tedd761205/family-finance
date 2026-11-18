@@ -1,0 +1,121 @@
+name: G-01-03 Bills Core Tests
+
+on:
+  push:
+    branches:
+      - g01-03-bills-core
+      - g01-03-bills-core-mainline
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bills:
+    name: Bills, permissions, PostgreSQL and migration tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: g01_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d g01_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Verify isolated PostgreSQL test service
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/g01_test
+        run: |
+          set -euo pipefail
+          pg_isready --host=localhost --port=5432 --username=postgres --dbname=g01_test
+          python - <<'PY'
+          import os
+          from sqlalchemy.engine import make_url
+          from app.database import engine
+
+          parsed = make_url(os.environ["DATABASE_URL"])
+          if parsed.host != "localhost" or parsed.database != "g01_test":
+              raise SystemExit("Refusing to run against a non-isolated database")
+          with engine.connect() as connection:
+              connection.exec_driver_sql("SELECT 1")
+          print("Isolated PostgreSQL test service is reachable.")
+          PY
+
+      - name: Validate Alembic upgrade and downgrade
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          createdb --host=localhost --port=5432 --username=postgres g01_migration_test
+          cleanup() {
+            dropdb --if-exists --host=localhost --port=5432 --username=postgres g01_migration_test
+          }
+          trap cleanup EXIT
+          export DATABASE_URL="postgresql+psycopg://postgres:postgres@localhost:5432/g01_migration_test"
+          python -m alembic upgrade head
+          python -m alembic current
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+          from sqlalchemy.engine import make_url
+
+          url = make_url(os.environ["DATABASE_URL"])
+          engine = create_engine(url)
+          with engine.connect() as connection:
+              table_exists = connection.execute(text(
+                  "SELECT to_regclass('public.bills') IS NOT NULL"
+              )).scalar_one()
+              trigger_exists = connection.execute(text("""
+                  SELECT EXISTS (
+                      SELECT 1 FROM pg_trigger
+                      WHERE tgname = 'trg_check_bill_category_scope'
+                        AND NOT tgisinternal
+                  )
+              """)).scalar_one()
+              permission_count = connection.execute(text("""
+                  SELECT count(*) FROM permissions
+                  WHERE code IN ('bills.view', 'bills.create', 'bills.update', 'bills.void')
+              """)).scalar_one()
+          engine.dispose()
+          if not table_exists or not trigger_exists or permission_count != 4:
+              raise SystemExit("Bills migration objects or permissions are incomplete")
+          print("Bills table, category-scope trigger, and four permissions verified.")
+          PY
+          python -m alembic downgrade base
+          python -m alembic upgrade head
+          python -m alembic current
+
+      - name: Validate role catalog
+        run: python -m app.validate_role_catalog
+
+      - name: Run full regression suite
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/g01_test
+        run: python -m pytest -q
