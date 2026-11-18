@@ -65,7 +65,7 @@
       <section class="quick-grid">
         <button class="quick-card quick-card-button" id="open-accounts" type="button"><span class="quick-icon">帳</span><span class="quick-card-title">帳戶管理</span><span class="quick-card-description">銀行、現金、信用卡與電子支付。</span><span class="coming">管理帳戶 →</span></button>
         <button class="quick-card quick-card-button" id="open-transactions" type="button"><span class="quick-icon">收</span><span class="quick-card-title">收支紀錄</span><span class="quick-card-description">新增收入、支出，查詢及管理交易。</span><span class="coming">管理收支 →</span></button>
-        <article class="quick-card"><span class="quick-icon">轉</span><h3>帳戶轉帳</h3><p>管理帳戶間轉入、轉出與手續費。</p><span class="coming">下一階段開放</span></article>
+        <button class="quick-card quick-card-button" id="open-transfers" type="button"><span class="quick-icon">轉</span><span class="quick-card-title">帳戶轉帳</span><span class="quick-card-description">管理帳戶間轉入、轉出與手續費。</span><span class="coming">管理轉帳 →</span></button>
       </section>
 
       <section id="transactions-view" class="panel transactions-panel hidden">
@@ -100,6 +100,41 @@
             </div>
             <label class="field">備註<textarea id="transaction-note" rows="2" placeholder="選填"></textarea></label>
             <div class="form-actions"><button class="primary" id="transaction-submit" type="submit">新增紀錄</button><button class="secondary" id="transaction-cancel" type="button">取消</button></div>
+          </form>
+        </div>
+      </section>
+      <section id="transfers-view" class="panel transfers-panel hidden">
+        <div class="accounts-heading">
+          <div><p class="eyebrow">ACCOUNT TRANSFERS</p><h2>帳戶轉帳</h2><p class="muted">轉帳會同時建立轉出與轉入交易；手續費另列為支出。</p></div>
+          <div class="heading-actions"><button class="secondary small" id="close-transfers" type="button">收起</button><button class="primary small" id="add-transfer-button" type="button">＋ 新增轉帳</button></div>
+        </div>
+        <div id="transfer-notice" class="notice" role="status" aria-live="polite"></div>
+        <div class="transaction-filters">
+          <label class="field">帳戶<select id="transfer-filter-account"><option value="">全部帳戶</option></select></label>
+          <label class="field">開始日期<input id="transfer-filter-start" type="date"></label>
+          <label class="field">結束日期<input id="transfer-filter-end" type="date"></label>
+          <label class="field transaction-void-filter"><span>顯示已作廢</span><input id="transfer-include-voided" type="checkbox"></label>
+          <button class="secondary small" id="apply-transfer-filters" type="button">套用篩選</button>
+        </div>
+        <div class="accounts-summary"><strong id="transfers-count">0 筆轉帳</strong><span class="muted tiny">不同幣別分開顯示；不跨幣別加總。</span></div>
+        <p id="transfers-loading" class="muted hidden">正在載入轉帳紀錄…</p>
+        <div id="transfers-list" class="transactions-list"></div>
+        <div id="transfers-empty" class="empty-state hidden"><div class="empty-icon">↔</div><h3>尚無轉帳紀錄</h3><p class="muted">建立第一筆帳戶轉帳，系統會自動同步兩端帳戶餘額。</p></div>
+        <div id="transfer-form-panel" class="subpanel hidden">
+          <h3 id="transfer-form-title">新增轉帳</h3>
+          <form id="transfer-form">
+            <div class="account-form-grid">
+              <label class="field">轉出帳戶<select id="transfer-from-account" required></select></label>
+              <label class="field">轉入帳戶<select id="transfer-to-account" required></select></label>
+              <label class="field">轉帳金額<input id="transfer-amount" type="number" min="0.0001" step="0.0001" required placeholder="輸入金額"></label>
+              <label class="field">轉帳日期<input id="transfer-date" type="date" required></label>
+              <label class="field">手續費<input id="transfer-fee-amount" type="number" min="0" step="0.0001" value="0" required></label>
+              <label class="field">手續費扣款帳戶<select id="transfer-fee-account"></select></label>
+              <label class="field">轉帳說明<input id="transfer-description" maxlength="200" required placeholder="例如：家庭生活費轉入"></label>
+            </div>
+            <p class="tiny muted" id="transfer-currency-hint">轉帳幣別依轉出帳戶自動決定，轉入及手續費帳戶必須使用相同幣別。</p>
+            <label class="field">備註<textarea id="transfer-note" rows="2" placeholder="選填"></textarea></label>
+            <div class="form-actions"><button class="primary" id="transfer-submit" type="submit">新增轉帳</button><button class="secondary" id="transfer-cancel" type="button">取消</button></div>
           </form>
         </div>
       </section>
