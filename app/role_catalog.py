@@ -61,9 +61,6 @@ FINANCE_PERMISSIONS = [
     "notifications.view",
     "exports.view", "exports.create", "exports.update", "exports.publish",
     "exports.schedule", "exports.download", "exports.dashboard",
-    "notifications.view",
-    "exports.view", "exports.create", "exports.update", "exports.publish",
-    "exports.schedule", "exports.download", "exports.dashboard",
 
     "imports.view",
     "imports.create",
@@ -193,8 +190,6 @@ BOOKKEEPER_PERMISSIONS = [
     "ocr.confirm",
 
     "family.view",
-    "notifications.view",
-    "exports.view", "exports.create", "exports.download",
     "exchange_rates.view",
 ]
 
