@@ -144,13 +144,15 @@ def test_real_neon_storage_attachment_and_ocr_flow(monkeypatch):
                 object_key = attachment.object_key
                 expected_digest = attachment.sha256
 
-            # The API must retrieve the exact bytes from the real private bucket.
+            # Upload normalizes images (including PNG re-encoding), so compare
+            # the downloaded bytes against the persisted digest, not the
+            # original pre-normalization request body.
             download = client.get(
                 f"/attachments/{attachment_id}/content?family_id={family_id}",
                 headers=headers,
             )
             assert download.status_code == 200, download.text
-            assert download.content == _png_bytes()
+            assert hashlib.sha256(download.content).hexdigest() == expected_digest
             assert download.headers["cache-control"] == "private, no-store"
 
             # OCR reads the same real object and verifies its SHA-256 before
