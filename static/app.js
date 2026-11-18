@@ -316,6 +316,10 @@ function transferDateTime(value) {
   return value ? value+"T12:00:00+08:00" : "";
 }
 
+function transferFilterDateTime(value, endOfDay=false) {
+  return value ? value+(endOfDay?"T23:59:59+08:00":"T00:00:00+08:00") : "";
+}
+
 function transferAccountLabel(account) {
   return account.name+" · "+account.currency_code;
 }
@@ -372,8 +376,8 @@ function transferQuery() {
   const start=$("transfer-filter-start").value;
   const end=$("transfer-filter-end").value;
   if(account)params.set("account_id",account);
-  if(start)params.set("start_date",transferDateTime(start));
-  if(end)params.set("end_date",end+"T23:59:59+08:00");
+  if(start)params.set("start_date",transferFilterDateTime(start));
+  if(end)params.set("end_date",transferFilterDateTime(end,true));
   if($("transfer-include-voided").checked)params.set("include_voided","true");
   return params.toString();
 }
