@@ -70,10 +70,31 @@ class RecurringBillUpdate(BaseModel):
     currency_code: str | None = Field(default=None, min_length=3, max_length=3)
     note: str | None = None
 
+    @field_validator("frequency")
+    @classmethod
+    def valid_frequency(cls, value):
+        if value is not None and value not in {"weekly", "monthly", "yearly"}:
+            raise ValueError("週期僅支援 weekly、monthly、yearly")
+        return value
+
+    @field_validator("currency_code")
+    @classmethod
+    def valid_currency(cls, value):
+        if value is None:
+            return None
+        value = value.strip().upper()
+        if not re.fullmatch(r"[A-Z]{3}", value):
+            raise ValueError("幣別代碼必須為三個英文字母")
+        return value
+
     @model_validator(mode="after")
     def nonempty(self):
         if not self.model_fields_set:
             raise ValueError("沒有提供任何修改內容")
+        if self.start_date and self.end_date and self.end_date < self.start_date:
+            raise ValueError("結束日期不可早於開始日期")
+        if self.next_run_date and self.start_date and self.next_run_date < self.start_date:
+            raise ValueError("下次產生日期不可早於開始日期")
         return self
 
 
