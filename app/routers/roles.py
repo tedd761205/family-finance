@@ -14,6 +14,7 @@ from app.models.role_data_scope import RoleDataScope
 from app.models.role_permission import RolePermission
 from app.models.user import User
 from app.permission_catalog import PERMISSION_CATALOG
+from app.services.audit_log import add_audit_log
 from app.schemas.roles import MemberRoleAssignment, RoleWrite
 
 router = APIRouter(prefix="/families", tags=["Family Roles"])
@@ -180,6 +181,12 @@ def create_family_role(
             db.add(RolePermission(role_id=role.id, permission_id=permission_map[code].id))
         for resource, scope in data.data_scopes.items():
             db.add(RoleDataScope(role_id=role.id, family_id=family_id, resource=resource, scope=scope))
+        add_audit_log(
+            db, family_id=family_id, actor_user_id=current_user.id,
+            action="role.create", entity_type="role", entity_id=role.id,
+            new_values={"name": name, "permission_codes": sorted(requested), "data_scopes": data.data_scopes},
+            description="建立自訂角色",
+        )
         db.commit()
         return {"success": True, "role_id": role.id, "name": role.name}
     except Exception:
@@ -210,6 +217,16 @@ def update_family_role(
     ).first()
     if duplicate:
         raise HTTPException(status_code=409, detail="此家庭已有相同名稱的角色")
+    old_codes = _actor_permission_codes(db, [role])
+    old_scopes = {
+        row.resource: row.scope for row in db.query(RoleDataScope).filter(
+            RoleDataScope.role_id == role_id, RoleDataScope.family_id == family_id,
+        ).all()
+    }
+    old_values = {
+        "name": role.name, "description": role.description,
+        "permission_codes": sorted(old_codes), "data_scopes": old_scopes,
+    }
     try:
         role.name = name
         role.description = (data.description or "").strip() or None
@@ -224,6 +241,14 @@ def update_family_role(
         ).delete(synchronize_session=False)
         for resource, scope in data.data_scopes.items():
             db.add(RoleDataScope(role_id=role_id, family_id=family_id, resource=resource, scope=scope))
+        add_audit_log(
+            db, family_id=family_id, actor_user_id=current_user.id,
+            action="role.update", entity_type="role", entity_id=role_id,
+            old_values=old_values,
+            new_values={"name": name, "description": role.description,
+                        "permission_codes": sorted(requested), "data_scopes": data.data_scopes},
+            description="修改自訂角色及權限",
+        )
         db.commit()
         return {"success": True, "role_id": role_id, "name": role.name}
     except Exception:
@@ -251,6 +276,13 @@ def void_family_role(
     ).first():
         raise HTTPException(status_code=409, detail="此角色仍指派給家庭成員，請先調整成員角色")
     role.is_active = False
+    add_audit_log(
+        db, family_id=family_id, actor_user_id=current_user.id,
+        action="role.void", entity_type="role", entity_id=role_id,
+        old_values={"name": role.name, "is_active": True},
+        new_values={"is_active": False},
+        description="作廢未指派的自訂角色",
+    )
     db.commit()
     return {"success": True, "message": "角色已作廢，歷史關聯保留"}
 
@@ -303,6 +335,12 @@ def assign_member_roles(
         )
         if other_admins == 0:
             raise HTTPException(status_code=409, detail="每個家庭至少必須保留一位家庭管理員")
+    old_role_ids = [
+        row[0] for row in db.query(MemberRole.role_id).filter(
+            MemberRole.family_member_id == family_member_id,
+            MemberRole.family_id == family_id,
+        ).all()
+    ]
     try:
         db.query(MemberRole).filter(
             MemberRole.family_member_id == family_member_id,
@@ -312,6 +350,14 @@ def assign_member_roles(
             db.add(MemberRole(
                 family_member_id=family_member_id, role_id=role.id, family_id=family_id,
             ))
+        add_audit_log(
+            db, family_id=family_id, actor_user_id=current_user.id,
+            action="member.roles.update", entity_type="family_member",
+            entity_id=family_member_id,
+            old_values={"role_ids": sorted(old_role_ids)},
+            new_values={"role_ids": sorted(data.role_ids)},
+            description="調整家庭成員角色指派",
+        )
         db.commit()
         return {"success": True, "family_member_id": family_member_id, "role_ids": data.role_ids}
     except Exception:
