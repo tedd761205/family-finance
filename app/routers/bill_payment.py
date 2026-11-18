@@ -226,7 +226,7 @@ def refund_bill_payment(
             raise HTTPException(status_code=409, detail="帳單已作廢，不可退款")
         if payload.currency_code != original.currency_code or payload.currency_code != bill.currency_code:
             raise HTTPException(status_code=422, detail="退款幣別必須與原始付款及帳單一致")
-        _validate_account(db, family_id, payload.account_id, payload.currency_code)
+        _validate_account(db, family_id, payload.account_id, payload.currency_code, current_user)
 
         refunded = get_payment_refunded_amount(db, family_id, original.id)
         refundable = original.amount - refunded
