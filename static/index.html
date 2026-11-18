@@ -64,8 +64,44 @@
       </section>
       <section class="quick-grid">
         <button class="quick-card quick-card-button" id="open-accounts" type="button"><span class="quick-icon">帳</span><span class="quick-card-title">帳戶管理</span><span class="quick-card-description">銀行、現金、信用卡與電子支付。</span><span class="coming">管理帳戶 →</span></button>
-        <article class="quick-card"><span class="quick-icon">單</span><h3>帳單與付款</h3><p>分開追蹤應付帳單與實際付款。</p><span class="coming">後續階段開放</span></article>
-        <article class="quick-card"><span class="quick-icon">報</span><h3>家庭報表</h3><p>掌握每月收支與家庭支出分布。</p><span class="coming">後續階段開放</span></article>
+        <button class="quick-card quick-card-button" id="open-transactions" type="button"><span class="quick-icon">收</span><span class="quick-card-title">收支紀錄</span><span class="quick-card-description">新增收入、支出，查詢及管理交易。</span><span class="coming">管理收支 →</span></button>
+        <article class="quick-card"><span class="quick-icon">轉</span><h3>帳戶轉帳</h3><p>管理帳戶間轉入、轉出與手續費。</p><span class="coming">下一階段開放</span></article>
+      </section>
+
+      <section id="transactions-view" class="panel transactions-panel hidden">
+        <div class="accounts-heading">
+          <div><p class="eyebrow">INCOME & EXPENSE</p><h2>收支紀錄</h2><p class="muted">管理家庭收入、支出與期初餘額；轉帳及帳單付款由專用功能管理。</p></div>
+          <div class="heading-actions"><button class="secondary small" id="close-transactions" type="button">收起</button><button class="primary small" id="add-transaction-button" type="button">＋ 新增收支</button></div>
+        </div>
+        <div id="transaction-notice" class="notice" role="status" aria-live="polite"></div>
+        <div class="transaction-filters">
+          <label class="field">類型<select id="transaction-filter-type"><option value="">全部類型</option><option value="income">收入</option><option value="expense">支出</option><option value="opening_balance">期初餘額</option></select></label>
+          <label class="field">帳戶<select id="transaction-filter-account"><option value="">全部帳戶</option></select></label>
+          <label class="field">開始日期<input id="transaction-filter-start" type="date"></label>
+          <label class="field">結束日期<input id="transaction-filter-end" type="date"></label>
+          <label class="field transaction-void-filter"><span>顯示已作廢</span><input id="transaction-include-voided" type="checkbox"></label>
+          <button class="secondary small" id="apply-transaction-filters" type="button">套用篩選</button>
+        </div>
+        <div class="accounts-summary"><strong id="transactions-count">0 筆紀錄</strong><span class="muted tiny">金額以各帳戶幣別顯示，不跨幣別加總。</span></div>
+        <p id="transactions-loading" class="muted hidden">正在載入收支紀錄…</p>
+        <div id="transactions-list" class="transactions-list"></div>
+        <div id="transactions-empty" class="empty-state hidden"><div class="empty-icon">＋</div><h3>尚無收支紀錄</h3><p class="muted">新增第一筆收入或支出，開始記錄家庭財務。</p></div>
+        <div id="transaction-form-panel" class="subpanel hidden">
+          <h3 id="transaction-form-title">新增收支</h3>
+          <form id="transaction-form">
+            <div class="account-form-grid">
+              <label class="field">收支類型<select id="transaction-type" required><option value="expense">支出</option><option value="income">收入</option></select></label>
+              <label class="field">帳戶<select id="transaction-account" required></select></label>
+              <label class="field">金額<input id="transaction-amount" type="number" min="0.0001" step="0.0001" required placeholder="輸入金額"></label>
+              <label class="field">日期<input id="transaction-date" type="date" required></label>
+              <label class="field">分類<select id="transaction-category"><option value="">未指定分類</option></select></label>
+              <label class="field">交易說明<input id="transaction-description" maxlength="255" placeholder="例如：超市採買、薪資"></label>
+              <label class="field">外部單號<input id="transaction-reference" maxlength="100" placeholder="選填"></label>
+            </div>
+            <label class="field">備註<textarea id="transaction-note" rows="2" placeholder="選填"></textarea></label>
+            <div class="form-actions"><button class="primary" id="transaction-submit" type="submit">新增紀錄</button><button class="secondary" id="transaction-cancel" type="button">取消</button></div>
+          </form>
+        </div>
       </section>
       <section id="accounts-view" class="panel accounts-panel hidden">
         <div class="accounts-heading">
