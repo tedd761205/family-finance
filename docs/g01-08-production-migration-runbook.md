@@ -13,14 +13,19 @@ This runbook documents the guarded production migration workflow. It does not au
 
 The existing repository secret `DATABASE_URL` must continue to point to the Neon **production** branch. Do not paste or print its value.
 
-Add this repository variable:
+Add these repository variables:
 
-- Name: `NEON_PRODUCTION_HOST`
-- Value: the hostname only for the Neon production endpoint, copied from the Neon dashboard. Do not include a scheme, username, password, port, database name, or query parameters.
+- `NEON_PRODUCTION_HOST`: hostname only for the Neon production endpoint.
+- `NEON_RESTORE_TEST_HOST`: hostname only for the `g01-restore-test` endpoint.
+- `NEON_RESTORE_TEST_BRANCH_ID`: exact Neon branch ID for `g01-restore-test` (starts with `br-`).
 
-Location: GitHub repository → Settings → Secrets and variables → Actions → Variables → New repository variable.
+Add this repository secret:
 
-The workflow refuses to continue if the configured hostname does not exactly match the host in `DATABASE_URL`.
+- `NEON_API_KEY`: a Neon API key with read access to the project and branch metadata. Do not paste it into chat or workflow files.
+
+The project and production branch are pinned in the workflow to project `wild-credit-40100572` and production branch `br-jolly-breeze-b3mereg2`. Before connecting to PostgreSQL, the workflows call the Neon API and verify project ID, branch ID, and exact branch name (`production` or `g01-restore-test`). The PostgreSQL hostname is then independently compared with the configured hostname.
+
+Location: GitHub repository → Settings → Secrets and variables → Actions. Add secrets under **Secrets** and values under **Variables**.
 
 ## Evidence required at dispatch
 
@@ -59,7 +64,7 @@ Before running `alembic upgrade head`, the workflow:
 - Confirms the exact target phrase.
 - Verifies successful backup, restore-test, and rehearsal runs and the available backup/rehearsal artifacts.
 - Confirms the rehearsal's migration sources match the current `main`.
-- Confirms the production endpoint matches `NEON_PRODUCTION_HOST` and database name is `neondb`.
+- Confirms the Neon API reports the pinned project ID and production branch ID/name, then independently matches the production endpoint hostname and database name `neondb`.
 - Opens a read-only transaction and requires the exact production baseline revision `49ed3855c31c`.
 - Requires the audited 18-table baseline and refuses if any of the ten new G-01 tables already exist or unexpected public tables are present.
 - Captures selected existing row counts before migration.
