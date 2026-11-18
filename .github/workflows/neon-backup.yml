@@ -46,11 +46,22 @@ jobs:
           echo "backup_file=$BACKUP_FILE" >> "$GITHUB_OUTPUT"
 
           docker run --rm \
-            -e DATABASE_URL \
-            -e BACKUP_FILE="$BACKUP_FILE" \
+            --env "DATABASE_URL=$DATABASE_URL" \
+            --env "BACKUP_FILE=$BACKUP_FILE" \
             -v "$GITHUB_WORKSPACE/backups:/backups" \
             postgres:18-bookworm \
-            sh -c 'test -n "$BACKUP_FILE" && pg_dump --dbname="$DATABASE_URL" --format=custom --no-owner --no-acl --verbose --file="/backups/$BACKUP_FILE"'
+            sh -c ' \
+              if [ -z "${DATABASE_URL:-}" ]; then \
+                echo "ERROR: DATABASE_URL was not passed into the backup container." >&2 \
+                exit 2 \
+              fi \
+              if [ -z "${BACKUP_FILE:-}" ]; then \
+                echo "ERROR: BACKUP_FILE was not passed into the backup container." >&2 \
+                exit 2 \
+              fi \
+              echo "Connection string received; starting database dump." \
+              pg_dump --dbname="$DATABASE_URL" --format=custom --no-owner --no-acl --verbose --file="/backups/$BACKUP_FILE" \
+            '
 
           test -s "$GITHUB_WORKSPACE/backups/$BACKUP_FILE"
           ls -lh "$GITHUB_WORKSPACE/backups/$BACKUP_FILE"
