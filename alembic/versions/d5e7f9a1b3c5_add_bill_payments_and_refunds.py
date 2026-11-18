@@ -78,7 +78,7 @@ def upgrade() -> None:
     )
     op.create_index("ix_transactions_bill_payment_id", "transactions", ["bill_payment_id"])
     op.create_index(
-        "uq_transactions_active_bill_payment", "transactions",
+        "uq_transactions_bill_payment", "transactions",
         ["family_id","bill_payment_id"], unique=True,
         postgresql_where=sa.text("bill_payment_id IS NOT NULL"),
     )
