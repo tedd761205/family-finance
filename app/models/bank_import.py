@@ -16,6 +16,7 @@ class BankImportBatch(Base):
     __tablename__ = "bank_import_batches"
     __table_args__ = (
         UniqueConstraint("family_id", "id", name="uq_bank_import_batches_family_id_id"),
+        UniqueConstraint("family_id", "account_id", "id", name="uq_bank_import_batches_family_account_id"),
         ForeignKeyConstraint(
             ["family_id", "account_id"], ["accounts.family_id", "accounts.id"],
             ondelete="RESTRICT", name="fk_bank_import_batches_family_account",
