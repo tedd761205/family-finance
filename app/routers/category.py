@@ -41,6 +41,7 @@ from app.dependencies.permissions import (
 from app.models.user import User
 from app.models.category import Category
 from app.models.transaction import Transaction
+from app.services.audit_log import add_audit_log
 
 from app.schemas.category import (
     CategoryCreate,
@@ -303,6 +304,28 @@ def create_category(
         )
 
         db.add(category)
+        db.flush()
+
+        add_audit_log(
+            db,
+            family_id=family_id,
+            actor_user_id=current_user.id,
+            action="create",
+            entity_type="category",
+            entity_id=category.id,
+            new_values={
+                "category_type": category.category_type,
+                "name": category.name,
+                "parent_id": category.parent_id,
+                "icon": category.icon,
+                "color": category.color,
+                "sort_order": category.sort_order,
+                "note": category.note,
+                "is_active": category.is_active,
+            },
+            description="新增分類",
+        )
+
         db.commit()
         db.refresh(category)
 
@@ -550,9 +573,29 @@ def update_category(
         parent_id=new_parent_id,
     )
 
+    old_values = {
+        field: getattr(category, field)
+        for field in changes
+    }
+
     try:
         for field, value in changes.items():
             setattr(category, field, value)
+
+        add_audit_log(
+            db,
+            family_id=family_id,
+            actor_user_id=current_user.id,
+            action="update",
+            entity_type="category",
+            entity_id=category.id,
+            old_values=old_values,
+            new_values={
+                field: getattr(category, field)
+                for field in changes
+            },
+            description="修改分類",
+        )
 
         db.commit()
         db.refresh(category)
@@ -637,8 +680,22 @@ def deactivate_category(
         category_id=category.id,
     )
 
+    old_values = {"is_active": category.is_active}
+
     try:
         category.is_active = False
+
+        add_audit_log(
+            db,
+            family_id=family_id,
+            actor_user_id=current_user.id,
+            action="void",
+            entity_type="category",
+            entity_id=category.id,
+            old_values=old_values,
+            new_values={"is_active": category.is_active},
+            description="停用分類",
+        )
 
         db.commit()
         db.refresh(category)

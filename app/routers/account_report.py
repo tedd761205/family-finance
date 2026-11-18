@@ -1,4 +1,3 @@
-
 """
 家庭記帳系統：帳戶收支統計 API
 """
@@ -11,7 +10,6 @@ from fastapi import (
     HTTPException,
     Query,
 )
-
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -20,6 +18,7 @@ from app.dependencies.permissions import (
     require_permission,
     require_data_scope,
 )
+from app.models.account import Account
 from app.models.user import User
 from app.schemas.account_report import AccountReportResponse
 from app.services.account_report import calculate_account_summary
@@ -53,23 +52,13 @@ def get_account_summary(
     """
     查詢指定帳戶的收支統計。
 
-    支援：
-    - 銀行帳戶
-    - 現金帳戶
-    - 信用卡帳戶
-    - 電子支付帳戶
-    - 不限日期
-    - 單日統計
-    - 月份統計
-    - 年度統計
-    - 自訂日期區間
-
     權限：
     - reports.view
 
     資料範圍：
-    - family：查看整個家庭的交易
-    - own：只查看自己建立的交易
+    - accounts：限制可查看的帳戶。
+    - transactions：限制報表中的交易及餘額資料。
+    - own：帳戶與交易均只允許查看自己建立的資料。
     """
 
     try:
@@ -86,7 +75,13 @@ def get_account_summary(
         )
 
     try:
-        scope = require_data_scope(
+        account_scope = require_data_scope(
+            db=db,
+            roles=roles,
+            family_id=family_id,
+            resource="accounts",
+        )
+        transaction_scope = require_data_scope(
             db=db,
             roles=roles,
             family_id=family_id,
@@ -108,6 +103,25 @@ def get_account_summary(
             detail="start_date 不可晚於 end_date",
         )
 
+    # 先依 accounts scope 驗證帳戶本身，避免透過 account_id
+    # 查詢同家庭其他成員建立的帳戶。
+    account_query = db.query(Account).filter(
+        Account.id == account_id,
+        Account.family_id == family_id,
+    )
+
+    if account_scope == "own":
+        account_query = account_query.filter(
+            Account.created_by == current_user.id,
+        )
+
+    if account_query.first() is None:
+        # 使用一致的 404，避免洩漏帳戶是否屬於其他成員。
+        raise HTTPException(
+            status_code=404,
+            detail="找不到指定帳戶",
+        )
+
     try:
         result = calculate_account_summary(
             db=db,
@@ -116,7 +130,9 @@ def get_account_summary(
             start_date=start_date,
             end_date=end_date,
             created_by=(
-                current_user.id if scope == "own" else None
+                current_user.id
+                if transaction_scope == "own"
+                else None
             ),
         )
 

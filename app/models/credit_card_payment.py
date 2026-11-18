@@ -1,3 +1,4 @@
+from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger,
@@ -32,61 +33,47 @@ class CreditCardPayment(Base):
     __tablename__ = "credit_card_payments"
 
     __table_args__ = (
-        # 確保來源帳戶屬於同一家庭
         ForeignKeyConstraint(
             ["family_id", "from_account_id"],
             ["accounts.family_id", "accounts.id"],
             name="fk_credit_card_payments_from_account",
         ),
-
-        # 確保目標信用卡帳戶屬於同一家庭
         ForeignKeyConstraint(
             ["family_id", "credit_card_account_id"],
             ["accounts.family_id", "accounts.id"],
             name="fk_credit_card_payments_credit_card_account",
         ),
-
         UniqueConstraint(
             "family_id",
             "id",
             name="uq_credit_card_payments_family_id_id",
         ),
-
         CheckConstraint(
             "from_account_id <> credit_card_account_id",
             name="ck_credit_card_payments_different_accounts",
         ),
-
         CheckConstraint(
             "amount > 0",
             name="ck_credit_card_payments_amount_positive",
         ),
-
         Index(
             "ix_credit_card_payments_family_date",
             "family_id",
             "payment_date",
         ),
-
         Index(
             "ix_credit_card_payments_from_account",
             "from_account_id",
         ),
-
         Index(
             "ix_credit_card_payments_credit_card_account",
             "credit_card_account_id",
         ),
-
         Index(
             "ix_credit_card_payments_created_by",
             "created_by",
         ),
     )
-
-    # =====================================================
-    # 主鍵與家庭
-    # =====================================================
 
     id: Mapped[int] = mapped_column(
         BigInteger,
@@ -100,10 +87,6 @@ class CreditCardPayment(Base):
         nullable=False,
     )
 
-    # =====================================================
-    # 帳戶關聯
-    # =====================================================
-
     from_account_id: Mapped[int] = mapped_column(
         BigInteger,
         nullable=False,
@@ -114,11 +97,8 @@ class CreditCardPayment(Base):
         nullable=False,
     )
 
-    # =====================================================
-    # 繳款資料
-    # =====================================================
-
-    amount: Mapped[float] = mapped_column(
+    # PostgreSQL NUMERIC(20, 4) 必須對應 Python Decimal。
+    amount: Mapped[Decimal] = mapped_column(
         Numeric(20, 4),
         nullable=False,
     )
@@ -143,10 +123,6 @@ class CreditCardPayment(Base):
         nullable=True,
     )
 
-    # =====================================================
-    # 作廢管理
-    # =====================================================
-
     is_voided: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
@@ -158,10 +134,6 @@ class CreditCardPayment(Base):
         DateTime(timezone=True),
         nullable=True,
     )
-
-    # =====================================================
-    # 建立者與時間
-    # =====================================================
 
     created_by: Mapped[int] = mapped_column(
         BigInteger,

@@ -22,6 +22,7 @@ from app.models.user import User
 from app.models.account import Account
 from app.models.category import Category
 from app.models.transaction import Transaction
+from app.services.audit_log import add_audit_log
 from app.schemas.transaction import (
     TransactionCreate,
     TransactionUpdate,
@@ -390,6 +391,29 @@ def create_transaction(
 
     try:
         db.add(transaction)
+        db.flush()
+
+        add_audit_log(
+            db,
+            family_id=family_id,
+            actor_user_id=current_user.id,
+            action="create",
+            entity_type="transaction",
+            entity_id=transaction.id,
+            new_values={
+                "account_id": transaction.account_id,
+                "transaction_type": transaction.transaction_type,
+                "amount": transaction.amount,
+                "currency_code": transaction.currency_code,
+                "transaction_date": transaction.transaction_date,
+                "description": transaction.description,
+                "category_id": transaction.category_id,
+                "external_reference": transaction.external_reference,
+                "note": transaction.note,
+            },
+            description="新增交易",
+        )
+
         db.commit()
         db.refresh(transaction)
 
@@ -637,10 +661,30 @@ def update_transaction(
     if "transaction_type" in changes:
         changes["transaction_type"] = new_type
 
+    old_values = {
+        field: getattr(transaction, field)
+        for field in changes
+    }
+
     for field, value in changes.items():
         setattr(transaction, field, value)
 
     try:
+        add_audit_log(
+            db,
+            family_id=family_id,
+            actor_user_id=current_user.id,
+            action="update",
+            entity_type="transaction",
+            entity_id=transaction.id,
+            old_values=old_values,
+            new_values={
+                field: getattr(transaction, field)
+                for field in changes
+            },
+            description="修改交易",
+        )
+
         db.commit()
         db.refresh(transaction)
 
@@ -699,10 +743,29 @@ def void_transaction(
             user_id=current_user.id,
         )
 
+    old_values = {
+        "is_voided": transaction.is_voided,
+        "voided_at": transaction.voided_at,
+    }
     transaction.is_voided = True
     transaction.voided_at = datetime.now(timezone.utc)
 
     try:
+        add_audit_log(
+            db,
+            family_id=family_id,
+            actor_user_id=current_user.id,
+            action="void",
+            entity_type="transaction",
+            entity_id=transaction.id,
+            old_values=old_values,
+            new_values={
+                "is_voided": transaction.is_voided,
+                "voided_at": transaction.voided_at,
+            },
+            description="作廢交易",
+        )
+
         db.commit()
         db.refresh(transaction)
 
