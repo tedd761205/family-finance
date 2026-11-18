@@ -184,7 +184,16 @@ jobs:
           print("Migration rehearsal evidence is available; migration-source equality will be checked against current main.")
           print("Production migration evidence gate passed.")
           PY
-          git diff --exit-code "$REHEARSAL_SHA" HEAD -- alembic/versions requirements.txt alembic.ini app/validate_role_catalog.py
+
+
+      - name: Verify migration sources match rehearsal commit
+        run: |
+          set -euo pipefail
+          if [[ -z "${REHEARSAL_SHA}" ]]; then
+            echo "Missing migration rehearsal commit SHA." >&2
+            exit 1
+          fi
+          git diff --exit-code "${REHEARSAL_SHA}" HEAD -- alembic/versions requirements.txt alembic.ini app/validate_role_catalog.py
 
       - name: Validate production endpoint and exact baseline (read-only)
         env:
