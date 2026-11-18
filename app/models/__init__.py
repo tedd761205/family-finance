@@ -21,6 +21,7 @@ from app.models.recurring_bill import RecurringBill
 from app.models.bill import Bill
 from app.models.bill_payment import BillPayment
 from app.models.attachment import Attachment
+from app.models.ocr_task import OcrTask
 
 
 __all__ = [
@@ -44,5 +45,6 @@ __all__ = [
     "Bill",
     "BillPayment",
     "Attachment",
+    "OcrTask",
     "RecurringBill",
 ]

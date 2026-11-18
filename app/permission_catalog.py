@@ -270,6 +270,32 @@ PERMISSION_CATALOG = [
         "category": "attachments",
     },
 
+    # OCR 辨識
+    {
+        "code": "ocr.view",
+        "name": "查看 OCR 辨識",
+        "description": "查看帳單圖片文字辨識結果",
+        "category": "ocr",
+    },
+    {
+        "code": "ocr.create",
+        "name": "建立 OCR 辨識",
+        "description": "建立並執行帳單圖片文字辨識",
+        "category": "ocr",
+    },
+    {
+        "code": "ocr.retry",
+        "name": "重試 OCR 辨識",
+        "description": "重試失敗的文字辨識工作",
+        "category": "ocr",
+    },
+    {
+        "code": "ocr.confirm",
+        "name": "確認 OCR 結果",
+        "description": "人工確認 OCR 擷取結果",
+        "category": "ocr",
+    },
+
     # 家庭設定
     {
         "code": "family.view",

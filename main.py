@@ -15,6 +15,7 @@ from app.routers.category import router as category_router
 from app.routers.bill import router as bill_router
 from app.routers.bill_payment import router as bill_payment_router
 from app.routers.attachment import router as attachment_router
+from app.routers.ocr_task import router as ocr_task_router
 from app.routers.recurring_bill import router as recurring_bill_router
 from app.routers.transaction import router as transaction_router
 from app.routers.transfer import router as transfer_router
@@ -78,6 +79,7 @@ app.include_router(category_router)
 app.include_router(bill_router)
 app.include_router(bill_payment_router)
 app.include_router(attachment_router)
+app.include_router(ocr_task_router)
 app.include_router(recurring_bill_router)
 app.include_router(transaction_router)
 app.include_router(transfer_router)

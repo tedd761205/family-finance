@@ -68,6 +68,11 @@ FINANCE_PERMISSIONS = [
     "attachments.upload",
     "attachments.void",
 
+    "ocr.view",
+    "ocr.create",
+    "ocr.retry",
+    "ocr.confirm",
+
     "family.view",
     "audit_logs.view",
     "audit_logs.export",
@@ -118,6 +123,10 @@ MEMBER_PERMISSIONS = [
     "attachments.view",
     "attachments.upload",
 
+    "ocr.view",
+    "ocr.create",
+    "ocr.confirm",
+
     "family.view",
     "members.view",
     "exchange_rates.view",
@@ -162,6 +171,11 @@ BOOKKEEPER_PERMISSIONS = [
     "attachments.view",
     "attachments.upload",
 
+    "ocr.view",
+    "ocr.create",
+    "ocr.retry",
+    "ocr.confirm",
+
     "family.view",
     "exchange_rates.view",
 ]
@@ -179,6 +193,7 @@ VIEWER_PERMISSIONS = [
     "reconciliation.view",
     "reports.view",
     "attachments.view",
+    "ocr.view",
     "family.view",
     "members.view",
     "exchange_rates.view",
@@ -199,6 +214,7 @@ ADMIN_SCOPES = {
     "reports": "family",
     "imports": "family",
     "attachments": "family",
+    "ocr": "family",
     "audit_logs": "family",
 }
 
@@ -213,6 +229,7 @@ FINANCE_SCOPES = {
     "reports": "family",
     "imports": "family",
     "attachments": "family",
+    "ocr": "family",
     "audit_logs": "family",
 }
 
@@ -226,6 +243,7 @@ MEMBER_SCOPES = {
     "reports": "own",
     "imports": "own",
     "attachments": "own",
+    "ocr": "own",
 }
 
 BOOKKEEPER_SCOPES = {
@@ -239,6 +257,7 @@ BOOKKEEPER_SCOPES = {
     "reports": "family",
     "imports": "family",
     "attachments": "family",
+    "ocr": "family",
 }
 
 VIEWER_SCOPES = {
@@ -251,6 +270,7 @@ VIEWER_SCOPES = {
     "reconciliation": "family",
     "reports": "family",
     "attachments": "family",
+    "ocr": "family",
 }
 
 
