@@ -78,9 +78,21 @@ jobs:
               table_ok = c.execute(text("SELECT to_regclass('public.bill_payments') IS NOT NULL")).scalar_one()
               link_ok = c.execute(text("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='transactions' AND column_name='bill_payment_id')")).scalar_one()
               permission_count = c.execute(text("SELECT count(*) FROM permissions WHERE code LIKE 'payments.%'")).scalar_one()
+              fk_count = c.execute(text("""
+                  SELECT count(*) FROM pg_constraint
+                  WHERE conname IN (
+                    'fk_bill_payments_family_bill',
+                    'fk_bill_payments_family_account',
+                    'fk_bill_payments_original_payment',
+                    'fk_transactions_family_bill_payment'
+                  )
+              """)).scalar_one()
+              unique_index = c.execute(text("""
+                  SELECT to_regclass('public.uq_transactions_bill_payment') IS NOT NULL
+              """)).scalar_one()
           engine.dispose()
-          if not table_ok or not link_ok or permission_count != 4:
-              raise SystemExit("G-01-05 migration objects or permissions are incomplete")
+          if not table_ok or not link_ok or permission_count != 4 or fk_count != 4 or not unique_index:
+              raise SystemExit("G-01-05 migration objects, relationships, or permissions are incomplete")
           PY
           python -m alembic downgrade base
           python -m alembic upgrade head
