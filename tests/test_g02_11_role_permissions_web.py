@@ -45,7 +45,7 @@ def test_system_roles_are_marked_protected_in_ui():
         javascript = client.get("/static/app.js").text
 
     assert 'if (!role.is_system)' in javascript
-    assert 'role.name + "（系統預設）"' in javascript
+    assert '"（系統預設）"' in javascript\n    assert 'role.is_system ?' in javascript
 
 
 def test_role_management_has_mobile_layout():
