@@ -47,10 +47,10 @@ jobs:
 
           docker run --rm \
             -e DATABASE_URL \
-            -e BACKUP_FILE \
+            -e BACKUP_FILE="$BACKUP_FILE" \
             -v "$GITHUB_WORKSPACE/backups:/backups" \
             postgres:18-bookworm \
-            sh -c 'pg_dump --dbname="$DATABASE_URL" --format=custom --no-owner --no-acl --verbose --file="/backups/$BACKUP_FILE"'
+            sh -c 'test -n "$BACKUP_FILE" && pg_dump --dbname="$DATABASE_URL" --format=custom --no-owner --no-acl --verbose --file="/backups/$BACKUP_FILE"'
 
           test -s "$GITHUB_WORKSPACE/backups/$BACKUP_FILE"
           ls -lh "$GITHUB_WORKSPACE/backups/$BACKUP_FILE"
