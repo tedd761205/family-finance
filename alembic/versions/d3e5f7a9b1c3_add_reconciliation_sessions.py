@@ -41,6 +41,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.UniqueConstraint("family_id", "id", name="uq_reconciliation_sessions_family_id_id"),
+        sa.UniqueConstraint("family_id", "id", "source_batch_id", name="uq_reconciliation_sessions_family_id_batch"),
         sa.ForeignKeyConstraint(["family_id", "account_id"], ["accounts.family_id", "accounts.id"], ondelete="RESTRICT", name="fk_reconciliation_sessions_family_account"),
         sa.ForeignKeyConstraint(["family_id", "source_batch_id"], ["bank_import_batches.family_id", "bank_import_batches.id"], ondelete="RESTRICT", name="fk_reconciliation_sessions_family_batch"),
         sa.ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="RESTRICT", name="fk_reconciliation_sessions_created_by"),
@@ -62,6 +63,11 @@ def upgrade() -> None:
     op.create_index("ix_reconciliation_sessions_family_status_period", "reconciliation_sessions", ["family_id", "status", "period_start"])
     op.create_index("ix_reconciliation_sessions_account_period", "reconciliation_sessions", ["family_id", "account_id", "period_start", "period_end"])
 
+    op.create_unique_constraint(
+        "uq_bank_import_rows_family_batch_id", "bank_import_rows",
+        ["family_id", "batch_id", "id"],
+    )
+
     op.create_table(
         "reconciliation_matches",
         sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
@@ -78,7 +84,7 @@ def upgrade() -> None:
         sa.Column("voided_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("void_reason", sa.String(500), nullable=True),
         sa.UniqueConstraint("family_id", "id", name="uq_reconciliation_matches_family_id_id"),
-        sa.ForeignKeyConstraint(["family_id", "session_id"], ["reconciliation_sessions.family_id", "reconciliation_sessions.id"], ondelete="RESTRICT", name="fk_reconciliation_matches_family_session"),
+        sa.ForeignKeyConstraint(["family_id", "session_id", "batch_id"], ["reconciliation_sessions.family_id", "reconciliation_sessions.id", "reconciliation_sessions.source_batch_id"], ondelete="RESTRICT", name="fk_reconciliation_matches_family_session_batch"),
         sa.ForeignKeyConstraint(["family_id", "batch_id", "bank_import_row_id"], ["bank_import_rows.family_id", "bank_import_rows.batch_id", "bank_import_rows.id"], ondelete="RESTRICT", name="fk_reconciliation_matches_family_import_row"),
         sa.ForeignKeyConstraint(["family_id", "transaction_id"], ["transactions.family_id", "transactions.id"], ondelete="RESTRICT", name="fk_reconciliation_matches_family_transaction"),
         sa.ForeignKeyConstraint(["matched_by"], ["users.id"], ondelete="RESTRICT", name="fk_reconciliation_matches_matched_by"),
@@ -136,6 +142,7 @@ def downgrade() -> None:
     op.drop_index("uq_reconciliation_matches_active_row_transaction", table_name="reconciliation_matches")
     op.drop_index("uq_reconciliation_matches_active_transaction", table_name="reconciliation_matches")
     op.drop_table("reconciliation_matches")
+    op.drop_constraint("uq_bank_import_rows_family_batch_id", "bank_import_rows", type_="unique")
 
     op.drop_index("ix_reconciliation_sessions_account_period", table_name="reconciliation_sessions")
     op.drop_index("ix_reconciliation_sessions_family_status_period", table_name="reconciliation_sessions")
@@ -145,13 +152,17 @@ def downgrade() -> None:
 
     bind = op.get_bind()
     bind.execute(sa.text("""
-        DELETE FROM role_permissions
-        WHERE permission_id IN (
-            SELECT id FROM permissions
-            WHERE code IN ('reconciliation.exclude', 'reconciliation.reopen')
-        )
+        DELETE FROM role_permissions rp
+        USING roles r, permissions p
+        WHERE rp.role_id = r.id AND rp.permission_id = p.id
+          AND r.is_system = true
+          AND r.name IN ('家庭管理員', '財務管理員', '記帳人員')
+          AND p.code IN ('reconciliation.exclude', 'reconciliation.reopen')
     """))
     bind.execute(sa.text("""
-        DELETE FROM permissions
+        DELETE FROM permissions p
         WHERE code IN ('reconciliation.exclude', 'reconciliation.reopen')
+          AND NOT EXISTS (
+              SELECT 1 FROM role_permissions rp WHERE rp.permission_id = p.id
+          )
     """))
