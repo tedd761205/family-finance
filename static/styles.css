@@ -41,3 +41,9 @@
 .transfers-list{display:grid;gap:11px}
 .transfer-card-details{margin:8px 0 0}
 @media(max-width:760px){.transfers-panel{padding:21px 17px}}
+
+
+/* G-02-05 credit card payment workspace */
+.credit-card-payments-panel{padding:28px 30px;margin:18px 0 48px}
+.credit-card-payments-list{display:grid;gap:11px}
+@media(max-width:760px){.credit-card-payments-panel{padding:21px 17px}}
