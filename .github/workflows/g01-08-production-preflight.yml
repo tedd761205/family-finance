@@ -123,7 +123,7 @@ jobs:
                       connection.exec_driver_sql("SET TRANSACTION READ ONLY")
                       database_name = connection.execute(text("SELECT current_database()")).scalar_one()
                       server_version = connection.execute(text("SHOW server_version")).scalar_one()
-                      current_heads = set(MigrationContext.configure(connection).get_current_heads())
+                      current_heads = set(MigrationContext.configure(connection, opts={"version_table_schema": "public"}).get_current_heads())
                       tables = set(connection.execute(text("""
                           SELECT tablename FROM pg_catalog.pg_tables
                           WHERE schemaname = 'public'
