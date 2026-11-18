@@ -71,9 +71,10 @@ jobs:
           test -s /tmp/restore-list.txt
           echo "Backup archive is readable."
 
-      - name: Validate test database connection
+      - name: Validate test database connection and branch endpoint
         env:
           DATABASE_URL: ${{ secrets.NEON_RESTORE_TEST_DATABASE_URL }}
+          EXPECTED_HOST: ${{ vars.NEON_RESTORE_TEST_HOST }}
         run: |
           set -euo pipefail
           case "${DATABASE_URL:-}" in
@@ -83,10 +84,21 @@ jobs:
               exit 1
               ;;
           esac
+          if [ -z "${EXPECTED_HOST:-}" ]; then
+            echo "Missing repository variable NEON_RESTORE_TEST_HOST. Set it to the endpoint hostname shown for g01-restore-test in Neon."
+            exit 1
+          fi
+          ACTUAL_HOST="$(python3 -c 'import os, urllib.parse; print((urllib.parse.urlparse(os.environ["DATABASE_URL"]).hostname or "").lower())')"
+          EXPECTED_HOST_NORMALIZED="$(printf '%s' "$EXPECTED_HOST" | tr '[:upper:]' '[:lower:]')"
+          if [ -z "$ACTUAL_HOST" ] || [ "$ACTUAL_HOST" != "$EXPECTED_HOST_NORMALIZED" ]; then
+            echo "Refusing to restore: database URL endpoint does not match NEON_RESTORE_TEST_HOST."
+            exit 1
+          fi
+          echo "Neon endpoint hostname matches the configured g01-restore-test endpoint."
           docker run --rm --env DATABASE_URL postgres:18-bookworm \
             psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atc \
             "SELECT 'database=' || current_database() || '; role=' || current_user;"
-          echo "Connection succeeded. The dedicated test-branch secret will be used for restore."
+          echo "Connection succeeded. Target endpoint guard passed."
 
       - name: Restore dump into test branch
         env:
