@@ -17,7 +17,8 @@ on:
       - "tests/test_g02_08_recurring_bills_web.py"
       - "tests/test_g02_09_financial_reports_web.py"
       - "tests/test_g02_10_family_members_web.py"
-      - "tests/test_g02_11_role_permissions_web.py"\n      - "tests/test_g02_12_audit_logs_web.py"
+      - "tests/test_g02_11_role_permissions_web.py"
+      - "tests/test_g02_12_audit_logs_web.py"
       - ".github/workflows/g02-01-web-tests.yml"
       - "requirements.txt"
       - "requirements-dev.txt"
@@ -25,6 +26,23 @@ on:
     branches:
       - main
     paths:
+      - "main.py"
+      - "static/**"
+      - "tests/test_g02_01_web.py"
+      - "tests/test_g02_02_accounts_web.py"
+      - "tests/test_g02_03_transactions_web.py"
+      - "tests/test_g02_04_transfers_web.py"
+      - "tests/test_g02_05_credit_card_payments_web.py"
+      - "tests/test_g02_06_bills_web.py"
+      - "tests/test_g02_07_bill_payments_web.py"
+      - "tests/test_g02_08_recurring_bills_web.py"
+      - "tests/test_g02_09_financial_reports_web.py"
+      - "tests/test_g02_10_family_members_web.py"
+      - "tests/test_g02_11_role_permissions_web.py"
+      - "tests/test_g02_12_audit_logs_web.py"
+      - ".github/workflows/g02-01-web-tests.yml"
+      - "requirements.txt"
+      - "requirements-dev.txt"
   workflow_dispatch:
 
 permissions:
@@ -55,5 +73,5 @@ jobs:
       - name: Validate frontend JavaScript syntax
         run: node --check static/app.js
 
-      - name: Run G-02-01 web interface tests
-        run: python -m pytest -q tests/test_g02_01_web.py tests/test_g02_02_accounts_web.py tests/test_g02_03_transactions_web.py tests/test_g02_04_transfers_web.py tests/test_g02_05_credit_card_payments_web.py tests/test_g02_06_bills_web.py tests/test_g02_07_bill_payments_web.py tests/test_g02_08_recurring_bills_web.py tests/test_g02_09_financial_reports_web.py tests/test_g02_10_family_members_web.py tests/test_g02_11_role_permissions_web.py
+      - name: Run G-02 web interface tests
+        run: python -m pytest -q tests/test_g02_01_web.py tests/test_g02_02_accounts_web.py tests/test_g02_03_transactions_web.py tests/test_g02_04_transfers_web.py tests/test_g02_05_credit_card_payments_web.py tests/test_g02_06_bills_web.py tests/test_g02_07_bill_payments_web.py tests/test_g02_08_recurring_bills_web.py tests/test_g02_09_financial_reports_web.py tests/test_g02_10_family_members_web.py tests/test_g02_11_role_permissions_web.py tests/test_g02_12_audit_logs_web.py
