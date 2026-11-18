@@ -1,42 +1,414 @@
-
 name: Apply Alembic Migration
 
 on:
   workflow_dispatch:
+    inputs:
+      backup_run_id:
+        description: "Successful Neon Database Backup run ID (maximum age 24 hours)"
+        required: true
+        type: string
+      restore_run_id:
+        description: "Successful Neon Restore Test run ID using the selected backup"
+        required: true
+        type: string
+      rehearsal_run_id:
+        description: "Successful G-01-08 restored-snapshot migration rehearsal run ID"
+        required: true
+        type: string
+      target_confirmation:
+        description: "Type exactly family-finance-production to authorize production migration"
+        required: true
+        type: string
 
 permissions:
+  actions: read
   contents: read
+
+concurrency:
+  group: family-finance-production-migration
+  cancel-in-progress: false
 
 jobs:
   upgrade-database:
+    name: Guard and upgrade production database
     runs-on: ubuntu-latest
-
+    timeout-minutes: 45
     steps:
-      - name: Checkout repository
+      - name: Checkout main
         uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Check Python syntax
-        run: |
-          python -m compileall -q app
+      - name: Download restore-test provenance
+        uses: actions/download-artifact@v4
+        with:
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.restore_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: neon-restore-test-provenance
+          path: restore-evidence
 
-      - name: Apply database migration
+      - name: Validate explicit authorization and evidence runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPOSITORY: ${{ github.repository }}
+          BACKUP_RUN_ID: ${{ inputs.backup_run_id }}
+          RESTORE_RUN_ID: ${{ inputs.restore_run_id }}
+          REHEARSAL_RUN_ID: ${{ inputs.rehearsal_run_id }}
+          TARGET_CONFIRMATION: ${{ inputs.target_confirmation }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+          from datetime import datetime, timezone, timedelta
+
+          repo = os.environ["GH_REPOSITORY"]
+          token = os.environ["GH_TOKEN"]
+          if os.environ["TARGET_CONFIRMATION"] != "family-finance-production":
+              raise SystemExit("Refusing to proceed: target_confirmation must be exactly family-finance-production.")
+
+          def numeric_id(name):
+              value = os.environ.get(name, "")
+              if not value.isdigit():
+                  raise SystemExit(f"{name} must contain digits only.")
+              return value
+
+          ids = {
+              "backup": numeric_id("BACKUP_RUN_ID"),
+              "restore": numeric_id("RESTORE_RUN_ID"),
+              "rehearsal": numeric_id("REHEARSAL_RUN_ID"),
+          }
+          base = f"https://api.github.com/repos/{repo}"
+          headers = {
+              "Accept": "application/vnd.github+json",
+              "Authorization": f"Bearer {token}",
+              "X-GitHub-Api-Version": "2022-11-28",
+          }
+
+          def get_json(path):
+              request = urllib.request.Request(base + path, headers=headers)
+              try:
+                  with urllib.request.urlopen(request, timeout=20) as response:
+                      return json.load(response)
+              except urllib.error.HTTPError as exc:
+                  raise SystemExit(f"Could not verify required GitHub evidence (HTTP {exc.code}).") from exc
+
+          def as_time(value):
+              return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+          expected_paths = {
+              "backup": ".github/workflows/neon-backup.yml",
+              "restore": ".github/workflows/neon-restore-test.yml",
+              "rehearsal": ".github/workflows/g01-08-restored-db-migration-rehearsal.yml",
+          }
+          runs = {}
+          for key, value in ids.items():
+              run = get_json(f"/actions/runs/{value}")
+              if run.get("repository", {}).get("full_name", "").lower() != repo.lower():
+                  raise SystemExit(f"The {key} evidence run belongs to a different repository.")
+              if run.get("path") != expected_paths[key]:
+                  raise SystemExit(f"The {key} evidence run is not from the expected workflow.")
+              if run.get("status") != "completed" or run.get("conclusion") != "success":
+                  raise SystemExit(f"The {key} evidence run has not completed successfully.")
+              if run.get("head_branch") != "main":
+                  raise SystemExit(f"The {key} evidence run was not executed from main.")
+              runs[key] = run
+
+          now = datetime.now(timezone.utc)
+          backup_time = as_time(runs["backup"]["created_at"])
+          restore_time = as_time(runs["restore"]["created_at"])
+          rehearsal_time = as_time(runs["rehearsal"]["created_at"])
+          if now - backup_time > timedelta(hours=24) or backup_time > now:
+              raise SystemExit("The successful backup must be no older than 24 hours.")
+          if not backup_time <= restore_time <= rehearsal_time <= now:
+              raise SystemExit("Evidence order must be backup, restore test, then migration rehearsal.")
+          rehearsal_sha = runs["rehearsal"].get("head_sha", "")
+          if not rehearsal_sha:
+              raise SystemExit("Migration rehearsal run has no commit SHA.")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
+              env_file.write(f"REHEARSAL_SHA={rehearsal_sha}\n")
+
+          provenance_path = "restore-evidence/restore.txt"
+          try:
+              with open(provenance_path, encoding="utf-8") as provenance_file:
+                  provenance = dict(
+                      line.strip().split("=", 1)
+                      for line in provenance_file
+                      if "=" in line
+                  )
+          except OSError as exc:
+              raise SystemExit("Restore-test provenance artifact is missing or unreadable.") from exc
+          if provenance.get("backup_run_id") != ids["backup"]:
+              raise SystemExit("Restore-test provenance does not match the selected backup run ID.")
+          if provenance.get("target_confirmation") != "g01-restore-test":
+              raise SystemExit("Restore-test provenance does not confirm the isolated g01-restore-test target.")
+          if provenance.get("project_id") != "wild-credit-40100572":
+              raise SystemExit("Restore-test provenance has an unexpected Neon project ID.")
+          if provenance.get("branch_id", "").strip() == "" or provenance.get("branch_name") != "g01-restore-test":
+              raise SystemExit("Restore-test provenance does not contain a verified branch identity.")
+          if provenance.get("endpoint_host", "").strip() == "":
+              raise SystemExit("Restore-test provenance does not contain the verified Neon endpoint host.")
+
+          backup_artifacts = get_json(f"/actions/runs/{ids['backup']}/artifacts").get("artifacts", [])
+          backup_name = f"family-finance-neon-backup-{runs['backup']['run_number']}"
+          if not any(a.get("name") == backup_name and not a.get("expired") and a.get("size_in_bytes", 0) > 0 for a in backup_artifacts):
+              raise SystemExit("Selected backup run has no available, non-empty backup artifact.")
+
+          restore_artifacts = get_json(f"/actions/runs/{ids['restore']}/artifacts").get("artifacts", [])
+          if not any(a.get("name") == "neon-restore-test-provenance" and not a.get("expired") and a.get("size_in_bytes", 0) > 0 for a in restore_artifacts):
+              raise SystemExit("Selected restore-test run has no available provenance artifact.")
+
+          rehearsal_artifacts = get_json(f"/actions/runs/{ids['rehearsal']}/artifacts").get("artifacts", [])
+          if not any(a.get("name") == "g01-08-restored-db-migration-rehearsal" and not a.get("expired") and a.get("size_in_bytes", 0) > 0 for a in rehearsal_artifacts):
+              raise SystemExit("Selected rehearsal run has no available verification report.")
+
+          print("Authorization phrase accepted.")
+          print("Backup, restore-test, and migration-rehearsal runs completed successfully.")
+          print("Backup artifact and rehearsal report are available.")
+          print("Migration rehearsal evidence is available; migration-source equality will be checked against current main.")
+          print("Production migration evidence gate passed.")
+          PY
+          git diff --exit-code "$REHEARSAL_SHA" HEAD -- alembic/versions requirements.txt alembic.ini app/validate_role_catalog.py
+
+      - name: Validate production endpoint and exact baseline (read-only)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          EXPECTED_HOST: ${{ vars.NEON_PRODUCTION_HOST }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          EXPECTED_PROJECT_ID: wild-credit-40100572
+          EXPECTED_BRANCH_ID: br-jolly-breeze-b3mereg2
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee production-migration-preflight.txt
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+          from alembic.config import Config
+          from alembic.runtime.migration import MigrationContext
+          from alembic.script import ScriptDirectory
+          from sqlalchemy import create_engine, text
+          from sqlalchemy.engine import make_url
+
+          raw_url = os.environ.get("DATABASE_URL", "")
+          expected_host = os.environ.get("EXPECTED_HOST", "").strip().lower()
+          api_key = os.environ.get("NEON_API_KEY", "").strip()
+          project_id = os.environ["EXPECTED_PROJECT_ID"]
+          branch_id = os.environ["EXPECTED_BRANCH_ID"]
+          if not raw_url or not expected_host:
+              raise SystemExit("Missing DATABASE_URL secret or NEON_PRODUCTION_HOST repository variable.")
+          if not api_key:
+              raise SystemExit("Missing NEON_API_KEY repository secret; Neon branch identity cannot be verified.")
+          api_request = urllib.request.Request(
+              f"https://console.neon.tech/api/v2/projects/{project_id}/branches/{branch_id}",
+              headers={"Accept": "application/json", "Authorization": f"Bearer {api_key}"},
+          )
+          try:
+              with urllib.request.urlopen(api_request, timeout=20) as response:
+                  branch_payload = json.load(response).get("branch", {})
+          except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+              raise SystemExit("Could not verify the expected production branch through the Neon API.") from exc
+          if branch_payload.get("id") != branch_id or branch_payload.get("project_id") != project_id or branch_payload.get("name") != "production":
+              raise SystemExit("Refusing to proceed: Neon API did not confirm the expected production project and branch.")
+          endpoints_request = urllib.request.Request(
+              f"https://console.neon.tech/api/v2/projects/{project_id}/branches/{branch_id}/endpoints",
+              headers={"Accept": "application/json", "Authorization": f"Bearer {api_key}"},
+          )
+          try:
+              with urllib.request.urlopen(endpoints_request, timeout=20) as response:
+                  endpoints = json.load(response).get("endpoints", [])
+          except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+              raise SystemExit("Could not verify the production branch endpoint through the Neon API.") from exc
+          rw_endpoints = [item for item in endpoints if item.get("type") == "read_write" and not item.get("disabled")]
+          if len(rw_endpoints) != 1 or rw_endpoints[0].get("branch_id") != branch_id or rw_endpoints[0].get("project_id") != project_id:
+              raise SystemExit("Refusing to proceed: expected exactly one active read-write endpoint on the production branch.")
+          endpoint_host = (rw_endpoints[0].get("host") or "").lower()
+          url = make_url(raw_url)
+          actual_host = (url.host or "").lower()
+          allowed_hosts = {endpoint_host, endpoint_host.replace(".", "-pooler.", 1)}
+          if not endpoint_host or actual_host not in allowed_hosts or actual_host != expected_host:
+              raise SystemExit("Refusing to proceed: DATABASE_URL host is not the Neon API-confirmed production branch endpoint (direct or pooler).")
+          if url.database != "neondb":
+              raise SystemExit("Refusing to proceed: unexpected production database name.")
+
+          baseline = "49ed3855c31c"
+          existing = {
+              "accounts", "alembic_version", "audit_logs", "categories",
+              "credit_card_payments", "families", "family_members",
+              "member_roles", "password_reset_tokens", "permissions",
+              "revoked_tokens", "role_data_scopes", "role_permissions",
+              "roles", "transactions", "transfers", "user_identities", "users",
+          }
+          new_tables = {
+              "bills", "recurring_bills", "bill_payments", "attachments",
+              "ocr_tasks", "notifications", "export_templates",
+              "export_template_versions", "export_schedules", "export_runs",
+          }
+          scripts = ScriptDirectory.from_config(Config("alembic.ini"))
+          heads = scripts.get_heads()
+          if len(heads) != 1:
+              raise SystemExit(f"Expected one repository Alembic head, found {heads}.")
+
+          engine = create_engine(url, pool_pre_ping=True, connect_args={"connect_timeout": 10})
+          try:
+              with engine.connect() as connection:
+                  with connection.begin():
+                      connection.exec_driver_sql("SET TRANSACTION READ ONLY")
+                      database_name = connection.execute(text("SELECT current_database()")).scalar_one()
+                      server_version = connection.execute(text("SHOW server_version")).scalar_one()
+                      current = set(MigrationContext.configure(connection).get_current_heads())
+                      tables = set(connection.execute(text("""
+                          SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname='public'
+                      """)).scalars())
+                      missing = sorted(existing - tables)
+                      already_new = sorted(new_tables & tables)
+                      unexpected = sorted(tables - existing)
+                      if database_name != "neondb":
+                          raise SystemExit("Unexpected database name.")
+                      if current != {baseline}:
+                          raise SystemExit(f"Expected baseline {baseline}; found {sorted(current)}.")
+                      if missing or already_new or unexpected:
+                          raise SystemExit(f"Schema differs from audited baseline: missing={missing}, already_new={already_new}, unexpected={unexpected}.")
+                      counts = {}
+                      for table in ("families", "users", "accounts", "categories", "transactions", "transfers", "credit_card_payments"):
+                          counts[table] = connection.execute(text(f'SELECT count(*) FROM "{table}"')).scalar_one()
+          finally:
+              engine.dispose()
+
+          print(f"Production database: {database_name}")
+          print(f"PostgreSQL version: {server_version}")
+          print(f"Production endpoint matched Neon API endpoint and configured host: {expected_host}")
+          print(f"Neon API confirmed project {project_id}, branch {branch_id} (production).")
+          print(f"Current Alembic baseline: {baseline}")
+          print(f"Repository Alembic head: {heads[0]}")
+          print(f"Verified baseline tables: {len(existing)}")
+          print("Selected production row counts:")
+          for table, count in counts.items():
+              print(f"  {table}: {count}")
+          print("Read-only production preflight passed.")
+          PY
+
+      - name: Apply Alembic migrations to production
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          alembic upgrade head
+          set -euo pipefail
+          python -m alembic upgrade head 2>&1 | tee production-alembic-upgrade.log
+          python -m alembic current 2>&1 | tee production-alembic-current.txt
 
-      - name: Verify migration version
+      - name: Verify production schema and preserved data
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          alembic current
+          set -euo pipefail
+          python - <<'PY' | tee production-migration-verification.txt
+          import os
+          from alembic.config import Config
+          from alembic.runtime.migration import MigrationContext
+          from alembic.script import ScriptDirectory
+          from sqlalchemy import create_engine, text
+          from sqlalchemy.engine import make_url
+
+          new_tables = {
+              "bills", "recurring_bills", "bill_payments", "attachments",
+              "ocr_tasks", "notifications", "export_templates",
+              "export_template_versions", "export_schedules", "export_runs",
+          }
+          counts_before = {}
+          with open("production-migration-preflight.txt", encoding="utf-8") as report:
+              for line in report:
+                  parts = line.strip().split(": ", 1)
+                  if len(parts) == 2 and parts[0] in {
+                      "families", "users", "accounts", "categories",
+                      "transactions", "transfers", "credit_card_payments"
+                  }:
+                      counts_before[parts[0]] = int(parts[1])
+
+          scripts = ScriptDirectory.from_config(Config("alembic.ini"))
+          expected_heads = set(scripts.get_heads())
+          engine = create_engine(make_url(os.environ["DATABASE_URL"]), pool_pre_ping=True, connect_args={"connect_timeout": 10})
+          try:
+              with engine.connect() as connection:
+                  current = set(MigrationContext.configure(connection).get_current_heads())
+                  tables = set(connection.execute(text("""
+                      SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname='public'
+                  """)).scalars())
+                  missing = sorted(new_tables - tables)
+                  if current != expected_heads:
+                      raise SystemExit(f"Alembic revision mismatch: current={sorted(current)}, expected={sorted(expected_heads)}.")
+                  if missing:
+                      raise SystemExit(f"Missing new G-01 tables: {missing}.")
+                  for table, expected in counts_before.items():
+                      actual = connection.execute(text(f'SELECT count(*) FROM "{table}"')).scalar_one()
+                      if actual != expected:
+                          raise SystemExit(f"Existing data count changed for {table}: before={expected}, after={actual}.")
+
+                  required_indexes = {
+                      "uq_bills_family_bill_number_active",
+                      "uq_bills_recurring_occurrence",
+                      "ix_bill_payments_family_bill_date",
+                      "ix_attachments_family_bill_created",
+                      "ix_ocr_tasks_family_status_created",
+                      "ix_export_schedules_due",
+                  }
+                  indexes = set(connection.execute(text("""
+                      SELECT indexname FROM pg_indexes WHERE schemaname='public'
+                  """)).scalars())
+                  missing_indexes = sorted(required_indexes - indexes)
+                  if missing_indexes:
+                      raise SystemExit(f"Missing required indexes: {missing_indexes}.")
+
+                  required_triggers = {
+                      "trg_check_bill_category_scope",
+                      "trg_check_recurring_bill_category_scope",
+                  }
+                  triggers = set(connection.execute(text("""
+                      SELECT trigger_name FROM information_schema.triggers WHERE trigger_schema='public'
+                  """)).scalars())
+                  missing_triggers = sorted(required_triggers - triggers)
+                  if missing_triggers:
+                      raise SystemExit(f"Missing required category-scope triggers: {missing_triggers}.")
+
+                  print(f"Final Alembic revision: {sorted(current)}")
+                  print(f"Public table count: {len(tables)}")
+                  print(f"New G-01 tables verified: {len(new_tables)}")
+                  print(f"Required indexes verified: {len(required_indexes)}")
+                  print(f"Required category-scope triggers verified: {len(required_triggers)}")
+                  print("Selected existing data row counts remained unchanged.")
+          finally:
+              engine.dispose()
+          PY
+
+      - name: Validate role catalog
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python -m app.validate_role_catalog
+
+      - name: Upload production migration report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: family-finance-production-migration-${{ github.run_number }}
+          path: |
+            production-migration-preflight.txt
+            production-alembic-upgrade.log
+            production-alembic-current.txt
+            production-migration-verification.txt
+          if-no-files-found: warn
+          retention-days: 30
