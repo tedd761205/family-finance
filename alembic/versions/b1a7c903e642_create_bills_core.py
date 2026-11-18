@@ -95,6 +95,43 @@ def upgrade() -> None:
         postgresql_where=sa.text("is_voided = false AND bill_number IS NOT NULL"),
     )
 
+    op.execute("""
+        CREATE OR REPLACE FUNCTION check_bill_category_scope()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $
+        DECLARE
+            category_family_id BIGINT;
+        BEGIN
+            IF NEW.category_id IS NULL THEN
+                RETURN NEW;
+            END IF;
+
+            SELECT family_id
+            INTO category_family_id
+            FROM categories
+            WHERE id = NEW.category_id;
+
+            IF FOUND
+               AND category_family_id IS NOT NULL
+               AND category_family_id <> NEW.family_id THEN
+                RAISE EXCEPTION '帳單分類必須屬於同一家庭或為系統分類'
+                    USING ERRCODE = '23514',
+                          CONSTRAINT = 'ck_bills_category_family_scope';
+            END IF;
+
+            RETURN NEW;
+        END;
+        $;
+    """)
+    op.execute("""
+        CREATE TRIGGER trg_check_bill_category_scope
+        BEFORE INSERT OR UPDATE OF family_id, category_id
+        ON bills
+        FOR EACH ROW
+        EXECUTE FUNCTION check_bill_category_scope();
+    """)
+
     bind = op.get_bind()
     for code, name, description, category in BILL_PERMISSIONS:
         bind.execute(
@@ -135,6 +172,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.execute("DROP TRIGGER IF EXISTS trg_check_bill_category_scope ON bills")
+    op.execute("DROP FUNCTION IF EXISTS check_bill_category_scope()")
     bind = op.get_bind()
     bind.execute(sa.text("""
         DELETE FROM role_permissions rp
