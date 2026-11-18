@@ -415,7 +415,7 @@ def test_permission_service_denies_inactive_family_member():
         member.status = "left"
         db.commit()
 
-        with pytest.raises(PermissionError, match="有效家庭成員"):
+        with pytest.raises(PermissionError, match="有效成員"):
             require_permission(db, user.id, family.id, permission.code)
 
 
