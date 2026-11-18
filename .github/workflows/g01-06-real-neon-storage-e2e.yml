@@ -1,0 +1,92 @@
+name: G-01-06 Real Neon Storage E2E
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: g01-06-real-neon-storage-e2e
+  cancel-in-progress: false
+
+jobs:
+  real-storage-e2e:
+    name: FastAPI attachment and OCR against real private storage
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: family_finance_e2e
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d family_finance_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: Verify isolated test database and storage secrets
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/family_finance_e2e
+          ATTACHMENT_STORAGE_ENDPOINT_URL: ${{ secrets.ATTACHMENT_STORAGE_ENDPOINT_URL }}
+          ATTACHMENT_STORAGE_REGION: ${{ secrets.ATTACHMENT_STORAGE_REGION }}
+          ATTACHMENT_STORAGE_BUCKET: ${{ secrets.ATTACHMENT_STORAGE_BUCKET }}
+          ATTACHMENT_STORAGE_ACCESS_KEY_ID: ${{ secrets.ATTACHMENT_STORAGE_ACCESS_KEY_ID }}
+          ATTACHMENT_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.ATTACHMENT_STORAGE_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          pg_isready --host=localhost --port=5432 --username=postgres --dbname=family_finance_e2e
+          python - <<'PY'
+          import os
+          from sqlalchemy.engine import make_url
+          parsed = make_url(os.environ["DATABASE_URL"])
+          if parsed.host != "localhost" or parsed.database != "family_finance_e2e":
+              raise SystemExit("Refusing to run against a non-disposable database")
+          required = (
+              "ATTACHMENT_STORAGE_ENDPOINT_URL",
+              "ATTACHMENT_STORAGE_REGION",
+              "ATTACHMENT_STORAGE_BUCKET",
+              "ATTACHMENT_STORAGE_ACCESS_KEY_ID",
+              "ATTACHMENT_STORAGE_SECRET_ACCESS_KEY",
+          )
+          missing = [name for name in required if not os.getenv(name)]
+          if missing:
+              raise SystemExit("Missing repository Actions secrets: " + ", ".join(missing))
+          print("Isolated PostgreSQL and required storage secrets are configured.")
+          PY
+      - name: Apply migrations to disposable PostgreSQL
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/family_finance_e2e
+        run: |
+          set -euo pipefail
+          python -m alembic upgrade head
+          python -m alembic current
+      - name: Run real storage API and OCR end-to-end test
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/family_finance_e2e
+          JWT_SECRET_KEY: g01-06-real-storage-e2e-test-secret-32-bytes
+          ATTACHMENT_STORAGE_ENDPOINT_URL: ${{ secrets.ATTACHMENT_STORAGE_ENDPOINT_URL }}
+          ATTACHMENT_STORAGE_REGION: ${{ secrets.ATTACHMENT_STORAGE_REGION }}
+          ATTACHMENT_STORAGE_BUCKET: ${{ secrets.ATTACHMENT_STORAGE_BUCKET }}
+          ATTACHMENT_STORAGE_ACCESS_KEY_ID: ${{ secrets.ATTACHMENT_STORAGE_ACCESS_KEY_ID }}
+          ATTACHMENT_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.ATTACHMENT_STORAGE_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          python -m pytest -q tests/test_g01_06_real_storage_e2e.py
