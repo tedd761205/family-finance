@@ -42,7 +42,7 @@ def postgres_schema():
 def seed_family_accounts(db: Session):
     suffix = uuid4().hex
     user = User(
-        email=f"g0102-{suffix}@example.test",
+        email=f"g0102-{suffix}@example.com",
         display_name="G-01-02 PostgreSQL Test",
         is_active=True,
     )
@@ -582,7 +582,7 @@ def test_api_register_login_and_me_require_valid_jwt(api_client):
     suffix = uuid4().hex
     user, headers = _register_and_login(
         api_client,
-        f"api-auth-{suffix}@example.test",
+        f"api-auth-{suffix}@example.com",
         "API 認證測試",
     )
 
@@ -600,7 +600,7 @@ def test_api_family_create_and_list_are_bound_to_authenticated_user(api_client):
     suffix = uuid4().hex
     user, headers = _register_and_login(
         api_client,
-        f"api-family-{suffix}@example.test",
+        f"api-family-{suffix}@example.com",
         "家庭建立測試",
     )
 
@@ -632,12 +632,12 @@ def test_api_family_invite_assigns_default_role_and_rejects_duplicate(api_client
     suffix = uuid4().hex
     _, owner_headers = _register_and_login(
         api_client,
-        f"api-owner-{suffix}@example.test",
+        f"api-owner-{suffix}@example.com",
         "家庭管理員測試",
     )
     invited_user, _ = _register_and_login(
         api_client,
-        f"api-invitee-{suffix}@example.test",
+        f"api-invitee-{suffix}@example.com",
         "受邀成員測試",
     )
 
@@ -675,17 +675,17 @@ def test_api_non_member_cannot_invite_into_another_users_family(api_client):
     suffix = uuid4().hex
     _, owner_headers = _register_and_login(
         api_client,
-        f"api-owner-isolation-{suffix}@example.test",
+        f"api-owner-isolation-{suffix}@example.com",
         "家庭擁有者",
     )
     _, outsider_headers = _register_and_login(
         api_client,
-        f"api-outsider-{suffix}@example.test",
+        f"api-outsider-{suffix}@example.com",
         "非家庭成員",
     )
     invitee, _ = _register_and_login(
         api_client,
-        f"api-target-{suffix}@example.test",
+        f"api-target-{suffix}@example.com",
         "受邀目標",
     )
 
