@@ -59,7 +59,7 @@ def _authorize(db: Session, user_id: int, family_id: int, action: str) -> str:
         raise HTTPException(status_code=403, detail=str(exc))
 
 
-def _parent_scope(db: Session, user: User, family_id: int, *, bill_id=None, transaction_id=None):
+def _parent_scope(db: Session, user: User, family_id: int, *, bill_id=None, transaction_id=None, allow_voided: bool = False):
     if (bill_id is None) == (transaction_id is None):
         raise HTTPException(status_code=422, detail="附件必須且只能關聯一張帳單或一筆交易")
 
@@ -77,7 +77,7 @@ def _parent_scope(db: Session, user: User, family_id: int, *, bill_id=None, tran
         bill = db.query(Bill).filter(
             Bill.id == bill_id, Bill.family_id == family_id,
         ).first()
-        if bill is None or bill.is_voided:
+        if bill is None or (bill.is_voided and not allow_voided):
             raise HTTPException(status_code=404, detail="找不到此家庭帳單")
         if scope == "own" and bill.created_by != user.id:
             raise HTTPException(status_code=404, detail="找不到此家庭帳單")
@@ -97,7 +97,7 @@ def _parent_scope(db: Session, user: User, family_id: int, *, bill_id=None, tran
         Transaction.id == transaction_id,
         Transaction.family_id == family_id,
     ).first()
-    if transaction is None or transaction.is_voided:
+    if transaction is None or (transaction.is_voided and not allow_voided):
         raise HTTPException(status_code=404, detail="找不到此家庭交易")
     if scope == "own" and transaction.created_by != user.id:
         raise HTTPException(status_code=404, detail="找不到此家庭交易")
@@ -119,11 +119,12 @@ def _get_attachment(db: Session, family_id: int, attachment_id: int) -> Attachme
     return attachment
 
 
-def _check_parent_for_attachment(db: Session, user: User, attachment: Attachment):
+def _check_parent_for_attachment(db: Session, user: User, attachment: Attachment, *, allow_voided: bool = False):
     _parent_scope(
         db, user, attachment.family_id,
         bill_id=attachment.bill_id,
         transaction_id=attachment.transaction_id,
+        allow_voided=allow_voided,
     )
 
 
@@ -324,7 +325,7 @@ def download_attachment(
     scope = _authorize(db, current_user.id, family_id, "view")
     attachment = _get_attachment(db, family_id, attachment_id)
     _check_attachment_access(attachment, current_user, scope)
-    _check_parent_for_attachment(db, current_user, attachment)
+    _check_parent_for_attachment(db, current_user, attachment, allow_voided=True)
     if attachment.is_voided:
         raise HTTPException(status_code=404, detail="找不到此附件")
 
