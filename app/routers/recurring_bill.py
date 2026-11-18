@@ -119,6 +119,8 @@ def update_recurring_bill(rule_id: int, payload: RecurringBillUpdate, family_id:
         setattr(rule, key, value)
     if rule.end_date and rule.end_date < rule.start_date:
         raise HTTPException(status_code=422, detail="結束日期不可早於開始日期")
+    if rule.next_run_date < rule.start_date:
+        raise HTTPException(status_code=422, detail="下次產生日期不可早於開始日期")
     if rule.original_amount + rule.tax_amount - rule.discount_amount < 0:
         raise HTTPException(status_code=422, detail="折扣金額不可大於原始金額加稅額")
     rule.updated_by = current_user.id
@@ -138,7 +140,9 @@ def update_recurring_bill(rule_id: int, payload: RecurringBillUpdate, family_id:
 def generate_recurring_bills(rule_id: int, through_date: date = Query(...), family_id: int = Query(..., gt=0),
                              current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     scope = _scope(db, current_user.id, family_id, "create")
-    rule = _get_rule(db, family_id, rule_id)
+    rule = db.query(RecurringBill).filter(RecurringBill.id == rule_id, RecurringBill.family_id == family_id).with_for_update().first()
+    if not rule:
+        raise HTTPException(status_code=404, detail="找不到此家庭定期帳單")
     _check_owner(rule, current_user, scope)
     if through_date < rule.next_run_date:
         return {"success": True, "generated_count": 0, "bill_ids": [], "next_run_date": rule.next_run_date}
