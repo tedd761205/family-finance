@@ -87,14 +87,27 @@ jobs:
           engine = create_engine(url, pool_pre_ping=True, connect_args={"connect_timeout": 10})
           try:
               with engine.connect() as connection:
-                  current = set(MigrationContext.configure(connection).get_current_heads())
+                  version_rows = connection.execute(text(
+                      "SELECT version_num FROM public.alembic_version ORDER BY version_num"
+                  )).scalars().all()
+                  current = set(MigrationContext.configure(
+                      connection, opts={"version_table_schema": "public"}
+                  ).get_current_heads())
                   tables = set(connection.execute(text("""
                       SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname='public'
                   """)).scalars())
                   missing_existing = sorted(expected_existing - tables)
                   already_migrated = sorted(expected_new & tables)
+                  if version_rows != [baseline_revision]:
+                      raise SystemExit(
+                          "Restored public.alembic_version must contain exactly "
+                          f"{baseline_revision}; found {version_rows}."
+                      )
                   if current != {baseline_revision}:
-                      raise SystemExit(f"Expected restored baseline {baseline_revision}; found {sorted(current)}.")
+                      raise SystemExit(
+                          "Alembic's public-schema version lookup disagrees with "
+                          f"the direct version-table read: found {sorted(current)}."
+                      )
                   if missing_existing:
                       raise SystemExit(f"Restored baseline is missing tables: {missing_existing}")
                   if already_migrated:
@@ -156,7 +169,9 @@ jobs:
           engine = create_engine(make_url(os.environ["DATABASE_URL"]), pool_pre_ping=True)
           try:
               with engine.connect() as connection:
-                  current = set(MigrationContext.configure(connection).get_current_heads())
+                  current = set(MigrationContext.configure(
+                      connection, opts={"version_table_schema": "public"}
+                  ).get_current_heads())
                   tables = set(connection.execute(text("""
                       SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname='public'
                   """)).scalars())
