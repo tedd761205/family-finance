@@ -1,6 +1,9 @@
 name: G-01-08 Production Read-only Preflight
 
 on:
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -35,13 +38,9 @@ jobs:
 
       - name: Generate offline migration SQL plan
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL: postgresql+psycopg://offline:offline@localhost/offline
         run: |
           set -euo pipefail
-          if [ -z "${DATABASE_URL:-}" ]; then
-            echo "Missing repository secret DATABASE_URL."
-            exit 1
-          fi
           mkdir -p preflight-artifacts
           python -m alembic heads
           python -m alembic upgrade head --sql > preflight-artifacts/production-upgrade-plan.sql
@@ -49,6 +48,7 @@ jobs:
           echo "Offline migration SQL generated. No database connection or schema change was made."
 
       - name: Inspect production migration state and required tables (read-only)
+        if: github.event_name == 'workflow_dispatch'
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
