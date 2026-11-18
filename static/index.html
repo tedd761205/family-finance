@@ -62,7 +62,7 @@
           <button class="primary" type="submit">建立家庭</button>
         </form>
       </section>
-      <section class="quick-grid">\n        <button class="quick-card quick-card-button" id="open-family-members" type="button"><span class="quick-icon">人</span><span class="quick-card-title">家庭成員</span><span class="quick-card-description">查看家人名單與目前角色，邀請已註冊的家人加入。</span><span class="coming">管理家庭成員 →</span></button>
+      <section class="quick-grid">\n        <button class="quick-card quick-card-button" id="open-family-roles" type="button"><span class="quick-icon">權</span><span class="quick-card-title">角色與權限</span><span class="quick-card-description">建立自訂角色、設定細項權限及指派家人角色。</span><span class="coming">管理角色權限 →</span></button>\n        <button class="quick-card quick-card-button" id="open-family-members" type="button"><span class="quick-icon">人</span><span class="quick-card-title">家庭成員</span><span class="quick-card-description">查看家人名單與目前角色，邀請已註冊的家人加入。</span><span class="coming">管理家庭成員 →</span></button>
         <button class="quick-card quick-card-button" id="open-accounts" type="button"><span class="quick-icon">帳</span><span class="quick-card-title">帳戶管理</span><span class="quick-card-description">銀行、現金、信用卡與電子支付。</span><span class="coming">管理帳戶 →</span></button>
         <button class="quick-card quick-card-button" id="open-transactions" type="button"><span class="quick-icon">收</span><span class="quick-card-title">收支紀錄</span><span class="quick-card-description">新增收入、支出，查詢及管理交易。</span><span class="coming">管理收支 →</span></button>
         <button class="quick-card quick-card-button" id="open-transfers" type="button"><span class="quick-icon">轉</span><span class="quick-card-title">帳戶轉帳</span><span class="quick-card-description">管理帳戶間轉入、轉出與手續費。</span><span class="coming">管理轉帳 →</span></button>
@@ -90,7 +90,32 @@
         <div id="family-members-empty" class="empty-state hidden"><h3>目前沒有可顯示的成員</h3><p class="muted">請確認目前登入帳號已加入此家庭。</p></div>
       </section>
 
-      <section id="transactions-view" class="panel transactions-panel hidden">
+
+      <section id="family-roles-view" class="panel family-roles-panel hidden">
+        <div class="accounts-heading">
+          <div><p class="eyebrow">ROLES & PERMISSIONS</p><h2>角色與權限管理</h2><p class="muted">設定查看、新增、修改、作廢等細項權限，並指派給家庭成員。</p></div>
+          <div class="heading-actions"><button class="secondary small" id="close-family-roles" type="button">收起</button><button class="primary small" id="refresh-family-roles" type="button">重新整理</button></div>
+        </div>
+        <div id="family-roles-notice" class="notice" role="status" aria-live="polite"></div>
+        <div class="section-heading"><h3>家庭角色</h3><button class="primary small" id="new-family-role" type="button">＋ 建立自訂角色</button></div>
+        <div id="family-roles-list" class="family-roles-list"></div>
+        <form id="family-role-form" class="subpanel hidden">
+          <h3 id="family-role-form-title">建立自訂角色</h3>
+          <label class="field">角色名稱<input id="family-role-name" maxlength="100" required placeholder="例如：家庭採購人員"></label>
+          <label class="field">角色說明<input id="family-role-description" maxlength="1000" placeholder="說明此角色負責的工作"></label>
+          <div class="section-heading"><h3>功能權限</h3><span class="tiny muted">只能授予目前登入者本身擁有的權限</span></div>
+          <div id="family-role-permissions" class="role-permission-groups"></div>
+          <div class="section-heading"><h3>資料範圍</h3><span class="tiny muted">own：僅自己建立；family：整個家庭</span></div>
+          <div id="family-role-scopes" class="role-scope-grid"></div>
+          <div class="form-actions"><button class="primary" id="save-family-role" type="submit">儲存角色</button><button class="secondary" id="cancel-family-role" type="button">取消</button></div>
+        </form>
+        <div class="subpanel">
+          <div class="section-heading"><h3>成員角色指派</h3><span class="tiny muted">每位成員可同時擁有多個角色</span></div>
+          <div id="family-role-members" class="family-role-members"></div>
+        </div>
+        <p class="tiny muted">安全保護：系統預設角色不可修改或作廢；自訂角色不能授予超出管理者自身權限的權限；每個家庭至少保留一位家庭管理員。</p>
+      </section>
+\n      <section id="transactions-view" class="panel transactions-panel hidden">
         <div class="accounts-heading">
           <div><p class="eyebrow">INCOME & EXPENSE</p><h2>收支紀錄</h2><p class="muted">管理家庭收入、支出與期初餘額；轉帳及帳單付款由專用功能管理。</p></div>
           <div class="heading-actions"><button class="secondary small" id="close-transactions" type="button">收起</button><button class="primary small" id="add-transaction-button" type="button">＋ 新增收支</button></div>
