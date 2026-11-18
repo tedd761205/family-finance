@@ -1,6 +1,16 @@
 name: G-02-01 Web Interface Tests
 
 on:
+  push:
+    branches:
+      - "fix/**"
+    paths:
+      - "main.py"
+      - "static/**"
+      - "tests/test_g02_01_web.py"
+      - ".github/workflows/g02-01-web-tests.yml"
+      - "requirements.txt"
+      - "requirements-dev.txt"
   pull_request:
     branches:
       - main
