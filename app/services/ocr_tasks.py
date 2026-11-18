@@ -27,14 +27,6 @@ def process_task(db: Session, task: OcrTask) -> OcrTask:
         task.completed_at = datetime.now(timezone.utc)
         return task
 
-    task.status = "processing"
-    task.attempts += 1
-    task.started_at = datetime.now(timezone.utc)
-    task.completed_at = None
-    task.error_code = None
-    task.error_message = None
-    db.flush()
-
     try:
         content = attachment_storage.download_object(attachment.object_key)
         import hashlib
