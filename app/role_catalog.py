@@ -119,7 +119,7 @@ MEMBER_PERMISSIONS = [
 
     "reports.view",
     "notifications.view",
-    "exports.view", "exports.create", "exports.download",
+    "exports.view", "exports.create", "exports.update", "exports.publish", "exports.schedule", "exports.download",
 
     "imports.view",
     "imports.create",
