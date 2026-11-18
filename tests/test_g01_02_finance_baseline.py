@@ -48,6 +48,7 @@ def make_account(account_type="bank", family_id=7, account_id=10):
         name="測試帳戶",
         account_type=account_type,
         currency_code="TWD",
+        is_active=True,
     )
 
 
