@@ -339,3 +339,162 @@ def test_credit_card_balance_uses_real_postgresql_aggregates():
 
         assert result["balance"] == Decimal("110.0000")
         assert result["transaction_count"] == 3
+
+
+def seed_permission_fixture(db: Session):
+    """建立真實 PostgreSQL 家庭成員、角色與權限資料。"""
+    from app.models.family_member import FamilyMember
+    from app.models.member_role import MemberRole
+    from app.models.permission import Permission
+    from app.models.role import Role
+    from app.models.role_permission import RolePermission
+    from app.models.role_data_scope import RoleDataScope
+
+    user, family, *_ = seed_family_accounts(db)
+    member = FamilyMember(
+        family_id=family.id,
+        user_id=user.id,
+        status="active",
+    )
+    role = Role(
+        family_id=family.id,
+        name=f"測試角色-{uuid4().hex}",
+        is_system=False,
+        is_active=True,
+    )
+    permission = Permission(
+        code=f"g01_02.test.{uuid4().hex}",
+        name="G-01-02 測試權限",
+        category="test",
+        is_active=True,
+    )
+    db.add_all([member, role, permission])
+    db.flush()
+    db.add_all([
+        MemberRole(
+            family_member_id=member.id,
+            role_id=role.id,
+            family_id=family.id,
+        ),
+        RolePermission(
+            role_id=role.id,
+            permission_id=permission.id,
+        ),
+        RoleDataScope(
+            role_id=role.id,
+            family_id=family.id,
+            resource="transactions",
+            scope="own",
+        ),
+    ])
+    db.flush()
+    return user, family, member, role, permission
+
+
+def test_permission_service_accepts_active_member_with_assigned_permission():
+    from app.dependencies.permissions import require_permission
+
+    with Session(engine) as db:
+        user, family, member, role, permission = seed_permission_fixture(db)
+        db.commit()
+
+        found_member, roles = require_permission(
+            db, user.id, family.id, permission.code
+        )
+
+        assert found_member.id == member.id
+        assert [item.id for item in roles] == [role.id]
+
+
+def test_permission_service_denies_inactive_family_member():
+    from app.dependencies.permissions import require_permission
+    from app.models.family_member import FamilyMember
+
+    with Session(engine) as db:
+        user, family, member, _, permission = seed_permission_fixture(db)
+        member.status = "left"
+        db.commit()
+
+        with pytest.raises(PermissionError, match="有效家庭成員"):
+            require_permission(db, user.id, family.id, permission.code)
+
+
+def test_permission_service_denies_inactive_user():
+    from app.dependencies.permissions import require_permission
+
+    with Session(engine) as db:
+        user, family, _, _, permission = seed_permission_fixture(db)
+        user.is_active = False
+        db.commit()
+
+        with pytest.raises(PermissionError, match="未啟用"):
+            require_permission(db, user.id, family.id, permission.code)
+
+
+def test_permission_service_denies_permission_not_assigned_to_member_role():
+    from app.dependencies.permissions import require_permission
+    from app.models.permission import Permission
+
+    with Session(engine) as db:
+        user, family, _, _, _ = seed_permission_fixture(db)
+        unassigned = Permission(
+            code=f"g01_02.unassigned.{uuid4().hex}",
+            name="未指派權限",
+            category="test",
+            is_active=True,
+        )
+        db.add(unassigned)
+        db.commit()
+
+        with pytest.raises(PermissionError, match="沒有執行此操作的權限"):
+            require_permission(db, user.id, family.id, unassigned.code)
+
+
+def test_permission_service_denies_inactive_permission():
+    from app.dependencies.permissions import require_permission
+
+    with Session(engine) as db:
+        user, family, _, _, permission = seed_permission_fixture(db)
+        permission.is_active = False
+        db.commit()
+
+        with pytest.raises(PermissionError, match="沒有執行此操作的權限"):
+            require_permission(db, user.id, family.id, permission.code)
+
+
+def test_postgresql_data_scope_prefers_family_over_own_across_roles():
+    from app.dependencies.permissions import get_data_scope
+    from app.models.member_role import MemberRole
+    from app.models.role import Role
+    from app.models.role_data_scope import RoleDataScope
+
+    with Session(engine) as db:
+        user, family, member, own_role, _ = seed_permission_fixture(db)
+        family_role = Role(
+            family_id=family.id,
+            name=f"家庭範圍角色-{uuid4().hex}",
+            is_system=False,
+            is_active=True,
+        )
+        db.add(family_role)
+        db.flush()
+        db.add_all([
+            MemberRole(
+                family_member_id=member.id,
+                role_id=family_role.id,
+                family_id=family.id,
+            ),
+            RoleDataScope(
+                role_id=family_role.id,
+                family_id=family.id,
+                resource="transactions",
+                scope="family",
+            ),
+        ])
+        db.commit()
+
+        from app.dependencies.permissions import get_active_family_roles
+        roles = get_active_family_roles(db, member.id, family.id)
+
+        assert {role.id for role in roles} == {own_role.id, family_role.id}
+        assert get_data_scope(db, roles, family.id, "transactions") == "family"
