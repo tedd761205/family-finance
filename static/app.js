@@ -16,7 +16,7 @@ function setMode(next){mode=next;$("login-tab").classList.toggle("active",mode==
 function showAuth(){currentUser=null;$("auth-view").classList.remove("hidden");$("app-view").classList.add("hidden");}
 function showApp(){$("auth-view").classList.add("hidden");$("app-view").classList.remove("hidden");}
 async function loadApp(){try{currentUser=await api("/auth/me");}catch(error){showAuth();notice("notice",error.message,"error");return;}$("user-greeting").textContent=currentUser.display_name+"（"+currentUser.email+"）";showApp();try{await loadFamilies();}catch(error){notice("notice-app","已登入，但家庭清單載入失敗："+error.message,"error");}}
-async function loadFamilies(){const result=await api("/families/mine");$("family-count").textContent=result.total+" 個家庭";const list=$("family-list");list.replaceChildren();$("empty-family").classList.toggle("hidden",result.total!==0);if(!selectedFamilyId&&result.families.length){selectedFamilyId=result.families[0].family_id;}for(const family of result.families){const card=document.createElement("button");card.type="button";card.className="family-card"+(selectedFamilyId===family.family_id?" selected":"");const title=document.createElement("strong");title.textContent=family.family_name;const meta=document.createElement("span");meta.textContent=family.currency+" · 家庭成員";card.append(title,meta);card.addEventListener("click",async()=>{selectedFamilyId=family.family_id;for(const node of list.children)node.classList.remove("selected");card.classList.add("selected");notice("notice-app","已切換至「"+family.family_name+"」。","success");if(!$("accounts-view").classList.contains("hidden")){await loadAccounts();}if(!$("transactions-view").classList.contains("hidden")){await showTransactions();}if(!$("transfers-view").classList.contains("hidden")){await showTransfers();}if(!$("credit-card-payments-view").classList.contains("hidden")){await showCreditCardPayments();}if(!$("bills-view").classList.contains("hidden")){await showBills();}if(!$("bill-payments-view").classList.contains("hidden")){$("bill-payments-view").classList.add("hidden");activeBillForPayments=null;}if(!$("recurring-bills-view").classList.contains("hidden")){await showRecurringBills();}});list.append(card);}}
+async function loadFamilies(){const result=await api("/families/mine");$("family-count").textContent=result.total+" 個家庭";const list=$("family-list");list.replaceChildren();$("empty-family").classList.toggle("hidden",result.total!==0);if(!selectedFamilyId&&result.families.length){selectedFamilyId=result.families[0].family_id;}for(const family of result.families){const card=document.createElement("button");card.type="button";card.className="family-card"+(selectedFamilyId===family.family_id?" selected":"");const title=document.createElement("strong");title.textContent=family.family_name;const meta=document.createElement("span");meta.textContent=family.currency+" · 家庭成員";card.append(title,meta);card.addEventListener("click",async()=>{selectedFamilyId=family.family_id;for(const node of list.children)node.classList.remove("selected");card.classList.add("selected");notice("notice-app","已切換至「"+family.family_name+"」。","success");if(!$("accounts-view").classList.contains("hidden")){await loadAccounts();}if(!$("transactions-view").classList.contains("hidden")){await showTransactions();}if(!$("transfers-view").classList.contains("hidden")){await showTransfers();}if(!$("credit-card-payments-view").classList.contains("hidden")){await showCreditCardPayments();}if(!$("bills-view").classList.contains("hidden")){await showBills();}if(!$("bill-payments-view").classList.contains("hidden")){$("bill-payments-view").classList.add("hidden");activeBillForPayments=null;}if(!$("recurring-bills-view").classList.contains("hidden")){await showRecurringBills();}if(!$("reports-view").classList.contains("hidden")){await loadFinancialReports();}});list.append(card);}}
 function accountTypeLabel(type){return({bank:"銀行帳戶",time_deposit:"定期存款",cash:"現金",credit_card:"信用卡",e_wallet:"電子支付",other:"其他"})[type]||type;}
 function money(value,currency){const amount=Number(value||0);try{return new Intl.NumberFormat("zh-TW",{style:"currency",currency:currency||"TWD",minimumFractionDigits:2,maximumFractionDigits:2}).format(amount);}catch{return amount.toFixed(2)+" "+(currency||"");}}
 function toggleCreditFields(){const isCard=$("account-type").value==="credit_card";$("credit-fields").classList.toggle("hidden",!isCard);}
@@ -1626,3 +1626,140 @@ async function deactivateRecurringBill(item) {
     notice("recurring-bill-notice",error.message,"error");
   }
 }
+
+
+// --------------------------------------------------
+// G-02-09：家庭財務報表
+// --------------------------------------------------
+let monthlyReportData=null;
+let yearlyReportData=null;
+let categoryReportData=null;
+
+function reportAmountMap(rows) {
+  return new Map((rows||[]).map(row=>[row.currency_code,Number(row.amount||0)]));
+}
+
+function reportCurrencies(...groups) {
+  return [...new Set(groups.flatMap(rows=>(rows||[]).map(row=>row.currency_code)))].sort();
+}
+
+function renderMonthlyReport(data) {
+  const host=$("monthly-report-summary");
+  host.replaceChildren();
+  $("monthly-report-period").textContent=data.year+" 年 "+data.month+" 月";
+  $("monthly-report-count").textContent=data.transaction_count+" 筆交易";
+  const currencies=reportCurrencies(data.total_income,data.total_expense,data.net_amount);
+  $("monthly-report-empty").classList.toggle("hidden",currencies.length!==0);
+  const income=reportAmountMap(data.total_income),expense=reportAmountMap(data.total_expense),net=reportAmountMap(data.net_amount);
+  for(const currency of currencies) {
+    const card=document.createElement("article");
+    card.className="report-currency-card";
+    const title=document.createElement("h4");title.textContent=currency;
+    card.append(title);
+    for(const [label,value,kind] of [["總收入",income.get(currency)||0,"income"],["總支出",expense.get(currency)||0,"expense"],["淨收支",net.get(currency)||0,"net"]]) {
+      const row=document.createElement("div");row.className="report-metric "+kind;
+      const name=document.createElement("span");name.textContent=label;
+      const amount=document.createElement("strong");amount.textContent=money(value,currency);
+      row.append(name,amount);card.append(row);
+    }
+    host.append(card);
+  }
+}
+
+function renderYearlyReport(data) {
+  const host=$("yearly-report-list");host.replaceChildren();
+  const currencies=reportCurrencies(data.total_income,data.total_expense,data.net_amount);
+  $("yearly-report-empty").classList.toggle("hidden",currencies.length!==0);
+  const monthly=data.monthly_reports||[];
+  for(const currency of currencies) {
+    const block=document.createElement("article");block.className="yearly-currency-block";
+    const title=document.createElement("h4");title.textContent=currency+" · "+data.year+" 年";
+    block.append(title);
+    const maxAmount=Math.max(1,...monthly.flatMap(item=>[reportAmountMap(item.total_income).get(currency)||0,reportAmountMap(item.total_expense).get(currency)||0]));
+    for(const item of monthly) {
+      const income=reportAmountMap(item.total_income).get(currency)||0;
+      const expense=reportAmountMap(item.total_expense).get(currency)||0;
+      const net=reportAmountMap(item.net_amount).get(currency)||0;
+      const row=document.createElement("div");row.className="yearly-month-row";
+      const month=document.createElement("strong");month.textContent=item.month+" 月";
+      const bars=document.createElement("div");bars.className="yearly-bars";
+      const incomeTrack=document.createElement("div");incomeTrack.className="yearly-bar-track";
+      const incomeFill=document.createElement("div");incomeFill.className="yearly-bar-fill";incomeFill.style.width=(income/maxAmount*100)+"%";incomeTrack.append(incomeFill);
+      const expenseTrack=document.createElement("div");expenseTrack.className="yearly-bar-track";
+      const expenseFill=document.createElement("div");expenseFill.className="yearly-bar-fill expense";expenseFill.style.width=(expense/maxAmount*100)+"%";expenseTrack.append(expenseFill);
+      bars.append(incomeTrack,expenseTrack);
+      const netLabel=document.createElement("span");netLabel.className="yearly-month-net";netLabel.textContent="淨額 "+money(net,currency);
+      row.append(month,bars,netLabel);block.append(row);
+    }
+    const legend=document.createElement("p");legend.className="tiny muted";legend.textContent="上方綠色：收入；下方橘色：支出。每個幣別使用自己的比例尺。";
+    block.append(legend);host.append(block);
+  }
+}
+
+function renderCategoryReport(data) {
+  const host=$("category-report-list");host.replaceChildren();
+  $("category-report-period").textContent=(data.start_date||"不限開始日")+" 至 "+(data.end_date||"不限結束日");
+  const rows=data.categories||[];
+  $("category-report-empty").classList.toggle("hidden",rows.length===0);
+  for(const item of rows) {
+    const card=document.createElement("article");card.className="category-report-item";
+    const top=document.createElement("div");top.className="category-report-item-top";
+    const name=document.createElement("strong");name.textContent=(item.category_type==="income"?"收入 · ":"支出 · ")+item.category_name;
+    const amount=document.createElement("strong");amount.textContent=money(item.total_amount,item.currency_code);
+    top.append(name,amount);
+    const track=document.createElement("div");track.className="category-report-track";
+    const fill=document.createElement("div");fill.className="category-report-fill";fill.style.width=Math.max(0,Math.min(100,Number(item.percentage||0)))+"%";track.append(fill);
+    const meta=document.createElement("div");meta.className="category-report-meta tiny muted";
+    const count=document.createElement("span");count.textContent=item.transaction_count+" 筆 · "+Number(item.percentage||0).toFixed(2)+"%";
+    const currency=document.createElement("span");currency.textContent=item.currency_code;
+    meta.append(count,currency);card.append(top,track,meta);host.append(card);
+  }
+}
+
+async function loadFinancialReports() {
+  if(!selectedFamilyId){notice("notice-app","請先建立或選擇家庭，再查看財務報表。","error");return false;}
+  const year=Number($("report-year").value),month=Number($("report-month").value);
+  const start=$("report-start-date").value,end=$("report-end-date").value;
+  if(!Number.isInteger(year)||year<2000||year>2100){notice("reports-notice","報表年份必須介於 2000 至 2100。","error");return false;}
+  if(start&&end&&start>end){notice("reports-notice","分類開始日期不可晚於結束日期。","error");return false;}
+  $("reports-loading").classList.remove("hidden");clearNotice("reports-notice");
+  try {
+    const categoryParams=new URLSearchParams({family_id:String(selectedFamilyId)});
+    if(start)categoryParams.set("start_date",start);
+    if(end)categoryParams.set("end_date",end);
+    if($("report-category-type").value)categoryParams.set("transaction_type",$("report-category-type").value);
+    const [monthly,yearly,categories]=await Promise.all([
+      api("/reports/monthly-summary?family_id="+selectedFamilyId+"&year="+year+"&month="+month),
+      api("/reports/yearly-summary?family_id="+selectedFamilyId+"&year="+year),
+      api("/reports/category-summary?"+categoryParams.toString())
+    ]);
+    monthlyReportData=monthly;yearlyReportData=yearly;categoryReportData=categories;
+    renderMonthlyReport(monthly);renderYearlyReport(yearly);renderCategoryReport(categories);
+    notice("reports-notice","財務報表已更新。","success");
+    return true;
+  } catch(error) {
+    notice("reports-notice","報表載入失敗："+error.message,"error");
+    return false;
+  } finally {
+    $("reports-loading").classList.add("hidden");
+  }
+}
+
+function openFinancialReports() {
+  if(!selectedFamilyId){notice("notice-app","請先建立或選擇家庭，再查看財務報表。","error");return;}
+  const now=new Date(),year=now.getFullYear(),month=now.getMonth()+1;
+  $("report-year").value=String(year);
+  $("report-month").value=String(month);
+  const first=new Date(year,month-1,1);
+  const last=new Date(year,month,0);
+  const iso=date=>date.getFullYear()+"-"+String(date.getMonth()+1).padStart(2,"0")+"-"+String(date.getDate()).padStart(2,"0");
+  $("report-start-date").value=iso(first);$("report-end-date").value=iso(last);
+  $("reports-view").classList.remove("hidden");
+  $("reports-view").scrollIntoView({behavior:"smooth",block:"start"});
+  loadFinancialReports();
+}
+
+$("open-reports").addEventListener("click",openFinancialReports);
+$("close-reports").addEventListener("click",()=>{$("reports-view").classList.add("hidden");});
+$("refresh-reports").addEventListener("click",loadFinancialReports);
+$("apply-reports").addEventListener("click",loadFinancialReports);
