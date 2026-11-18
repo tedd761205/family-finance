@@ -16,7 +16,7 @@ function setMode(next){mode=next;$("login-tab").classList.toggle("active",mode==
 function showAuth(){currentUser=null;$("auth-view").classList.remove("hidden");$("app-view").classList.add("hidden");}
 function showApp(){$("auth-view").classList.add("hidden");$("app-view").classList.remove("hidden");}
 async function loadApp(){try{currentUser=await api("/auth/me");}catch(error){showAuth();notice("notice",error.message,"error");return;}$("user-greeting").textContent=currentUser.display_name+"（"+currentUser.email+"）";showApp();try{await loadFamilies();}catch(error){notice("notice-app","已登入，但家庭清單載入失敗："+error.message,"error");}}
-async function loadFamilies(){const result=await api("/families/mine");$("family-count").textContent=result.total+" 個家庭";const list=$("family-list");list.replaceChildren();$("empty-family").classList.toggle("hidden",result.total!==0);if(!selectedFamilyId&&result.families.length){selectedFamilyId=result.families[0].family_id;}for(const family of result.families){const card=document.createElement("button");card.type="button";card.className="family-card"+(selectedFamilyId===family.family_id?" selected":"");const title=document.createElement("strong");title.textContent=family.family_name;const meta=document.createElement("span");meta.textContent=family.currency+" · 家庭成員";card.append(title,meta);card.addEventListener("click",async()=>{selectedFamilyId=family.family_id;for(const node of list.children)node.classList.remove("selected");card.classList.add("selected");notice("notice-app","已切換至「"+family.family_name+"」。","success");if(!$("accounts-view").classList.contains("hidden")){await loadAccounts();}if(!$("transactions-view").classList.contains("hidden")){await showTransactions();}if(!$("transfers-view").classList.contains("hidden")){await showTransfers();}});list.append(card);}}
+async function loadFamilies(){const result=await api("/families/mine");$("family-count").textContent=result.total+" 個家庭";const list=$("family-list");list.replaceChildren();$("empty-family").classList.toggle("hidden",result.total!==0);if(!selectedFamilyId&&result.families.length){selectedFamilyId=result.families[0].family_id;}for(const family of result.families){const card=document.createElement("button");card.type="button";card.className="family-card"+(selectedFamilyId===family.family_id?" selected":"");const title=document.createElement("strong");title.textContent=family.family_name;const meta=document.createElement("span");meta.textContent=family.currency+" · 家庭成員";card.append(title,meta);card.addEventListener("click",async()=>{selectedFamilyId=family.family_id;for(const node of list.children)node.classList.remove("selected");card.classList.add("selected");notice("notice-app","已切換至「"+family.family_name+"」。","success");if(!$("accounts-view").classList.contains("hidden")){await loadAccounts();}if(!$("transactions-view").classList.contains("hidden")){await showTransactions();}if(!$("transfers-view").classList.contains("hidden")){await showTransfers();}if(!$("credit-card-payments-view").classList.contains("hidden")){await showCreditCardPayments();}});list.append(card);}}
 function accountTypeLabel(type){return({bank:"銀行帳戶",time_deposit:"定期存款",cash:"現金",credit_card:"信用卡",e_wallet:"電子支付",other:"其他"})[type]||type;}
 function money(value,currency){const amount=Number(value||0);try{return new Intl.NumberFormat("zh-TW",{style:"currency",currency:currency||"TWD",minimumFractionDigits:2,maximumFractionDigits:2}).format(amount);}catch{return amount.toFixed(2)+" "+(currency||"");}}
 function toggleCreditFields(){const isCard=$("account-type").value==="credit_card";$("credit-fields").classList.toggle("hidden",!isCard);}
@@ -562,5 +562,257 @@ async function voidTransfer(item) {
     notice("transfer-notice",refreshed?"轉帳及相關交易已作廢，歷史資料仍會保留。":"已完成作廢，但轉帳清單重新載入失敗，請重新整理。",refreshed?"success":"error");
   } catch(error) {
     notice("transfer-notice",error.message,"error");
+  }
+}
+
+
+// --------------------------------------------------
+// G-02-05：信用卡繳款管理
+// --------------------------------------------------
+let editingCreditCardPaymentId = null;
+let creditCardPaymentRows = [];
+let creditCardPaymentAccounts = [];
+
+function paymentDateInput(value) {
+  if (!value) return localDateString();
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return localDateString();
+  return date.getFullYear()+"-"+String(date.getMonth()+1).padStart(2,"0")+"-"+String(date.getDate()).padStart(2,"0");
+}
+
+function paymentDateTime(value, endOfDay=false) {
+  return value ? value+(endOfDay ? "T23:59:59+08:00" : "T12:00:00+08:00") : "";
+}
+
+function paymentAccountLabel(account) {
+  return account.name+" · "+account.currency_code;
+}
+
+function paymentSourceAccounts() {
+  return creditCardPaymentAccounts.filter(account=>["bank","cash","e_wallet"].includes(account.account_type)&&account.is_active!==false);
+}
+
+function paymentCardAccounts() {
+  return creditCardPaymentAccounts.filter(account=>account.account_type==="credit_card"&&account.is_active!==false);
+}
+
+function populateCreditCardPaymentAccounts(preferred={}) {
+  const source=$("credit-payment-source");
+  const card=$("credit-payment-card");
+  const filter=$("credit-payment-filter-account");
+  const previous={source:preferred.source??source.value,card:preferred.card??card.value,filter:filter.value};
+  source.replaceChildren();
+  card.replaceChildren();
+  filter.replaceChildren(new Option("全部帳戶",""));
+  for(const account of creditCardPaymentAccounts) filter.add(new Option(paymentAccountLabel(account),String(account.id)));
+  for(const account of paymentSourceAccounts()) source.add(new Option(paymentAccountLabel(account),String(account.id)));
+  for(const account of paymentCardAccounts()) card.add(new Option(paymentAccountLabel(account),String(account.id)));
+  if(previous.source&&[...source.options].some(option=>option.value===String(previous.source)))source.value=String(previous.source);
+  if(previous.card&&[...card.options].some(option=>option.value===String(previous.card)))card.value=String(previous.card);
+  if(previous.filter&&[...filter.options].some(option=>option.value===String(previous.filter)))filter.value=String(previous.filter);
+  updateCreditPaymentCurrencyHint();
+}
+
+function updateCreditPaymentCurrencyHint() {
+  const source=creditCardPaymentAccounts.find(account=>account.id===Number($("credit-payment-source").value));
+  const card=creditCardPaymentAccounts.find(account=>account.id===Number($("credit-payment-card").value));
+  $("credit-payment-currency-hint").textContent=source&&card
+    ? "繳款幣別："+source.currency_code+"。來源帳戶與信用卡帳戶必須使用相同幣別。"
+    : "請先建立可扣款的銀行／現金／電子支付帳戶，以及信用卡帳戶。";
+}
+
+async function loadCreditCardPaymentSupportData() {
+  const result=await api("/accounts?family_id="+selectedFamilyId);
+  creditCardPaymentAccounts=result.accounts||[];
+  populateCreditCardPaymentAccounts();
+}
+
+function creditCardPaymentQuery() {
+  const params=new URLSearchParams({family_id:String(selectedFamilyId),limit:"200"});
+  const account=$("credit-payment-filter-account").value;
+  const start=$("credit-payment-filter-start").value;
+  const end=$("credit-payment-filter-end").value;
+  if(account)params.set("account_id",account);
+  if(start)params.set("start_date",paymentDateTime(start));
+  if(end)params.set("end_date",paymentDateTime(end,true));
+  if($("credit-payment-include-voided").checked)params.set("include_voided","true");
+  return params.toString();
+}
+
+function renderCreditCardPayments() {
+  const list=$("credit-card-payments-list");
+  list.replaceChildren();
+  $("credit-card-payments-count").textContent=creditCardPaymentRows.length+" 筆繳款";
+  $("credit-card-payments-empty").classList.toggle("hidden",creditCardPaymentRows.length!==0);
+  for(const item of creditCardPaymentRows) {
+    const source=creditCardPaymentAccounts.find(account=>account.id===item.from_account_id);
+    const cardAccount=creditCardPaymentAccounts.find(account=>account.id===item.credit_card_account_id);
+    const card=document.createElement("article");
+    card.className="transaction-card"+(item.is_voided?" transaction-voided":"");
+    const top=document.createElement("div");
+    top.className="transaction-card-top";
+    const main=document.createElement("div");
+    const title=document.createElement("strong");
+    title.textContent=item.description||"信用卡繳款";
+    const meta=document.createElement("p");
+    meta.className="muted tiny";
+    meta.textContent=[paymentDateInput(item.payment_date),(source?.name||"來源帳戶 #"+item.from_account_id)+" → "+(cardAccount?.name||"信用卡 #"+item.credit_card_account_id)].join(" · ");
+    main.append(title,meta);
+    const amount=document.createElement("strong");
+    amount.className="transaction-amount expense";
+    amount.textContent=money(item.amount,item.currency_code);
+    top.append(main,amount);
+    card.append(top);
+    if(item.note) {
+      const note=document.createElement("p");
+      note.className="tiny muted transfer-card-details";
+      note.textContent="備註："+item.note;
+      card.append(note);
+    }
+    if(item.is_voided) {
+      const status=document.createElement("span");
+      status.className="transaction-status";
+      status.textContent="已作廢";
+      card.append(status);
+    } else {
+      const actions=document.createElement("div");
+      actions.className="account-actions";
+      const edit=document.createElement("button");
+      edit.type="button";edit.className="secondary small";edit.textContent="修改";
+      edit.addEventListener("click",()=>startEditCreditCardPayment(item));
+      const voidButton=document.createElement("button");
+      voidButton.type="button";voidButton.className="danger small";voidButton.textContent="作廢";
+      voidButton.addEventListener("click",()=>voidCreditCardPayment(item));
+      actions.append(edit,voidButton);
+      card.append(actions);
+    }
+    list.append(card);
+  }
+}
+
+async function loadCreditCardPayments() {
+  if(!selectedFamilyId)return false;
+  clearNotice("credit-payment-notice");
+  $("credit-card-payments-loading").classList.remove("hidden");
+  try {
+    const result=await api("/credit-card-payments?"+creditCardPaymentQuery());
+    creditCardPaymentRows=result.payments||[];
+    renderCreditCardPayments();
+    return true;
+  } catch(error) {
+    notice("credit-payment-notice","信用卡繳款清單載入失敗："+error.message,"error");
+    return false;
+  } finally {
+    $("credit-card-payments-loading").classList.add("hidden");
+  }
+}
+
+async function showCreditCardPayments() {
+  if(!selectedFamilyId){notice("notice-app","請先建立或選擇家庭，再管理信用卡繳款。","error");return;}
+  $("credit-card-payments-view").classList.remove("hidden");
+  $("credit-card-payments-view").scrollIntoView({behavior:"smooth",block:"start"});
+  try {
+    await loadCreditCardPaymentSupportData();
+    await loadCreditCardPayments();
+  } catch(error) {
+    notice("credit-payment-notice","信用卡繳款管理初始化失敗："+error.message,"error");
+  }
+}
+
+function resetCreditCardPaymentForm() {
+  editingCreditCardPaymentId=null;
+  $("credit-payment-form").reset();
+  $("credit-payment-form-title").textContent="新增信用卡繳款";
+  $("credit-payment-submit").textContent="新增繳款";
+  $("credit-payment-source").disabled=false;
+  $("credit-payment-card").disabled=false;
+  $("credit-payment-date").value=localDateString();
+  $("credit-payment-form-panel").classList.add("hidden");
+  populateCreditCardPaymentAccounts();
+}
+
+function startEditCreditCardPayment(item) {
+  editingCreditCardPaymentId=item.id;
+  $("credit-payment-form-title").textContent="修改信用卡繳款";
+  $("credit-payment-submit").textContent="儲存修改";
+  populateCreditCardPaymentAccounts({source:item.from_account_id,card:item.credit_card_account_id});
+  $("credit-payment-source").value=String(item.from_account_id);
+  $("credit-payment-card").value=String(item.credit_card_account_id);
+  $("credit-payment-source").disabled=true;
+  $("credit-payment-card").disabled=true;
+  $("credit-payment-amount").value=item.amount;
+  $("credit-payment-date").value=paymentDateInput(item.payment_date);
+  $("credit-payment-description").value=item.description||"";
+  $("credit-payment-note").value=item.note||"";
+  $("credit-payment-form-panel").classList.remove("hidden");
+  $("credit-payment-form-panel").scrollIntoView({behavior:"smooth",block:"start"});
+}
+
+$("open-credit-card-payments").addEventListener("click",showCreditCardPayments);
+$("close-credit-card-payments").addEventListener("click",()=>{
+  $("credit-card-payments-view").classList.add("hidden");
+  resetCreditCardPaymentForm();
+});
+$("add-credit-payment-button").addEventListener("click",()=>{
+  resetCreditCardPaymentForm();
+  if(!paymentSourceAccounts().length||!paymentCardAccounts().length) {
+    notice("credit-payment-notice","請先建立至少一個銀行／現金／電子支付帳戶及一個信用卡帳戶。","error");
+    return;
+  }
+  $("credit-payment-form-panel").classList.remove("hidden");
+  $("credit-payment-form-panel").scrollIntoView({behavior:"smooth",block:"start"});
+});
+$("credit-payment-cancel").addEventListener("click",resetCreditCardPaymentForm);
+$("credit-payment-source").addEventListener("change",updateCreditPaymentCurrencyHint);
+$("credit-payment-card").addEventListener("change",updateCreditPaymentCurrencyHint);
+$("apply-credit-payment-filters").addEventListener("click",loadCreditCardPayments);
+$("credit-payment-filter-account").addEventListener("change",loadCreditCardPayments);
+$("credit-payment-include-voided").addEventListener("change",loadCreditCardPayments);
+$("credit-payment-form").addEventListener("submit",async(event)=>{
+  event.preventDefault();
+  const button=$("credit-payment-submit");
+  button.disabled=true;
+  clearNotice("credit-payment-notice");
+  try {
+    const source=creditCardPaymentAccounts.find(account=>account.id===Number($("credit-payment-source").value));
+    const card=creditCardPaymentAccounts.find(account=>account.id===Number($("credit-payment-card").value));
+    if(!source||!card)throw new Error("請選擇有效的扣款帳戶及信用卡帳戶。");
+    if(source.id===card.id)throw new Error("扣款帳戶不可與信用卡帳戶相同。");
+    if(source.currency_code!==card.currency_code)throw new Error("扣款帳戶與信用卡帳戶幣別必須相同。");
+    const wasEditing=Boolean(editingCreditCardPaymentId);
+    const payload={
+      amount:$("credit-payment-amount").value,
+      payment_date:paymentDateTime($("credit-payment-date").value),
+      description:$("credit-payment-description").value.trim()||null,
+      note:$("credit-payment-note").value.trim()||null
+    };
+    if(wasEditing) {
+      await api("/credit-card-payments/"+editingCreditCardPaymentId+"?family_id="+selectedFamilyId,{method:"PATCH",body:JSON.stringify(payload)});
+    } else {
+      payload.from_account_id=source.id;
+      payload.credit_card_account_id=card.id;
+      payload.currency_code=source.currency_code;
+      await api("/credit-card-payments?family_id="+selectedFamilyId,{method:"POST",body:JSON.stringify(payload)});
+    }
+    resetCreditCardPaymentForm();
+    const refreshed=await loadCreditCardPayments();
+    await loadAccounts();
+    notice("credit-payment-notice",refreshed?(wasEditing?"信用卡繳款已更新，來源帳戶與信用卡交易明細已同步。":"信用卡繳款已新增，系統已同步兩端帳戶交易。"):"資料已儲存，但清單重新載入失敗，請重新整理。",refreshed?"success":"error");
+  } catch(error) {
+    notice("credit-payment-notice",error.message,"error");
+  } finally {
+    button.disabled=false;
+  }
+});
+
+async function voidCreditCardPayment(item) {
+  if(!window.confirm("確定要作廢這筆信用卡繳款？系統會一併作廢來源帳戶及信用卡交易，並保留歷史紀錄。"))return;
+  try {
+    await api("/credit-card-payments/"+item.id+"?family_id="+selectedFamilyId,{method:"DELETE"});
+    const refreshed=await loadCreditCardPayments();
+    await loadAccounts();
+    notice("credit-payment-notice",refreshed?"信用卡繳款及相關交易已作廢，歷史資料仍會保留。":"已完成作廢，但清單重新載入失敗，請重新整理。",refreshed?"success":"error");
+  } catch(error) {
+    notice("credit-payment-notice",error.message,"error");
   }
 }
