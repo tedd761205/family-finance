@@ -34,6 +34,7 @@ def get_account_or_raise(
     db: Session,
     family_id: int,
     account_id: int,
+    account_created_by: int | None = None,
 ) -> Account:
     """取得指定家庭的有效帳戶。"""
 
@@ -52,6 +53,9 @@ def get_account_or_raise(
         )
         .first()
     )
+
+    if account_created_by is not None and account.created_by != account_created_by:
+        account = None
 
     if account is None:
         raise ValueError("找不到指定帳戶或帳戶已停用")
@@ -95,6 +99,7 @@ def build_account_transaction_query(
     start_date: date | None = None,
     end_date: date | None = None,
     created_by: int | None = None,
+    account_created_by: int | None = None,
 ):
     """建立帳戶交易明細查詢。"""
 
@@ -102,6 +107,7 @@ def build_account_transaction_query(
         db=db,
         family_id=family_id,
         account_id=account_id,
+        account_created_by=account_created_by,
     )
 
     start_datetime, end_datetime = get_taiwan_date_range(
@@ -140,6 +146,7 @@ def calculate_account_summary(
     start_date: date | None = None,
     end_date: date | None = None,
     created_by: int | None = None,
+    account_created_by: int | None = None,
 ) -> dict:
     """
     計算指定帳戶的收支統計及目前餘額。
@@ -162,6 +169,7 @@ def calculate_account_summary(
         start_date=start_date,
         end_date=end_date,
         created_by=created_by,
+        account_created_by=account_created_by,
     )
 
     transactions = query.all()
@@ -299,6 +307,7 @@ def calculate_account_transactions(
     page: int = 1,
     page_size: int = 20,
     created_by: int | None = None,
+    account_created_by: int | None = None,
 ) -> dict:
     """
     查詢指定帳戶的交易明細。
@@ -331,6 +340,7 @@ def calculate_account_transactions(
         start_date=start_date,
         end_date=end_date,
         created_by=created_by,
+        account_created_by=account_created_by,
     )
 
     total_count = query.count()
