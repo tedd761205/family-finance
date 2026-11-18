@@ -20,6 +20,7 @@ from app.models.credit_card_payment import CreditCardPayment
 from app.models.recurring_bill import RecurringBill
 from app.models.bill import Bill
 from app.models.bill_payment import BillPayment
+from app.models.attachment import Attachment
 
 
 __all__ = [
@@ -42,5 +43,6 @@ __all__ = [
     "CreditCardPayment",
     "Bill",
     "BillPayment",
+    "Attachment",
     "RecurringBill",
 ]
