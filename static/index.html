@@ -73,6 +73,7 @@
         <button class="quick-card quick-card-button" id="open-bills" type="button"><span class="quick-icon">單</span><span class="quick-card-title">帳單管理</span><span class="quick-card-description">管理帳單金額、到期日、分類與付款狀態。</span><span class="coming">管理帳單 →</span></button>
         <button class="quick-card quick-card-button" id="open-recurring-bills" type="button"><span class="quick-icon">週</span><span class="quick-card-title">定期帳單</span><span class="quick-card-description">設定週期、下次日期，批次產生應繳帳單。</span><span class="coming">管理定期帳單 →</span></button>
         <button class="quick-card quick-card-button" id="open-reports" type="button"><span class="quick-icon">報</span><span class="quick-card-title">財務報表</span><span class="quick-card-description">查看月收支、年度趨勢與分類占比。</span><span class="coming">查看財務報表 →</span></button>
+        <button class="quick-card quick-card-button" id="open-categories" type="button"><span class="quick-icon">類</span><span class="quick-card-title">收支分類</span><span class="quick-card-description">管理家庭收入與支出分類、子分類及排序。</span><span class="coming">管理分類 →</span></button>
       </section>
 
 
@@ -378,6 +379,22 @@
           <div id="category-report-empty" class="empty-state hidden"><h3>這段期間沒有分類收支資料</h3></div>
         </section>
       </section>
+      <section id="categories-view" class="panel categories-panel hidden">
+<div class="accounts-heading"><div><p class="eyebrow">FAMILY CATEGORIES</p><h2>收支分類</h2><p class="muted">系統分類唯讀；家庭自訂分類可編輯與停用。已用於交易的分類會保留，不會被刪除。</p></div><div class="heading-actions"><button class="secondary small" id="close-categories" type="button">收起</button><button class="primary small" id="add-category-button" type="button">＋ 新增分類</button></div></div>
+<div id="categories-notice" class="notice" role="status" aria-live="polite"></div>
+<div class="transaction-filters"><label class="field">分類類型<select id="category-filter-type"><option value="">收入與支出</option><option value="income">收入分類</option><option value="expense">支出分類</option></select></label><label class="field transaction-void-filter"><span>顯示已停用</span><input id="category-include-inactive" type="checkbox"></label><button class="secondary small" id="refresh-categories" type="button">重新整理</button></div>
+<div class="accounts-summary"><strong id="categories-count">0 個分類</strong><span class="muted tiny">只能修改目前家庭建立的自訂分類。</span></div>
+<p id="categories-loading" class="muted hidden">正在載入分類…</p><div id="categories-list" class="categories-list"></div>
+<div id="categories-empty" class="empty-state hidden"><h3>目前沒有符合條件的分類</h3><p class="muted">可新增家庭自訂分類。</p></div>
+<div id="category-form-panel" class="subpanel hidden"><h3 id="category-form-title">新增分類</h3><form id="category-form"><div class="account-form-grid">
+<label class="field">分類類型<select id="category-type" required><option value="expense">支出</option><option value="income">收入</option></select></label>
+<label class="field">分類名稱<input id="category-name" required maxlength="100"></label>
+<label class="field">上層分類<select id="category-parent"><option value="">無（頂層分類）</option></select></label>
+<label class="field">排序<input id="category-sort-order" type="number" min="0" step="1" value="0" required></label>
+<label class="field">圖示<input id="category-icon" maxlength="50" placeholder="選填"></label>
+<label class="field">顏色<input id="category-color" maxlength="20" placeholder="#64748b"></label>
+</div><label class="field">備註<textarea id="category-note" rows="2" maxlength="500"></textarea></label><div class="form-actions"><button class="primary" id="category-submit" type="submit">新增分類</button><button class="secondary" id="category-cancel" type="button">取消</button></div></form></div>
+</section>
       <section id="accounts-view" class="panel accounts-panel hidden">
         <div class="accounts-heading">
           <div><p class="eyebrow">FAMILY ACCOUNTS</p><h2>帳戶管理</h2><p class="muted">管理家庭各幣別帳戶與目前餘額。</p></div>
