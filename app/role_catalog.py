@@ -61,6 +61,9 @@ FINANCE_PERMISSIONS = [
     "notifications.view",
     "exports.view", "exports.create", "exports.update", "exports.publish",
     "exports.schedule", "exports.download", "exports.dashboard",
+    "notifications.view",
+    "exports.view", "exports.create", "exports.update", "exports.publish",
+    "exports.schedule", "exports.download", "exports.dashboard",
 
     "imports.view",
     "imports.create",
@@ -79,6 +82,9 @@ FINANCE_PERMISSIONS = [
     "family.view",
     "audit_logs.view",
     "audit_logs.export",
+    "notifications.view", "notifications.manage",
+    "exports.view", "exports.create", "exports.update", "exports.publish",
+    "exports.schedule", "exports.download", "exports.dashboard",
     "notifications.view",
     "notifications.manage",
     "exports.view", "exports.create", "exports.update", "exports.publish",
@@ -171,6 +177,7 @@ BOOKKEEPER_PERMISSIONS = [
     "reconciliation.unmatch",
 
     "reports.view",
+    "notifications.view", "exports.view", "exports.create", "exports.download",
 
     "imports.view",
     "imports.create",
@@ -226,6 +233,7 @@ ADMIN_SCOPES = {
     "reports": "family",
     "exports": "family",
     "exports": "family",
+    "exports": "family",
     "imports": "family",
     "attachments": "family",
     "ocr": "family",
@@ -246,6 +254,7 @@ FINANCE_SCOPES = {
     "attachments": "family",
     "ocr": "family",
     "audit_logs": "family",
+    "exports": "family",
 }
 
 MEMBER_SCOPES = {
@@ -256,6 +265,7 @@ MEMBER_SCOPES = {
     "bills": "own",
     "payments": "own",
     "reports": "own",
+    "exports": "own",
     "exports": "own",
     "imports": "own",
     "attachments": "own",
