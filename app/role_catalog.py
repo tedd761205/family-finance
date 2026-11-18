@@ -79,10 +79,6 @@ FINANCE_PERMISSIONS = [
     "family.view",
     "audit_logs.view",
     "audit_logs.export",
-    "notifications.view",
-    "notifications.manage",
-    "exports.view", "exports.create", "exports.update", "exports.publish",
-    "exports.schedule", "exports.download", "exports.dashboard",
 
     "backups.view",
     "backups.create",
