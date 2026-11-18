@@ -52,6 +52,7 @@ class ExportSchedule(Base):
         ForeignKeyConstraint(["family_id", "template_id"], ["export_templates.family_id", "export_templates.id"], ondelete="RESTRICT", name="fk_export_schedules_family_template"),
         CheckConstraint("frequency IN ('daily','weekly','monthly')", name="ck_export_schedules_frequency"),
         CheckConstraint("local_hour >= 0 AND local_hour <= 23 AND local_minute >= 0 AND local_minute <= 59", name="ck_export_schedules_local_time"),
+        CheckConstraint("(frequency != 'weekly' OR weekday IS NOT NULL) AND (frequency != 'monthly' OR monthday IS NOT NULL)", name="ck_export_schedules_frequency_day"),
         Index("ix_export_schedules_due", "enabled", "next_run_at"),
     )
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -77,6 +78,7 @@ class ExportRun(Base):
     __table_args__ = (
         UniqueConstraint("family_id", "id", name="uq_export_runs_family_id_id"),
         ForeignKeyConstraint(["family_id", "template_id"], ["export_templates.family_id", "export_templates.id"], ondelete="RESTRICT", name="fk_export_runs_family_template"),
+        ForeignKeyConstraint(["family_id", "schedule_id"], ["export_schedules.family_id", "export_schedules.id"], ondelete="RESTRICT", name="fk_export_runs_family_schedule"),
         CheckConstraint("status IN ('queued','running','succeeded','failed','revoked')", name="ck_export_runs_status"),
         Index("ix_export_runs_family_created", "family_id", "created_at"),
     )
