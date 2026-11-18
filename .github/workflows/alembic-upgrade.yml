@@ -158,6 +158,12 @@ jobs:
               raise SystemExit("Restore-test provenance does not match the selected backup run ID.")
           if provenance.get("target_confirmation") != "g01-restore-test":
               raise SystemExit("Restore-test provenance does not confirm the isolated g01-restore-test target.")
+          if provenance.get("project_id") != "wild-credit-40100572":
+              raise SystemExit("Restore-test provenance has an unexpected Neon project ID.")
+          if provenance.get("branch_id", "").strip() == "" or provenance.get("branch_name") != "g01-restore-test":
+              raise SystemExit("Restore-test provenance does not contain a verified branch identity.")
+          if provenance.get("endpoint_host", "").strip() == "":
+              raise SystemExit("Restore-test provenance does not contain the verified Neon endpoint host.")
 
           backup_artifacts = get_json(f"/actions/runs/{ids['backup']}/artifacts").get("artifacts", [])
           backup_name = f"family-finance-neon-backup-{runs['backup']['run_number']}"
@@ -220,9 +226,24 @@ jobs:
               raise SystemExit("Could not verify the expected production branch through the Neon API.") from exc
           if branch_payload.get("id") != branch_id or branch_payload.get("project_id") != project_id or branch_payload.get("name") != "production":
               raise SystemExit("Refusing to proceed: Neon API did not confirm the expected production project and branch.")
+          endpoints_request = urllib.request.Request(
+              f"https://console.neon.tech/api/v2/projects/{project_id}/branches/{branch_id}/endpoints",
+              headers={"Accept": "application/json", "Authorization": f"Bearer {api_key}"},
+          )
+          try:
+              with urllib.request.urlopen(endpoints_request, timeout=20) as response:
+                  endpoints = json.load(response).get("endpoints", [])
+          except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+              raise SystemExit("Could not verify the production branch endpoint through the Neon API.") from exc
+          rw_endpoints = [item for item in endpoints if item.get("type") == "read_write" and not item.get("disabled")]
+          if len(rw_endpoints) != 1 or rw_endpoints[0].get("branch_id") != branch_id or rw_endpoints[0].get("project_id") != project_id:
+              raise SystemExit("Refusing to proceed: expected exactly one active read-write endpoint on the production branch.")
+          endpoint_host = (rw_endpoints[0].get("host") or "").lower()
           url = make_url(raw_url)
-          if not url.host or url.host.lower() != expected_host:
-              raise SystemExit("Refusing to proceed: endpoint does not match NEON_PRODUCTION_HOST.")
+          actual_host = (url.host or "").lower()
+          allowed_hosts = {endpoint_host, endpoint_host.replace(".", "-pooler.", 1)}
+          if not endpoint_host or actual_host not in allowed_hosts or actual_host != expected_host:
+              raise SystemExit("Refusing to proceed: DATABASE_URL host is not the Neon API-confirmed production branch endpoint (direct or pooler).")
           if url.database != "neondb":
               raise SystemExit("Refusing to proceed: unexpected production database name.")
 
@@ -272,7 +293,7 @@ jobs:
 
           print(f"Production database: {database_name}")
           print(f"PostgreSQL version: {server_version}")
-          print(f"Production endpoint matched configured host: {expected_host}")
+          print(f"Production endpoint matched Neon API endpoint and configured host: {expected_host}")
           print(f"Neon API confirmed project {project_id}, branch {branch_id} (production).")
           print(f"Current Alembic baseline: {baseline}")
           print(f"Repository Alembic head: {heads[0]}")
