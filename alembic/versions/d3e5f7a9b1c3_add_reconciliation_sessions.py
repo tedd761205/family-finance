@@ -122,7 +122,7 @@ def upgrade() -> None:
 
     role_permissions = {
         "家庭管理員": ("reconciliation.exclude", "reconciliation.reopen"),
-        "財務管理員": ("reconciliation.exclude", "reconciliation.reopen"),
+        "財務管理員": ("reconciliation.exclude",),
         "記帳人員": ("reconciliation.exclude",),
     }
     for role_name, codes in role_permissions.items():
