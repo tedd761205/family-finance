@@ -1,5 +1,7 @@
 from datetime import date
 from decimal import Decimal
+import importlib.util
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -65,3 +67,34 @@ def test_recurring_bill_update_rejects_unknown_frequency_and_empty_payload():
         RecurringBillUpdate(frequency="daily")
     with pytest.raises(ValidationError):
         RecurringBillUpdate()
+
+
+def test_monthly_schedule_keeps_original_anchor_across_consecutive_occurrences():
+    first = date(2026, 1, 31)
+    second = advance_date(first, "monthly", 1, anchor_day=31)
+    third = advance_date(second, "monthly", 1, anchor_day=31)
+    assert second == date(2026, 2, 28)
+    assert third == date(2026, 3, 31)
+
+
+def test_recurring_bill_migration_permissions_match_new_family_role_catalog():
+    migration_path = (
+        Path(__file__).resolve().parents[1]
+        / "alembic"
+        / "versions"
+        / "c2d4e6f8a0b1_create_recurring_bills.py"
+    )
+    spec = importlib.util.spec_from_file_location("g01_04_migration", migration_path)
+    migration = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(migration)
+
+    from app.role_catalog import DEFAULT_ROLES
+
+    for role in DEFAULT_ROLES:
+        expected = tuple(
+            code for code in role["permissions"]
+            if code.startswith("recurring_bills.")
+        )
+        assert migration.ROLE_CODES[role["name"]] == expected
+        assert migration.ROLE_SCOPES[role["name"]] == role["data_scopes"]["recurring_bills"]
