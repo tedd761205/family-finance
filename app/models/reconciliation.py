@@ -16,6 +16,7 @@ class ReconciliationSession(Base):
     __tablename__ = "reconciliation_sessions"
     __table_args__ = (
         UniqueConstraint("family_id", "id", name="uq_reconciliation_sessions_family_id_id"),
+        UniqueConstraint("family_id", "id", "source_batch_id", name="uq_reconciliation_sessions_family_id_batch"),
         ForeignKeyConstraint(
             ["family_id", "account_id"], ["accounts.family_id", "accounts.id"],
             ondelete="RESTRICT", name="fk_reconciliation_sessions_family_account",
@@ -40,8 +41,8 @@ class ReconciliationSession(Base):
             name="ck_reconciliation_sessions_status",
         ),
         CheckConstraint(
-            "opening_balance IS NULL OR opening_balance::numeric = opening_balance",
-            name="ck_reconciliation_sessions_opening_balance_numeric",
+            "statement_row_count >= 0 AND matched_row_count >= 0 AND difference_row_count >= 0",
+            name="ck_reconciliation_sessions_counts",
         ),
         Index(
             "uq_reconciliation_sessions_active_period",
@@ -84,9 +85,9 @@ class ReconciliationMatch(Base):
     __table_args__ = (
         UniqueConstraint("family_id", "id", name="uq_reconciliation_matches_family_id_id"),
         ForeignKeyConstraint(
-            ["family_id", "session_id"],
-            ["reconciliation_sessions.family_id", "reconciliation_sessions.id"],
-            ondelete="RESTRICT", name="fk_reconciliation_matches_family_session",
+            ["family_id", "session_id", "batch_id"],
+            ["reconciliation_sessions.family_id", "reconciliation_sessions.id", "reconciliation_sessions.source_batch_id"],
+            ondelete="RESTRICT", name="fk_reconciliation_matches_family_session_batch",
         ),
         ForeignKeyConstraint(
             ["family_id", "batch_id", "bank_import_row_id"],
