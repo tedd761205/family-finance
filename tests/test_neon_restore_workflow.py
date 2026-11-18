@@ -14,4 +14,5 @@ def test_neon_restore_workflow_exports_actual_host_for_python_guard():
     assert validation_step.index("export ACTUAL_HOST") < validation_step.index(
         "python3 - <<'PY'"
     )
-    assert "if ACTUAL_HOST not in allowed_hosts:" in validation_step
+    assert 'actual_host = os.environ["ACTUAL_HOST"].strip().lower()' in validation_step
+    assert "if actual_host not in allowed_hosts:" in validation_step
