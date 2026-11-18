@@ -85,7 +85,10 @@ function populateTransactionCategories(type, selectedId=null) {
   for (const category of transactionCategories.filter(item=>item.category_type===type)) {
     select.add(new Option(category.name,String(category.id)));
   }
-  if (selectedId!==null && selectedId!==undefined) select.value=String(selectedId);
+  if (selectedId!==null && selectedId!==undefined) {
+    if (!transactionCategories.some(item=>item.id===Number(selectedId))) select.add(new Option("既有分類 #"+selectedId,String(selectedId)));
+    select.value=String(selectedId);
+  }
 }
 
 async function loadTransactionSupportData() {
