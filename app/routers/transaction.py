@@ -163,6 +163,12 @@ def check_transaction_not_managed(
             detail="此交易屬於信用卡繳款紀錄，請透過信用卡繳款管理 API 操作",
         )
 
+    if transaction.bill_payment_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="此交易屬於帳單付款／退款紀錄，請透過帳單付款管理 API 操作",
+        )
+
 
 # ============================================================
 # 期初餘額驗證

@@ -19,6 +19,7 @@ from app.models.category import Category
 from app.models.credit_card_payment import CreditCardPayment
 from app.models.recurring_bill import RecurringBill
 from app.models.bill import Bill
+from app.models.bill_payment import BillPayment
 
 
 __all__ = [
@@ -40,5 +41,6 @@ __all__ = [
     "Category",
     "CreditCardPayment",
     "Bill",
+    "BillPayment",
     "RecurringBill",
 ]

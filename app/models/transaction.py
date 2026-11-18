@@ -52,6 +52,12 @@ class Transaction(Base):
             name="fk_transactions_family_credit_card_payment",
             ondelete="RESTRICT",
         ),
+        ForeignKeyConstraint(
+            ["family_id", "bill_payment_id"],
+            ["bill_payments.family_id", "bill_payments.id"],
+            name="fk_transactions_family_bill_payment",
+            ondelete="RESTRICT",
+        ),
         Index(
             "ix_transactions_family_account_date",
             "family_id",
@@ -73,6 +79,12 @@ class Transaction(Base):
         Index(
             "ix_transactions_credit_card_payment_id",
             "credit_card_payment_id",
+        ),
+        Index("ix_transactions_bill_payment_id", "bill_payment_id"),
+        Index(
+            "uq_transactions_bill_payment",
+            "family_id", "bill_payment_id", unique=True,
+            postgresql_where=text("bill_payment_id IS NOT NULL"),
         ),
         Index(
             "uq_transactions_active_opening_balance",
@@ -156,6 +168,11 @@ class Transaction(Base):
     )
 
     credit_card_payment_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        nullable=True,
+    )
+
+    bill_payment_id: Mapped[int | None] = mapped_column(
         BigInteger,
         nullable=True,
     )

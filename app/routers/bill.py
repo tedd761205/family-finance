@@ -10,6 +10,7 @@ from app.database import get_db
 from app.dependencies.auth import get_current_user
 from app.dependencies.permissions import require_permission, require_data_scope
 from app.models.bill import Bill
+from app.models.bill_payment import BillPayment
 from app.models.category import Category
 from app.models.user import User
 from app.schemas.bill import (
@@ -17,9 +18,9 @@ from app.schemas.bill import (
 )
 from app.services.audit_log import add_audit_log
 from app.services.bill import bill_to_dict
+from app.services.bill_payment import get_bill_paid_amount, get_bill_paid_amounts
 
 logger = logging.getLogger(__name__)
-
 router = APIRouter(prefix="/bills", tags=["Bills"])
 
 
@@ -29,18 +30,18 @@ def _authorize(db: Session, user_id: int, family_id: int, action: str):
             db=db, user_id=user_id, family_id=family_id,
             permission_code=f"bills.{action}",
         )
-        scope = require_data_scope(
+        return require_data_scope(
             db=db, roles=roles, family_id=family_id, resource="bills",
         )
-        return scope
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
 
 
-def _get_bill(db: Session, family_id: int, bill_id: int) -> Bill:
-    bill = db.query(Bill).filter(
-        Bill.id == bill_id, Bill.family_id == family_id,
-    ).first()
+def _get_bill(db: Session, family_id: int, bill_id: int, lock: bool = False) -> Bill:
+    query = db.query(Bill).filter(Bill.id == bill_id, Bill.family_id == family_id)
+    if lock:
+        query = query.with_for_update()
+    bill = query.first()
     if bill is None:
         raise HTTPException(status_code=404, detail="找不到此家庭帳單")
     return bill
@@ -67,19 +68,13 @@ def _check_category(db: Session, family_id: int, category_id: int | None):
 
 def _audit_values(bill: Bill) -> dict:
     return {
-        "bill_number": bill.bill_number,
-        "title": bill.title,
-        "category_id": bill.category_id,
-        "bill_date": bill.bill_date,
+        "bill_number": bill.bill_number, "title": bill.title,
+        "category_id": bill.category_id, "bill_date": bill.bill_date,
         "billing_period_start": bill.billing_period_start,
-        "billing_period_end": bill.billing_period_end,
-        "due_date": bill.due_date,
-        "original_amount": bill.original_amount,
-        "tax_amount": bill.tax_amount,
-        "discount_amount": bill.discount_amount,
-        "currency_code": bill.currency_code,
-        "note": bill.note,
-        "is_voided": bill.is_voided,
+        "billing_period_end": bill.billing_period_end, "due_date": bill.due_date,
+        "original_amount": bill.original_amount, "tax_amount": bill.tax_amount,
+        "discount_amount": bill.discount_amount, "currency_code": bill.currency_code,
+        "note": bill.note, "is_voided": bill.is_voided,
     }
 
 
@@ -92,13 +87,7 @@ def create_bill(
 ):
     _authorize(db, current_user.id, family_id, "create")
     _check_category(db, family_id, payload.category_id)
-
-    data = payload.model_dump()
-    bill = Bill(
-        family_id=family_id,
-        **data,
-        created_by=current_user.id,
-    )
+    bill = Bill(family_id=family_id, **payload.model_dump(), created_by=current_user.id)
     try:
         db.add(bill)
         db.flush()
@@ -113,10 +102,7 @@ def create_bill(
     except IntegrityError:
         db.rollback()
         logger.exception("新增帳單時發生資料完整性錯誤")
-        raise HTTPException(
-            status_code=409,
-            detail="帳單編號重複，或帳單資料違反資料庫限制",
-        )
+        raise HTTPException(status_code=409, detail="帳單編號重複，或帳單資料違反資料庫限制")
 
 
 @router.get("", response_model=BillListResponse)
@@ -142,12 +128,12 @@ def list_bills(
         query = query.filter(Bill.bill_date <= end_date)
     if start_date is not None and end_date is not None and start_date > end_date:
         raise HTTPException(status_code=422, detail="開始日期不可晚於結束日期")
-
     total = query.count()
     rows = query.order_by(Bill.bill_date.desc(), Bill.id.desc()).offset(skip).limit(limit).all()
+    paid_amounts = get_bill_paid_amounts(db, family_id, [item.id for item in rows])
     return {
         "success": True, "total": total, "skip": skip, "limit": limit,
-        "bills": [bill_to_dict(item) for item in rows],
+        "bills": [bill_to_dict(item, paid_amounts.get(item.id, Decimal("0"))) for item in rows],
     }
 
 
@@ -161,7 +147,7 @@ def get_bill(
     scope = _authorize(db, current_user.id, family_id, "view")
     bill = _get_bill(db, family_id, bill_id)
     _check_owner(bill, current_user, scope)
-    return bill_to_dict(bill)
+    return bill_to_dict(bill, get_bill_paid_amount(db, family_id, bill.id))
 
 
 @router.patch("/{bill_id}", response_model=BillResponse)
@@ -173,17 +159,14 @@ def update_bill(
     db: Session = Depends(get_db),
 ):
     scope = _authorize(db, current_user.id, family_id, "update")
-    bill = _get_bill(db, family_id, bill_id)
+    bill = _get_bill(db, family_id, bill_id, lock=True)
     _check_owner(bill, current_user, scope)
     if bill.is_voided:
         raise HTTPException(status_code=409, detail="帳單已作廢，不可修改")
-
     changes = payload.model_dump(exclude_unset=True)
     if not changes:
         raise HTTPException(status_code=400, detail="沒有提供任何修改內容")
-
-    new_category_id = changes.get("category_id", bill.category_id)
-    _check_category(db, family_id, new_category_id)
+    _check_category(db, family_id, changes.get("category_id", bill.category_id))
 
     merged = {
         "billing_period_start": changes.get("billing_period_start", bill.billing_period_start),
@@ -196,8 +179,17 @@ def update_bill(
         raise HTTPException(status_code=422, detail="帳單期間起日與迄日必須同時提供")
     if merged["billing_period_start"] and merged["billing_period_start"] > merged["billing_period_end"]:
         raise HTTPException(status_code=422, detail="帳單期間起日不可晚於迄日")
-    if merged["original_amount"] + merged["tax_amount"] - merged["discount_amount"] < 0:
+    new_total = merged["original_amount"] + merged["tax_amount"] - merged["discount_amount"]
+    if new_total < 0:
         raise HTTPException(status_code=422, detail="折扣金額不可大於原始金額加稅額")
+
+    paid_amount = get_bill_paid_amount(db, family_id, bill.id)
+    if new_total < paid_amount:
+        raise HTTPException(status_code=409, detail="修改後帳單總額不可低於已付款淨額")
+    if "currency_code" in changes and changes["currency_code"] != bill.currency_code:
+        history_exists = db.query(BillPayment.id).filter(BillPayment.bill_id == bill.id).first()
+        if history_exists is not None:
+            raise HTTPException(status_code=409, detail="已有付款／退款歷史，不可變更帳單幣別")
 
     old_values = {key: getattr(bill, key) for key in changes}
     try:
@@ -213,7 +205,7 @@ def update_bill(
         )
         db.commit()
         db.refresh(bill)
-        return bill_to_dict(bill)
+        return bill_to_dict(bill, paid_amount)
     except IntegrityError:
         db.rollback()
         logger.exception("修改帳單時發生資料完整性錯誤")
@@ -229,11 +221,19 @@ def void_bill(
     db: Session = Depends(get_db),
 ):
     scope = _authorize(db, current_user.id, family_id, "void")
-    bill = _get_bill(db, family_id, bill_id)
+    bill = _get_bill(db, family_id, bill_id, lock=True)
     _check_owner(bill, current_user, scope)
     if bill.is_voided:
         raise HTTPException(status_code=409, detail="帳單已經作廢")
+    active_payment_exists = db.query(BillPayment.id).filter(
+        BillPayment.family_id == family_id,
+        BillPayment.bill_id == bill.id,
+        BillPayment.is_voided.is_(False),
+    ).first()
+    if active_payment_exists is not None:
+        raise HTTPException(status_code=409, detail="帳單仍有有效付款／退款紀錄，請先作廢相關紀錄")
 
+    paid_amount = get_bill_paid_amount(db, family_id, bill.id)
     old_values = _audit_values(bill)
     bill.is_voided = True
     bill.voided_at = datetime.now(timezone.utc)
@@ -248,7 +248,7 @@ def void_bill(
         )
         db.commit()
         db.refresh(bill)
-        return {"success": True, "message": "帳單已作廢", "bill": bill_to_dict(bill)}
+        return {"success": True, "message": "帳單已作廢", "bill": bill_to_dict(bill, paid_amount)}
     except IntegrityError:
         db.rollback()
         logger.exception("作廢帳單時發生資料完整性錯誤")
