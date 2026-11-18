@@ -34,7 +34,8 @@ def calculate_account_overview(
     db: Session,
     family_id: int,
     active_only: bool = True,
-    created_by: Optional[int] = None,
+    account_created_by: Optional[int] = None,
+    transaction_created_by: Optional[int] = None,
 ) -> dict:
     """
     計算家庭帳戶總覽。
@@ -43,7 +44,8 @@ def calculate_account_overview(
         db: SQLAlchemy Session
         family_id: 家庭 ID
         active_only: 是否只查詢啟用中的帳戶
-        created_by: 指定交易建立者；None 代表全部交易
+        account_created_by: 指定帳戶建立者；None 代表全部帳戶
+        transaction_created_by: 指定交易建立者；None 代表全部交易
 
     Returns:
         dict: 家庭帳戶總覽
@@ -56,6 +58,11 @@ def calculate_account_overview(
     if active_only:
         query = query.filter(
             Account.is_active.is_(True)
+        )
+
+    if account_created_by is not None:
+        query = query.filter(
+            Account.created_by == account_created_by
         )
 
     accounts = (
@@ -80,7 +87,7 @@ def calculate_account_overview(
         balance_data = calculate_account_balance(
             db=db,
             account=account,
-            created_by=created_by,
+            created_by=transaction_created_by,
         )
 
         currency_code = account.currency_code
