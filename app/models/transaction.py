@@ -53,6 +53,12 @@ class Transaction(Base):
             ondelete="RESTRICT",
         ),
         ForeignKeyConstraint(
+            ["family_id", "import_row_id"],
+            ["bank_import_rows.family_id", "bank_import_rows.id"],
+            name="fk_transactions_family_import_row",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
             ["family_id", "bill_payment_id"],
             ["bill_payments.family_id", "bill_payments.id"],
             name="fk_transactions_family_bill_payment",
@@ -81,6 +87,10 @@ class Transaction(Base):
             "credit_card_payment_id",
         ),
         Index("ix_transactions_bill_payment_id", "bill_payment_id"),
+        Index(
+            "uq_transactions_import_row_id", "import_row_id", unique=True,
+            postgresql_where=text("import_row_id IS NOT NULL"),
+        ),
         Index(
             "uq_transactions_bill_payment",
             "family_id", "bill_payment_id", unique=True,
@@ -176,6 +186,8 @@ class Transaction(Base):
         BigInteger,
         nullable=True,
     )
+
+    import_row_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
     external_reference: Mapped[str | None] = mapped_column(
         String(100),
