@@ -106,7 +106,7 @@ def test_bill_api_create_update_void_and_audit(bill_api_client):
     from app.database import engine
     from app.models.audit_log import AuditLog
 
-    seed_bill_permissions(engine)
+    seed_bill_permissions()
     suffix = uuid4().hex
     _, headers = register_user(bill_api_client, suffix, "owner")
     family_id = create_family(bill_api_client, headers, suffix)
@@ -240,7 +240,7 @@ def test_bill_api_rejects_category_from_another_family(bill_api_client):
 
 
 def test_bill_number_can_be_reused_only_after_previous_bill_is_voided(bill_api_client):
-    seed_bill_permissions(__import__("app.database", fromlist=["engine"]).engine)
+    seed_bill_permissions()
     suffix = uuid4().hex
     _, headers = register_user(bill_api_client, suffix, "number-owner")
     family_id = create_family(bill_api_client, headers, suffix)
