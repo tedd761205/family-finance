@@ -63,6 +63,7 @@
         </form>
       </section>
       <section class="quick-grid">
+        <button class="quick-card quick-card-button" id="open-audit-logs" type="button"><span class="quick-icon">稽</span><span class="quick-card-title">稽核紀錄</span><span class="quick-card-description">查詢家庭成員操作、帳務異動及角色權限變更歷程。</span><span class="coming">查看操作紀錄 →</span></button>
         <button class="quick-card quick-card-button" id="open-family-roles" type="button"><span class="quick-icon">權</span><span class="quick-card-title">角色與權限</span><span class="quick-card-description">建立自訂角色、設定細項權限及指派家人角色。</span><span class="coming">管理角色權限 →</span></button>
         <button class="quick-card quick-card-button" id="open-family-members" type="button"><span class="quick-icon">人</span><span class="quick-card-title">家庭成員</span><span class="quick-card-description">查看家人名單與目前角色，邀請已註冊的家人加入。</span><span class="coming">管理家庭成員 →</span></button>
         <button class="quick-card quick-card-button" id="open-accounts" type="button"><span class="quick-icon">帳</span><span class="quick-card-title">帳戶管理</span><span class="quick-card-description">銀行、現金、信用卡與電子支付。</span><span class="coming">管理帳戶 →</span></button>
@@ -116,6 +117,28 @@
           <div id="family-role-members" class="family-role-members"></div>
         </div>
         <p class="tiny muted">安全保護：系統預設角色不可修改或作廢；自訂角色不能授予超出管理者自身權限的權限；每個家庭至少保留一位家庭管理員。</p>
+      </section>
+
+
+      <section id="audit-logs-view" class="panel audit-logs-panel hidden">
+        <div class="accounts-heading">
+          <div><p class="eyebrow">AUDIT TRAIL</p><h2>稽核紀錄</h2><p class="muted">唯讀查詢家庭操作歷程，包含角色權限與資料異動紀錄。</p></div>
+          <div class="heading-actions"><button class="secondary small" id="close-audit-logs" type="button">收起</button><button class="primary small" id="refresh-audit-logs" type="button">重新整理</button></div>
+        </div>
+        <div id="audit-logs-notice" class="notice" role="status" aria-live="polite"></div>
+        <form id="audit-log-filter-form" class="audit-log-filters">
+          <label class="field">開始日期<input id="audit-log-start-date" type="date"></label>
+          <label class="field">結束日期<input id="audit-log-end-date" type="date"></label>
+          <label class="field">操作類型<input id="audit-log-action" maxlength="50" placeholder="例如 role.update"></label>
+          <label class="field">資料類型<input id="audit-log-entity" maxlength="100" placeholder="例如 transaction"></label>
+          <div class="form-actions"><button class="primary small" type="submit">套用篩選</button><button class="secondary small" id="clear-audit-log-filters" type="button">清除</button></div>
+        </form>
+        <div class="accounts-summary"><strong id="audit-logs-count">0 筆紀錄</strong><span id="audit-logs-scope" class="muted tiny">依目前角色資料範圍顯示</span></div>
+        <div id="audit-logs-loading" class="muted hidden">正在載入稽核紀錄…</div>
+        <div id="audit-logs-list" class="audit-logs-list"></div>
+        <div id="audit-logs-empty" class="empty-state hidden"><h3>沒有符合條件的紀錄</h3><p class="muted">可以調整日期或篩選條件後再查詢。</p></div>
+        <div class="audit-log-pagination"><button class="secondary small" id="audit-log-prev" type="button" disabled>上一頁</button><span id="audit-log-page-label" class="tiny muted">第 1 頁</span><button class="secondary small" id="audit-log-next" type="button" disabled>下一頁</button></div>
+        <p class="tiny muted">稽核紀錄為唯讀資料，不提供修改或刪除。紀錄可見範圍依角色的 own／family 資料範圍決定。</p>
       </section>
 
       <section id="transactions-view" class="panel transactions-panel hidden">
