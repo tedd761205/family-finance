@@ -64,7 +64,7 @@ function transactionDateInput(value) {
 }
 
 function transactionDateTime(value, endOfDay=false) {
-  return value ? value+(endOfDay ? "T23:59:59" : "T00:00:00") : "";
+  return value ? value+(endOfDay ? "T23:59:59+08:00" : "T00:00:00+08:00") : "";
 }
 
 function populateTransactionAccountSelects() {
@@ -91,7 +91,7 @@ function populateTransactionCategories(type, selectedId=null) {
 async function loadTransactionSupportData() {
   const [accountResult,categoryResult]=await Promise.all([
     api("/accounts?family_id="+selectedFamilyId),
-    api("/categories?family_id="+selectedFamilyId)
+    api("/categories?family_id="+selectedFamilyId).catch(()=>({categories:[]}))
   ]);
   transactionAccounts=accountResult.accounts||[];
   transactionCategories=categoryResult.categories||[];
