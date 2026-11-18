@@ -100,6 +100,32 @@ PERMISSION_CATALOG = [
         "category": "categories",
     },
 
+    # 帳單管理
+    {
+        "code": "bills.view",
+        "name": "查看帳單",
+        "description": "查看家庭帳單及應繳義務",
+        "category": "bills",
+    },
+    {
+        "code": "bills.create",
+        "name": "新增帳單",
+        "description": "建立家庭帳單",
+        "category": "bills",
+    },
+    {
+        "code": "bills.update",
+        "name": "修改帳單",
+        "description": "修改尚未作廢的帳單",
+        "category": "bills",
+    },
+    {
+        "code": "bills.void",
+        "name": "作廢帳單",
+        "description": "作廢帳單並保留歷史紀錄",
+        "category": "bills",
+    },
+
     # 定期帳單
     {
         "code": "recurring_bills.view",
