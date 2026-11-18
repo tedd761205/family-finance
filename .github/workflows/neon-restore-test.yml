@@ -107,6 +107,7 @@ jobs:
             echo "Refusing to restore: database URL endpoint does not match NEON_RESTORE_TEST_HOST."
             exit 1
           fi
+          export ACTUAL_HOST
           if [ -z "${NEON_API_KEY:-}" ] || [ -z "${EXPECTED_BRANCH_ID:-}" ]; then
             echo "Missing NEON_API_KEY secret or NEON_RESTORE_TEST_BRANCH_ID variable."
             exit 1
