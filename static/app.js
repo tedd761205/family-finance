@@ -2513,3 +2513,94 @@ $("export-schedule-form").addEventListener("submit",async event=>{
  try{await api("/exports/schedules?family_id="+selectedFamilyId,{method:"POST",body:JSON.stringify(body)});$("export-schedule-form").reset();notice("notifications-exports-notice","定期匯出排程已建立。");await loadExportSchedules();}
  catch(error){notice("notifications-exports-notice","建立排程失敗："+error.message,"error");}
 });
+
+/* G-03-01: staged bank statement CSV import */
+let importCsvFile=null,importCsvHeaders=[],importCsvSamples=[],selectedImportBatchId=null;
+const importFields=[["date","交易日期",true],["amount","金額",true],["description","交易說明",true],["type","交易類型",false],["currency_code","幣別",false],["external_reference","銀行交易序號",false]];
+function renderImportMapping(){
+ const host=$("bank-import-mapping");host.replaceChildren();
+ for(const [key,label,required] of importFields){
+  const wrap=document.createElement("label");wrap.className="field";wrap.textContent=label+(required?"（必填）":"（選填）");
+  const select=document.createElement("select");select.dataset.importField=key;select.required=required;select.add(new Option(required?"請選擇欄位":"不使用",""));
+  for(const header of importCsvHeaders)select.add(new Option(header,header));
+  const guesses={date:/date|日期|交易日|時間/i,amount:/amount|金額|交易金額|支出金額/i,description:/description|memo|摘要|說明|交易內容/i,type:/type|類型|收支|借貸/i,currency_code:/currency|幣別/i,external_reference:/reference|序號|交易序號|交易編號/i};
+  const guess=importCsvHeaders.find(x=>guesses[key].test(x));if(guess)select.value=guess;
+  wrap.append(select);host.append(wrap);
+ }
+ const sample=$("bank-import-sample");sample.replaceChildren();
+ const title=document.createElement("p");title.className="tiny muted";title.textContent="檔案："+(importCsvFile?importCsvFile.name:"")+" · 共 "+importCsvSamples.length+" 筆樣本預覽";sample.append(title);
+ const pre=document.createElement("pre");pre.className="import-sample-data";pre.textContent=JSON.stringify(importCsvSamples.slice(0,3),null,2);sample.append(pre);
+ $("bank-import-mapping-panel").classList.remove("hidden");
+}
+async function loadBankImportAccounts(){
+ const result=await api("/accounts?family_id="+selectedFamilyId);const select=$("bank-import-account");select.replaceChildren(new Option("請選擇帳戶",""));
+ for(const account of result.accounts||[])select.add(new Option(account.name+"（"+account.currency_code+"）",String(account.id)));
+}
+async function loadBankImportBatches(){
+ const result=await api("/imports/batches?family_id="+selectedFamilyId+"&limit=100");
+ const host=$("bank-import-batches");host.replaceChildren();$("bank-import-batches-empty").classList.toggle("hidden",(result.batches||[]).length>0);
+ const labels={previewed:"待確認",confirmed:"已入帳",cancelled:"已取消"};
+ for(const item of result.batches||[]){
+  const card=document.createElement("article");card.className="import-batch-card";
+  const info=document.createElement("div");const title=document.createElement("strong");title.textContent=item.source_filename;
+  const meta=document.createElement("p");meta.className="tiny muted";meta.textContent="批次 #"+item.id+" · "+(labels[item.status]||item.status)+" · 總計 "+item.total_rows+" 筆 · 可入帳 "+item.ready_rows+" · 重複 "+item.duplicate_rows+" · 錯誤 "+item.invalid_rows+" · 已入帳 "+item.imported_rows;
+  info.append(title,meta);card.append(info);
+  const view=document.createElement("button");view.type="button";view.className="secondary small";view.textContent="查看明細";view.addEventListener("click",()=>loadBankImportBatch(item.id));card.append(view);host.append(card);
+ }
+}
+async function loadBankImportBatch(id){
+ try{const result=await api("/imports/batches/"+id+"?family_id="+selectedFamilyId+"&limit=500");const batch=result.batch;selectedImportBatchId=id;
+  $("bank-import-detail-title").textContent="匯入批次 #"+id+" · "+batch.source_filename;
+  $("bank-import-counts").textContent="狀態："+batch.status+" · 總計 "+batch.total_rows+" · 可入帳 "+batch.ready_rows+" · 重複 "+batch.duplicate_rows+" · 錯誤 "+batch.invalid_rows+" · 已入帳 "+batch.imported_rows;
+  const body=$("bank-import-rows");body.replaceChildren();
+  const statusLabels={ready:"可入帳",duplicate:"重複略過",invalid:"格式錯誤",imported:"已入帳",skipped:"已略過"};
+  for(const row of result.rows||[]){
+   const tr=document.createElement("tr");
+   for(const value of [row.row_number,row.transaction_date?new Date(row.transaction_date).toLocaleDateString("zh-TW"):"—",row.transaction_type==="income"?"收入":row.transaction_type==="expense"?"支出":"—",row.amount?(row.amount+" "+(row.currency_code||"")):"—",row.description||"—",(statusLabels[row.status]||row.status)+(row.error_message?" · "+row.error_message:"")]){
+    const td=document.createElement("td");td.textContent=String(value);tr.append(td);
+   }body.append(tr);
+  }
+  $("bank-import-confirm").disabled=batch.status!=="previewed"||batch.ready_rows===0;
+  $("bank-import-void").disabled=batch.status!=="previewed";
+  $("bank-import-detail-panel").classList.remove("hidden");$("bank-import-detail-panel").scrollIntoView({behavior:"smooth",block:"start"});
+ }catch(error){notice("bank-imports-notice","載入匯入明細失敗："+error.message,"error");}
+}
+async function openBankImports(){
+ if(!selectedFamilyId){notice("notice-app","請先建立或選擇家庭。","error");return;}
+ $("bank-imports-view").classList.remove("hidden");$("bank-imports-view").scrollIntoView({behavior:"smooth",block:"start"});
+ try{await Promise.all([loadBankImportAccounts(),loadBankImportBatches()]);}catch(error){notice("bank-imports-notice","載入匯入功能失敗："+error.message,"error");}
+}
+$("open-bank-imports").addEventListener("click",openBankImports);
+$("close-bank-imports").addEventListener("click",()=>$("bank-imports-view").classList.add("hidden"));
+$("refresh-bank-imports").addEventListener("click",async()=>{await loadBankImportAccounts();await loadBankImportBatches();});
+$("bank-import-inspect-form").addEventListener("submit",async event=>{
+ event.preventDefault();importCsvFile=$("bank-import-file").files[0];if(!importCsvFile)return;
+ if(importCsvFile.size>10*1024*1024){notice("bank-imports-notice","CSV 檔案不可超過 10 MB。","error");return;}
+ const form=new FormData();form.append("file",importCsvFile);
+ try{const response=await fetch("/imports/inspect?family_id="+selectedFamilyId,{method:"POST",headers:token()?{Authorization:"Bearer "+token()}: {},body:form});
+  let data={};try{data=await response.json();}catch{}if(!response.ok)throw new Error(data.detail||"讀取 CSV 失敗");
+  importCsvHeaders=data.headers||[];importCsvSamples=data.sample_rows||[];renderImportMapping();notice("bank-imports-notice","已讀取 CSV 欄位，請確認欄位對應。");
+ }catch(error){notice("bank-imports-notice","讀取 CSV 失敗："+error.message,"error");}
+});
+$("bank-import-upload").addEventListener("click",async()=>{
+ if(!importCsvFile||!$("bank-import-account").value){notice("bank-imports-notice","請先選擇帳戶及 CSV 檔案。","error");return;}
+ const mapping={};for(const select of $("bank-import-mapping").querySelectorAll("select"))if(select.value)mapping[select.dataset.importField]=select.value;
+ for(const key of ["date","amount","description"])if(!mapping[key]){notice("bank-imports-notice","日期、金額及交易說明欄位皆須指定。","error");return;}
+ const form=new FormData();form.append("file",importCsvFile);form.append("mapping",JSON.stringify(mapping));
+ $("bank-import-upload").disabled=true;
+ try{const response=await fetch("/imports/batches?family_id="+selectedFamilyId+"&account_id="+$("bank-import-account").value,{method:"POST",headers:token()?{Authorization:"Bearer "+token()}: {},body:form});
+  let data={};try{data=await response.json();}catch{}if(!response.ok)throw new Error(typeof data.detail==="string"?data.detail:(data.detail?.message||"建立匯入預覽失敗"));
+  notice("bank-imports-notice","匯入預覽已建立；尚未新增正式交易。");$("bank-import-mapping-panel").classList.add("hidden");$("bank-import-inspect-form").reset();importCsvFile=null;await loadBankImportBatches();await loadBankImportBatch(data.batch.id);
+ }catch(error){notice("bank-imports-notice","建立匯入預覽失敗："+error.message,"error");}
+ finally{$("bank-import-upload").disabled=false;}
+});
+$("bank-import-confirm").addEventListener("click",async()=>{
+ if(!selectedImportBatchId||!window.confirm("確認將此批次所有「可入帳」資料新增為正式交易？重複與錯誤資料會略過。"))return;
+ try{const result=await api("/imports/batches/"+selectedImportBatchId+"/confirm?family_id="+selectedFamilyId,{method:"POST"});notice("bank-imports-notice",result.message||"匯入完成。");await loadBankImportBatches();await loadBankImportBatch(selectedImportBatchId);}
+ catch(error){notice("bank-imports-notice","確認入帳失敗："+error.message,"error");}
+});
+$("bank-import-void").addEventListener("click",async()=>{
+ if(!selectedImportBatchId||!window.confirm("取消此匯入批次？這只會取消暫存預覽，不會修改正式交易。"))return;
+ try{await api("/imports/batches/"+selectedImportBatchId+"/void?family_id="+selectedFamilyId,{method:"POST"});notice("bank-imports-notice","匯入批次已取消。");await loadBankImportBatches();await loadBankImportBatch(selectedImportBatchId);}
+ catch(error){notice("bank-imports-notice","取消批次失敗："+error.message,"error");}
+});
