@@ -23,7 +23,7 @@ Add this repository secret:
 
 - `NEON_API_KEY`: a Neon API key with read access to the project and branch metadata. Do not paste it into chat or workflow files.
 
-The project and production branch are pinned in the workflow to project `wild-credit-40100572` and production branch `br-jolly-breeze-b3mereg2`. Before connecting to PostgreSQL, the workflows call the Neon API and verify project ID, branch ID, and exact branch name (`production` or `g01-restore-test`). The PostgreSQL hostname is then independently compared with the configured hostname.
+The project and production branch are pinned in the workflow to project `wild-credit-40100572` and production branch `br-jolly-breeze-b3mereg2`. Before connecting to PostgreSQL, the workflows call the Neon API and verify project ID, branch ID, and exact branch name (`production` or `g01-restore-test`). They also retrieve that branch's compute endpoints, require exactly one active read-write endpoint, and require the database URL hostname to match the API-reported endpoint host (direct or its documented pooler hostname form) as well as the configured hostname. The restore provenance records the verified project, branch, and endpoint identity; the production gate checks those fields before accepting the restore evidence.
 
 Location: GitHub repository → Settings → Secrets and variables → Actions. Add secrets under **Secrets** and values under **Variables**.
 
