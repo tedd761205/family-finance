@@ -110,14 +110,23 @@ jobs:
                   raise SystemExit("FAIL: alembic_version table is missing.")
               if not current_heads:
                   raise SystemExit("FAIL: production database has no recorded Alembic revision.")
-              if current_heads - expected_heads:
-                  raise SystemExit("FAIL: production revision is not recognized by this repository.")
-              if not expected_heads.issubset(current_heads):
+              unknown_revisions = []
+              for revision in current_heads:
+                  try:
+                      scripts.get_revision(revision)
+                  except Exception:
+                      unknown_revisions.append(revision)
+              if unknown_revisions:
+                  raise SystemExit(f"FAIL: production has revisions unknown to this repository: {unknown_revisions}")
+
+              pending_revisions = list(scripts.iterate_revisions("heads", tuple(current_heads)))
+              print(f"Pending migration revisions: {[revision.revision for revision in pending_revisions]}")
+              if pending_revisions:
                   print("PREFLIGHT RESULT: production is behind repository head; migration is pending.")
-              elif current_heads == expected_heads:
+              else:
                   print("PREFLIGHT RESULT: production migration revisions match repository heads.")
-              if missing_tables:
-                  print("PREFLIGHT RESULT: required application tables are missing; investigate before migration.")
+                  if missing_tables:
+                      raise SystemExit("FAIL: repository head is recorded but required application tables are missing.")
           finally:
               engine.dispose()
           PY
