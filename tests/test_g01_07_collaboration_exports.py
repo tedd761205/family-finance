@@ -180,7 +180,9 @@ def test_scheduled_export_requires_published_template_and_is_taipei_time(g0107_c
     )
     assert schedule.status_code == 201, schedule.text
     assert schedule.json()["timezone"] == "Asia/Taipei"
-    from datetime import datetime\n    parsed_next_run = datetime.fromisoformat(schedule.json()["next_run_at"].replace("Z", "+00:00"))\n    assert parsed_next_run.tzinfo is not None
+    from datetime import datetime
+    parsed_next_run = datetime.fromisoformat(schedule.json()["next_run_at"].replace("Z", "+00:00"))
+    assert parsed_next_run.tzinfo is not None
     disabled = client.post(
         f"/exports/schedules/{schedule.json()['id']}/disable?family_id={family_id}",
         headers=headers,
