@@ -1598,7 +1598,7 @@ $("recurring-bill-form").addEventListener("submit",async(event)=>{
 async function generateRecurringBills(item) {
   const through=window.prompt("請輸入要產生帳單至哪一天（YYYY-MM-DD）：",localDateString());
   if(through===null)return;
-  if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(through)) {
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(through)) {
     notice("recurring-bill-notice","日期格式請使用 YYYY-MM-DD。","error");
     return;
   }
