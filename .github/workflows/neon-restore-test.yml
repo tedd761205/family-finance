@@ -131,10 +131,96 @@ jobs:
             "
           docker run --rm --env DATABASE_URL postgres:18-bookworm \
             psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -P pager=off -c "
-              SELECT 'accounts' AS table_name, count(*) AS row_count FROM public.accounts
-              UNION ALL SELECT 'categories', count(*) FROM public.categories
-              UNION ALL SELECT 'transactions', count(*) FROM public.transactions
-              UNION ALL SELECT 'transfers', count(*) FROM public.transfers
-              UNION ALL SELECT 'users', count(*) FROM public.users
-              ORDER BY table_name;
+              WITH expected(table_name, expected_rows) AS (
+                VALUES
+                  ('accounts', 5::bigint),
+                  ('alembic_version', 1::bigint),
+                  ('audit_logs', 0::bigint),
+                  ('categories', 5::bigint),
+                  ('credit_card_payments', 2::bigint),
+                  ('families', 3::bigint),
+                  ('family_members', 4::bigint),
+                  ('member_roles', 4::bigint),
+                  ('password_reset_tokens', 0::bigint),
+                  ('permissions', 55::bigint),
+                  ('revoked_tokens', 1::bigint),
+                  ('role_data_scopes', 135::bigint),
+                  ('role_permissions', 486::bigint),
+                  ('roles', 15::bigint),
+                  ('transactions', 28::bigint),
+                  ('transfers', 4::bigint),
+                  ('user_identities', 0::bigint),
+                  ('users', 2::bigint)
+              ),
+              actual AS (
+                SELECT 'accounts'::text AS table_name, count(*) AS actual_rows FROM public.accounts
+                UNION ALL SELECT 'alembic_version', count(*) FROM public.alembic_version
+                UNION ALL SELECT 'audit_logs', count(*) FROM public.audit_logs
+                UNION ALL SELECT 'categories', count(*) FROM public.categories
+                UNION ALL SELECT 'credit_card_payments', count(*) FROM public.credit_card_payments
+                UNION ALL SELECT 'families', count(*) FROM public.families
+                UNION ALL SELECT 'family_members', count(*) FROM public.family_members
+                UNION ALL SELECT 'member_roles', count(*) FROM public.member_roles
+                UNION ALL SELECT 'password_reset_tokens', count(*) FROM public.password_reset_tokens
+                UNION ALL SELECT 'permissions', count(*) FROM public.permissions
+                UNION ALL SELECT 'revoked_tokens', count(*) FROM public.revoked_tokens
+                UNION ALL SELECT 'role_data_scopes', count(*) FROM public.role_data_scopes
+                UNION ALL SELECT 'role_permissions', count(*) FROM public.role_permissions
+                UNION ALL SELECT 'roles', count(*) FROM public.roles
+                UNION ALL SELECT 'transactions', count(*) FROM public.transactions
+                UNION ALL SELECT 'transfers', count(*) FROM public.transfers
+                UNION ALL SELECT 'user_identities', count(*) FROM public.user_identities
+                UNION ALL SELECT 'users', count(*) FROM public.users
+              )
+              SELECT e.table_name, e.expected_rows, a.actual_rows,
+                     (e.expected_rows = a.actual_rows) AS matches_backup_baseline
+              FROM expected e JOIN actual a USING (table_name)
+              ORDER BY e.table_name;
+            "
+          docker run --rm --env DATABASE_URL postgres:18-bookworm \
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atc "
+              DO \$\$ 
+              DECLARE mismatch_count integer;
+              BEGIN
+                WITH expected(table_name, expected_rows) AS (
+                  VALUES
+                    ('accounts', 5::bigint), ('alembic_version', 1::bigint),
+                    ('audit_logs', 0::bigint), ('categories', 5::bigint),
+                    ('credit_card_payments', 2::bigint), ('families', 3::bigint),
+                    ('family_members', 4::bigint), ('member_roles', 4::bigint),
+                    ('password_reset_tokens', 0::bigint), ('permissions', 55::bigint),
+                    ('revoked_tokens', 1::bigint), ('role_data_scopes', 135::bigint),
+                    ('role_permissions', 486::bigint), ('roles', 15::bigint),
+                    ('transactions', 28::bigint), ('transfers', 4::bigint),
+                    ('user_identities', 0::bigint), ('users', 2::bigint)
+                ),
+                actual AS (
+                  SELECT 'accounts'::text table_name, count(*) actual_rows FROM public.accounts
+                  UNION ALL SELECT 'alembic_version', count(*) FROM public.alembic_version
+                  UNION ALL SELECT 'audit_logs', count(*) FROM public.audit_logs
+                  UNION ALL SELECT 'categories', count(*) FROM public.categories
+                  UNION ALL SELECT 'credit_card_payments', count(*) FROM public.credit_card_payments
+                  UNION ALL SELECT 'families', count(*) FROM public.families
+                  UNION ALL SELECT 'family_members', count(*) FROM public.family_members
+                  UNION ALL SELECT 'member_roles', count(*) FROM public.member_roles
+                  UNION ALL SELECT 'password_reset_tokens', count(*) FROM public.password_reset_tokens
+                  UNION ALL SELECT 'permissions', count(*) FROM public.permissions
+                  UNION ALL SELECT 'revoked_tokens', count(*) FROM public.revoked_tokens
+                  UNION ALL SELECT 'role_data_scopes', count(*) FROM public.role_data_scopes
+                  UNION ALL SELECT 'role_permissions', count(*) FROM public.role_permissions
+                  UNION ALL SELECT 'roles', count(*) FROM public.roles
+                  UNION ALL SELECT 'transactions', count(*) FROM public.transactions
+                  UNION ALL SELECT 'transfers', count(*) FROM public.transfers
+                  UNION ALL SELECT 'user_identities', count(*) FROM public.user_identities
+                  UNION ALL SELECT 'users', count(*) FROM public.users
+                )
+                SELECT count(*) INTO mismatch_count
+                FROM expected e JOIN actual a USING (table_name)
+                WHERE e.expected_rows <> a.actual_rows;
+                IF mismatch_count <> 0 THEN
+                  RAISE EXCEPTION 'Restored table row counts differ from backup baseline: % table(s)', mismatch_count;
+                END IF;
+                RAISE NOTICE 'All 18 table row counts match the recorded backup baseline.';
+              END
+              \$\$;
             "
