@@ -983,9 +983,9 @@ function resetBillForm() {
   populateBillCategories();
 }
 
-function startEditBill(item) {
+async function startEditBill(item) {
   editingBillId=item.id;
-  editingBillPaymentHistory=Number(item.paid_amount||0)>0;
+  editingBillPaymentHistory=true;
   $("bill-form-title").textContent="修改帳單";
   $("bill-submit").textContent="儲存修改";
   $("bill-number").value=item.bill_number||"";
@@ -1002,9 +1002,19 @@ function startEditBill(item) {
   $("bill-currency").disabled=editingBillPaymentHistory;
   $("bill-note").value=item.note||"";
   populateBillCategories(item.category_id);
-  $("bill-currency-hint").textContent=editingBillPaymentHistory?"此帳單已有付款紀錄，為避免幣別與歷史交易不一致，幣別已鎖定。":"若帳單已有付款／退款紀錄，幣別將無法變更。";
+  $("bill-currency-hint").textContent="正在確認付款／退款歷史…";
   $("bill-form-panel").classList.remove("hidden");
   $("bill-form-panel").scrollIntoView({behavior:"smooth",block:"start"});
+  try {
+    const history=await api("/bill-payments?family_id="+selectedFamilyId+"&bill_id="+item.id+"&include_voided=true&limit=200");
+    editingBillPaymentHistory=(history.payments||[]).length>0;
+    $("bill-currency").disabled=editingBillPaymentHistory;
+    $("bill-currency-hint").textContent=editingBillPaymentHistory?"此帳單已有付款／退款歷史，為避免幣別與歷史交易不一致，幣別已鎖定。":"目前沒有付款／退款歷史，可修改帳單幣別。";
+  } catch(error) {
+    editingBillPaymentHistory=true;
+    $("bill-currency").disabled=true;
+    $("bill-currency-hint").textContent="無法確認付款／退款歷史，為避免幣別與既有交易不一致，暫時鎖定幣別。";
+  }
 }
 
 $("open-bills").addEventListener("click",showBills);
