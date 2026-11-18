@@ -1,6 +1,9 @@
 
+import os
+
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.database import check_database_connection
 
@@ -98,62 +101,28 @@ app.include_router(g01_07_router)
 
 
 # --------------------------------------------------
-# Home
+# Web application
 # --------------------------------------------------
 
-@app.get("/", response_class=HTMLResponse)
+app.mount(
+    "/static",
+    StaticFiles(directory="static"),
+    name="static",
+)
+
+
+@app.get("/")
 def home():
-    return """
-    <!DOCTYPE html>
-    <html lang="zh-Hant">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>家庭記帳系統</title>
-        <style>
-            body {
-                font-family: Arial, sans-serif;
-                background: #f5f6fa;
-                margin: 0;
-                padding: 40px 20px;
-                text-align: center;
-            }
-            .container {
-                max-width: 600px;
-                margin: auto;
-                background: white;
-                padding: 30px;
-                border-radius: 12px;
-                box-shadow: 0 2px 12px rgba(0,0,0,0.08);
-            }
-            h1 {
-                color: #263238;
-            }
-            p {
-                color: #607d8b;
-                line-height: 1.8;
-            }
-            a {
-                display: inline-block;
-                margin-top: 15px;
-                padding: 12px 24px;
-                background: #1976d2;
-                color: white;
-                text-decoration: none;
-                border-radius: 6px;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>家庭記帳系統</h1>
-            <p>全家共用的家庭財務管理系統</p>
-            <p>系統目前正常運作。</p>
-            <a href="/docs">開啟 API 文件</a>
-        </div>
-    </body>
-    </html>
-    """
+    """Serve the responsive family finance web application."""
+    return FileResponse("static/index.html")
+
+
+@app.get("/app-config")
+def app_config():
+    """Return public frontend configuration only; never expose OAuth secrets."""
+    return {
+        "google_client_id": os.getenv("GOOGLE_CLIENT_ID", ""),
+    }
 
 
 # --------------------------------------------------
