@@ -16,6 +16,10 @@ def _client():
         raise AttachmentStorageNotConfigured(
             "附件物件儲存尚未設定，請設定 ATTACHMENT_STORAGE_* 環境變數"
         )
+    if not endpoint.startswith("https://"):
+        raise AttachmentStorageNotConfigured(
+            "附件物件儲存端點必須使用 HTTPS"
+        )
     return boto3.client(
         "s3",
         endpoint_url=endpoint,
