@@ -20,6 +20,14 @@ PERMISSIONS = (
 
 
 def upgrade() -> None:
+    op.create_unique_constraint(
+        "uq_bank_import_batches_family_account_id", "bank_import_batches",
+        ["family_id", "account_id", "id"],
+    )
+    op.create_unique_constraint(
+        "uq_transactions_family_account_id", "transactions",
+        ["family_id", "account_id", "id"],
+    )
     op.create_table(
         "reconciliation_sessions",
         sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
@@ -41,9 +49,9 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.UniqueConstraint("family_id", "id", name="uq_reconciliation_sessions_family_id_id"),
-        sa.UniqueConstraint("family_id", "id", "source_batch_id", name="uq_reconciliation_sessions_family_id_batch"),
+        sa.UniqueConstraint("family_id", "id", "account_id", "source_batch_id", name="uq_reconciliation_sessions_family_id_account_batch"),
         sa.ForeignKeyConstraint(["family_id", "account_id"], ["accounts.family_id", "accounts.id"], ondelete="RESTRICT", name="fk_reconciliation_sessions_family_account"),
-        sa.ForeignKeyConstraint(["family_id", "source_batch_id"], ["bank_import_batches.family_id", "bank_import_batches.id"], ondelete="RESTRICT", name="fk_reconciliation_sessions_family_batch"),
+        sa.ForeignKeyConstraint(["family_id", "account_id", "source_batch_id"], ["bank_import_batches.family_id", "bank_import_batches.account_id", "bank_import_batches.id"], ondelete="RESTRICT", name="fk_reconciliation_sessions_family_account_batch"),
         sa.ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="RESTRICT", name="fk_reconciliation_sessions_created_by"),
         sa.ForeignKeyConstraint(["completed_by"], ["users.id"], ondelete="RESTRICT", name="fk_reconciliation_sessions_completed_by"),
         sa.CheckConstraint("period_start <= period_end", name="ck_reconciliation_sessions_period"),
@@ -73,6 +81,7 @@ def upgrade() -> None:
         sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
         sa.Column("family_id", sa.BigInteger(), nullable=False),
         sa.Column("session_id", sa.BigInteger(), nullable=False),
+        sa.Column("account_id", sa.BigInteger(), nullable=False),
         sa.Column("batch_id", sa.BigInteger(), nullable=False),
         sa.Column("bank_import_row_id", sa.BigInteger(), nullable=False),
         sa.Column("transaction_id", sa.BigInteger(), nullable=False),
@@ -84,9 +93,9 @@ def upgrade() -> None:
         sa.Column("voided_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("void_reason", sa.String(500), nullable=True),
         sa.UniqueConstraint("family_id", "id", name="uq_reconciliation_matches_family_id_id"),
-        sa.ForeignKeyConstraint(["family_id", "session_id", "batch_id"], ["reconciliation_sessions.family_id", "reconciliation_sessions.id", "reconciliation_sessions.source_batch_id"], ondelete="RESTRICT", name="fk_reconciliation_matches_family_session_batch"),
+        sa.ForeignKeyConstraint(["family_id", "session_id", "account_id", "batch_id"], ["reconciliation_sessions.family_id", "reconciliation_sessions.id", "reconciliation_sessions.account_id", "reconciliation_sessions.source_batch_id"], ondelete="RESTRICT", name="fk_reconciliation_matches_family_session_account_batch"),
         sa.ForeignKeyConstraint(["family_id", "batch_id", "bank_import_row_id"], ["bank_import_rows.family_id", "bank_import_rows.batch_id", "bank_import_rows.id"], ondelete="RESTRICT", name="fk_reconciliation_matches_family_import_row"),
-        sa.ForeignKeyConstraint(["family_id", "transaction_id"], ["transactions.family_id", "transactions.id"], ondelete="RESTRICT", name="fk_reconciliation_matches_family_transaction"),
+        sa.ForeignKeyConstraint(["family_id", "account_id", "transaction_id"], ["transactions.family_id", "transactions.account_id", "transactions.id"], ondelete="RESTRICT", name="fk_reconciliation_matches_family_account_transaction"),
         sa.ForeignKeyConstraint(["matched_by"], ["users.id"], ondelete="RESTRICT", name="fk_reconciliation_matches_matched_by"),
         sa.ForeignKeyConstraint(["voided_by"], ["users.id"], ondelete="RESTRICT", name="fk_reconciliation_matches_voided_by"),
         sa.CheckConstraint("allocated_amount > 0", name="ck_reconciliation_matches_amount_positive"),
@@ -149,6 +158,8 @@ def downgrade() -> None:
     op.drop_index("uq_reconciliation_sessions_source_batch", table_name="reconciliation_sessions")
     op.drop_index("uq_reconciliation_sessions_active_period", table_name="reconciliation_sessions")
     op.drop_table("reconciliation_sessions")
+    op.drop_constraint("uq_transactions_family_account_id", "transactions", type_="unique")
+    op.drop_constraint("uq_bank_import_batches_family_account_id", "bank_import_batches", type_="unique")
 
     bind = op.get_bind()
     bind.execute(sa.text("""
