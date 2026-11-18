@@ -94,3 +94,38 @@
 .recurring-bill-amount{display:grid;text-align:right;gap:4px;flex-shrink:0}
 .recurring-bill-amount strong{color:#205b4b;white-space:nowrap}
 @media(max-width:760px){.recurring-bills-panel{padding:21px 17px}.recurring-bill-card{padding:14px}.recurring-bill-top{gap:8px}.recurring-bill-amount strong{font-size:14px}}
+
+
+/* G-02-09 financial reports */
+.reports-panel{padding:28px 30px;margin:18px 0 48px}
+.report-filter-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;align-items:end;padding:16px 0 22px}
+.report-filter-button{height:44px}
+.report-block{border-top:1px solid #e6ece8;padding:22px 0}
+.report-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px}
+.report-heading h3{margin:0}
+.report-heading p{margin:5px 0 0}
+.report-summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.report-currency-card{border:1px solid #e1eae3;border-radius:13px;padding:16px;background:#fff}
+.report-currency-card h4{margin:0 0 12px}
+.report-metric{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px solid #edf1ee;font-size:14px}
+.report-metric strong{white-space:nowrap}
+.report-metric.income strong{color:#24764f}
+.report-metric.expense strong{color:#a34a40}
+.report-metric.net strong{color:#205b4b}
+.yearly-report-list{display:grid;gap:10px}
+.yearly-currency-block{border:1px solid #e1eae3;border-radius:13px;padding:15px}
+.yearly-currency-block h4{margin:0 0 12px}
+.yearly-month-row{display:grid;grid-template-columns:42px minmax(0,1fr) minmax(90px,auto);gap:10px;align-items:center;padding:6px 0;border-top:1px solid #f0f3f1;font-size:13px}
+.yearly-bars{display:grid;gap:4px}
+.yearly-bar-track{height:7px;border-radius:20px;background:#edf1ee;overflow:hidden}
+.yearly-bar-fill{height:100%;border-radius:20px;background:#3e8a6e}
+.yearly-bar-fill.expense{background:#c47b65}
+.yearly-month-net{white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums}
+.category-report-list{display:grid;gap:9px}
+.category-report-item{border:1px solid #e1eae3;border-radius:11px;padding:12px 14px}
+.category-report-item-top{display:flex;justify-content:space-between;gap:12px}
+.category-report-item-top strong:last-child{white-space:nowrap}
+.category-report-track{height:7px;border-radius:20px;background:#edf1ee;overflow:hidden;margin-top:9px}
+.category-report-fill{height:100%;background:#648dba;border-radius:20px}
+.category-report-meta{display:flex;justify-content:space-between;gap:10px;margin-top:6px}
+@media(max-width:760px){.reports-panel{padding:21px 17px}.report-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.report-filter-button{width:100%}.yearly-month-row{grid-template-columns:34px minmax(0,1fr);gap:8px}.yearly-month-net{grid-column:2;text-align:left}.report-heading{align-items:flex-start}.report-summary-grid{grid-template-columns:1fr}}

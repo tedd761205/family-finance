@@ -15,6 +15,7 @@ on:
       - "tests/test_g02_06_bills_web.py"
       - "tests/test_g02_07_bill_payments_web.py"
       - "tests/test_g02_08_recurring_bills_web.py"
+      - "tests/test_g02_09_financial_reports_web.py"
       - ".github/workflows/g02-01-web-tests.yml"
       - "requirements.txt"
       - "requirements-dev.txt"
@@ -22,6 +23,7 @@ on:
     branches:
       - main
     paths:
+      - "tests/test_g02_09_financial_reports_web.py"
       - "main.py"
       - "static/**"
       - "tests/test_g02_01_web.py"
@@ -66,4 +68,4 @@ jobs:
         run: node --check static/app.js
 
       - name: Run G-02-01 web interface tests
-        run: python -m pytest -q tests/test_g02_01_web.py tests/test_g02_02_accounts_web.py tests/test_g02_03_transactions_web.py tests/test_g02_04_transfers_web.py tests/test_g02_05_credit_card_payments_web.py tests/test_g02_06_bills_web.py tests/test_g02_07_bill_payments_web.py tests/test_g02_08_recurring_bills_web.py
+        run: python -m pytest -q tests/test_g02_01_web.py tests/test_g02_02_accounts_web.py tests/test_g02_03_transactions_web.py tests/test_g02_04_transfers_web.py tests/test_g02_05_credit_card_payments_web.py tests/test_g02_06_bills_web.py tests/test_g02_07_bill_payments_web.py tests/test_g02_08_recurring_bills_web.py tests/test_g02_09_financial_reports_web.py
