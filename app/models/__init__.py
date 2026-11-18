@@ -17,6 +17,7 @@ from app.models.transaction import Transaction
 from app.models.transfer import Transfer
 from app.models.category import Category
 from app.models.credit_card_payment import CreditCardPayment
+from app.models.bill import Bill
 
 
 __all__ = [
@@ -37,4 +38,5 @@ __all__ = [
     "Transfer",
     "Category",
     "CreditCardPayment",
+    "Bill",
 ]
