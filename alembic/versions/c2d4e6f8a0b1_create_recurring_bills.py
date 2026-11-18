@@ -74,7 +74,7 @@ def upgrade() -> None:
     op.create_index(
         "uq_bills_recurring_occurrence", "bills",
         ["recurring_bill_id", "recurring_occurrence_date"], unique=True,
-        postgresql_where=sa.text("recurring_bill_id IS NOT NULL AND is_voided = false")
+        postgresql_where=sa.text("recurring_bill_id IS NOT NULL")
     )
 
     bind = op.get_bind()
