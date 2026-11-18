@@ -47,16 +47,11 @@ jobs:
 
           echo "Starting database dump (connection string is configured)."
           docker run --rm \
-            --env "DATABASE_URL=$DATABASE_URL" \
+            --env DATABASE_URL \
+            --env BACKUP_FILE="$BACKUP_FILE" \
             -v "$GITHUB_WORKSPACE/backups:/backups" \
             postgres:18-bookworm \
-            pg_dump \
-              --dbname="$DATABASE_URL" \
-              --format=custom \
-              --no-owner \
-              --no-acl \
-              --verbose \
-              --file="/backups/$BACKUP_FILE"
+            sh -ec 'test -n "$DATABASE_URL"; exec pg_dump --dbname="$DATABASE_URL" --format=custom --no-owner --no-acl --verbose --file="/backups/$BACKUP_FILE"'
 
           test -s "$GITHUB_WORKSPACE/backups/$BACKUP_FILE"
           ls -lh "$GITHUB_WORKSPACE/backups/$BACKUP_FILE"
