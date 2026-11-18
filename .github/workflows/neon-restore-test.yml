@@ -114,6 +114,7 @@ jobs:
           fi
           python3 - <<'PY'
           import json, os, urllib.error, urllib.request
+          actual_host = os.environ["ACTUAL_HOST"].strip().lower()
           project_id = os.environ["EXPECTED_PROJECT_ID"]
           branch_id = os.environ["EXPECTED_BRANCH_ID"].strip()
           if not branch_id.startswith("br-"):
@@ -143,7 +144,7 @@ jobs:
               raise SystemExit("Refusing to restore: expected exactly one active read-write endpoint on g01-restore-test.")
           endpoint_host = (rw_endpoints[0].get("host") or "").lower()
           allowed_hosts = {endpoint_host, endpoint_host.replace(".", "-pooler.", 1)}
-          if ACTUAL_HOST not in allowed_hosts:
+          if actual_host not in allowed_hosts:
               raise SystemExit("Refusing to restore: database URL hostname is not the API-confirmed g01-restore-test endpoint.")
           with open("restore-provenance/restore.txt", "a", encoding="utf-8") as provenance_file:
               provenance_file.write(f"project_id={project_id}\n")
