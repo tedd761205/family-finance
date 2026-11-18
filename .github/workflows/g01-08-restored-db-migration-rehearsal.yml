@@ -1,0 +1,223 @@
+name: G-01-08 Restored Production Snapshot Migration Rehearsal
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_confirmation:
+        description: "Type exactly g01-restore-test to authorize changes to the isolated restore-test branch"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: g01-08-restored-db-migration-rehearsal
+  cancel-in-progress: false
+
+jobs:
+  migration-rehearsal:
+    name: Upgrade restored Neon test branch to repository head
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validate isolated target and restored baseline
+        env:
+          DATABASE_URL: ${{ secrets.NEON_RESTORE_TEST_DATABASE_URL }}
+          EXPECTED_HOST: ${{ vars.NEON_RESTORE_TEST_HOST }}
+          TARGET_CONFIRMATION: ${{ inputs.target_confirmation }}
+        run: |
+          set -euo pipefail
+          mkdir -p migration-rehearsal-artifacts
+          python - <<'PY' | tee migration-rehearsal-artifacts/baseline.txt
+          import os
+          from alembic.config import Config
+          from alembic.runtime.migration import MigrationContext
+          from alembic.script import ScriptDirectory
+          from sqlalchemy import create_engine, text
+          from sqlalchemy.engine import make_url
+
+          if os.environ.get("TARGET_CONFIRMATION") != "g01-restore-test":
+              raise SystemExit("Refusing to proceed: target confirmation must be exactly g01-restore-test.")
+          raw_url = os.environ.get("DATABASE_URL", "")
+          expected_host = os.environ.get("EXPECTED_HOST", "")
+          if not raw_url or not expected_host:
+              raise SystemExit("Missing isolated restore-test database configuration.")
+          url = make_url(raw_url)
+          if url.host != expected_host:
+              raise SystemExit("Refusing to proceed: database host does not match NEON_RESTORE_TEST_HOST.")
+          if url.database != "neondb":
+              raise SystemExit("Refusing to proceed: unexpected database name.")
+
+          scripts = ScriptDirectory.from_config(Config("alembic.ini"))
+          heads = scripts.get_heads()
+          if len(heads) != 1:
+              raise SystemExit(f"Expected exactly one Alembic head, found: {heads}")
+
+          baseline_revision = "49ed3855c31c"
+          expected_existing = {
+              "accounts", "alembic_version", "audit_logs", "categories",
+              "credit_card_payments", "families", "family_members",
+              "member_roles", "password_reset_tokens", "permissions",
+              "revoked_tokens", "role_data_scopes", "role_permissions",
+              "roles", "transactions", "transfers", "user_identities", "users",
+          }
+          expected_new = {
+              "bills", "recurring_bills", "bill_payments", "attachments",
+              "ocr_tasks", "notifications", "export_templates",
+              "export_template_versions", "export_schedules", "export_runs",
+          }
+          engine = create_engine(url, pool_pre_ping=True, connect_args={"connect_timeout": 10})
+          try:
+              with engine.connect() as connection:
+                  current = set(MigrationContext.configure(connection).get_current_heads())
+                  tables = set(connection.execute(text("""
+                      SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname='public'
+                  """)).scalars())
+                  missing_existing = sorted(expected_existing - tables)
+                  already_migrated = sorted(expected_new & tables)
+                  if current != {baseline_revision}:
+                      raise SystemExit(f"Expected restored baseline {baseline_revision}; found {sorted(current)}.")
+                  if missing_existing:
+                      raise SystemExit(f"Restored baseline is missing tables: {missing_existing}")
+                  if already_migrated:
+                      raise SystemExit(f"Target appears already migrated; refusing repeat rehearsal: {already_migrated}")
+                  counts = {}
+                  for table in ("families", "users", "accounts", "categories", "transactions", "transfers", "credit_card_payments"):
+                      counts[table] = connection.execute(text(f'SELECT count(*) FROM "{table}"')).scalar_one()
+          finally:
+              engine.dispose()
+
+          print(f"Target database: {url.database}")
+          print(f"Target host matched configured isolated host: {expected_host}")
+          print(f"Restored Alembic baseline: {baseline_revision}")
+          print(f"Repository Alembic head: {heads[0]}")
+          print(f"Existing baseline tables: {len(expected_existing)}")
+          print("Selected pre-migration row counts:")
+          for table, count in counts.items():
+              print(f"  {table}: {count}")
+          PY
+
+      - name: Apply pending migrations to isolated restored snapshot
+        env:
+          DATABASE_URL: ${{ secrets.NEON_RESTORE_TEST_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          python -m alembic upgrade head 2>&1 | tee migration-rehearsal-artifacts/alembic-upgrade.log
+          python -m alembic current 2>&1 | tee migration-rehearsal-artifacts/alembic-current.txt
+
+      - name: Verify upgraded schema and preserved baseline data
+        env:
+          DATABASE_URL: ${{ secrets.NEON_RESTORE_TEST_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee migration-rehearsal-artifacts/verification.txt
+          import os
+          from alembic.config import Config
+          from alembic.runtime.migration import MigrationContext
+          from alembic.script import ScriptDirectory
+          from sqlalchemy import create_engine, text
+          from sqlalchemy.engine import make_url
+
+          expected_new = {
+              "bills", "recurring_bills", "bill_payments", "attachments",
+              "ocr_tasks", "notifications", "export_templates",
+              "export_template_versions", "export_schedules", "export_runs",
+          }
+          expected_counts = {}
+          with open("migration-rehearsal-artifacts/baseline.txt", encoding="utf-8") as f:
+              for line in f:
+                  parts = line.strip().split(": ", 1)
+                  if len(parts) == 2 and parts[0] in {
+                      "families", "users", "accounts", "categories",
+                      "transactions", "transfers", "credit_card_payments"
+                  }:
+                      expected_counts[parts[0]] = int(parts[1])
+
+          scripts = ScriptDirectory.from_config(Config("alembic.ini"))
+          expected_heads = set(scripts.get_heads())
+          engine = create_engine(make_url(os.environ["DATABASE_URL"]), pool_pre_ping=True)
+          try:
+              with engine.connect() as connection:
+                  current = set(MigrationContext.configure(connection).get_current_heads())
+                  tables = set(connection.execute(text("""
+                      SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname='public'
+                  """)).scalars())
+                  missing = sorted(expected_new - tables)
+                  if current != expected_heads:
+                      raise SystemExit(f"Alembic revision mismatch: current={sorted(current)}, expected={sorted(expected_heads)}")
+                  if missing:
+                      raise SystemExit(f"Migration did not create required tables: {missing}")
+
+                  for table, expected in expected_counts.items():
+                      actual = connection.execute(text(f'SELECT count(*) FROM "{table}"')).scalar_one()
+                      if actual != expected:
+                          raise SystemExit(f"Baseline data count changed for {table}: before={expected}, after={actual}")
+
+                  required_indexes = {
+                      "uq_bills_family_bill_number_active",
+                      "uq_bills_recurring_occurrence",
+                      "ix_bill_payments_family_bill_date",
+                      "ix_attachments_family_bill_created",
+                      "ix_ocr_tasks_family_status_created",
+                      "ix_export_schedules_due",
+                  }
+                  indexes = set(connection.execute(text("""
+                      SELECT indexname FROM pg_indexes WHERE schemaname='public'
+                  """)).scalars())
+                  missing_indexes = sorted(required_indexes - indexes)
+                  if missing_indexes:
+                      raise SystemExit(f"Required migration indexes are missing: {missing_indexes}")
+
+                  required_triggers = {
+                      "trg_check_bill_category_scope",
+                      "trg_check_recurring_bill_category_scope",
+                  }
+                  triggers = set(connection.execute(text("""
+                      SELECT trigger_name FROM information_schema.triggers
+                      WHERE trigger_schema='public'
+                  """)).scalars())
+                  missing_triggers = sorted(required_triggers - triggers)
+                  if missing_triggers:
+                      raise SystemExit(f"Required migration triggers are missing: {missing_triggers}")
+
+                  print(f"Final Alembic revision: {sorted(current)}")
+                  print(f"Public table count after upgrade: {len(tables)}")
+                  print(f"New G-01 tables verified: {len(expected_new)}")
+                  print(f"Required indexes verified: {len(required_indexes)}")
+                  print(f"Required category-scope triggers verified: {len(required_triggers)}")
+                  print("Selected baseline data row counts remained unchanged.")
+          finally:
+              engine.dispose()
+          PY
+
+      - name: Validate role catalog
+        env:
+          DATABASE_URL: ${{ secrets.NEON_RESTORE_TEST_DATABASE_URL }}
+        run: python -m app.validate_role_catalog
+
+      - name: Upload migration rehearsal report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g01-08-restored-db-migration-rehearsal
+          path: migration-rehearsal-artifacts/*
+          if-no-files-found: warn
+          retention-days: 14
