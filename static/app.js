@@ -16,7 +16,7 @@ function setMode(next){mode=next;$("login-tab").classList.toggle("active",mode==
 function showAuth(){currentUser=null;$("auth-view").classList.remove("hidden");$("app-view").classList.add("hidden");}
 function showApp(){$("auth-view").classList.add("hidden");$("app-view").classList.remove("hidden");}
 async function loadApp(){try{currentUser=await api("/auth/me");}catch(error){showAuth();notice("notice",error.message,"error");return;}$("user-greeting").textContent=currentUser.display_name+"（"+currentUser.email+"）";showApp();try{await loadFamilies();}catch(error){notice("notice-app","已登入，但家庭清單載入失敗："+error.message,"error");}}
-async function loadFamilies(){const result=await api("/families/mine");$("family-count").textContent=result.total+" 個家庭";const list=$("family-list");list.replaceChildren();$("empty-family").classList.toggle("hidden",result.total!==0);if(!selectedFamilyId&&result.families.length){selectedFamilyId=result.families[0].family_id;}for(const family of result.families){const card=document.createElement("button");card.type="button";card.className="family-card"+(selectedFamilyId===family.family_id?" selected":"");const title=document.createElement("strong");title.textContent=family.family_name;const meta=document.createElement("span");meta.textContent=family.currency+" · 家庭成員";card.append(title,meta);card.addEventListener("click",async()=>{selectedFamilyId=family.family_id;for(const node of list.children)node.classList.remove("selected");card.classList.add("selected");notice("notice-app","已切換至「"+family.family_name+"」。","success");if(!$("accounts-view").classList.contains("hidden")){await loadAccounts();}if(!$("transactions-view").classList.contains("hidden")){await showTransactions();}if(!$("transfers-view").classList.contains("hidden")){await showTransfers();}if(!$("credit-card-payments-view").classList.contains("hidden")){await showCreditCardPayments();}if(!$("bills-view").classList.contains("hidden")){await showBills();}if(!$("bill-payments-view").classList.contains("hidden")){$("bill-payments-view").classList.add("hidden");activeBillForPayments=null;}if(!$("recurring-bills-view").classList.contains("hidden")){await showRecurringBills();}if(!$("reports-view").classList.contains("hidden")){await loadFinancialReports();}if(!$("family-members-view").classList.contains("hidden")){await loadFamilyMembers();}if(!$("family-roles-view").classList.contains("hidden")){await loadFamilyRoles();}});list.append(card);}}
+async function loadFamilies(){const result=await api("/families/mine");$("family-count").textContent=result.total+" 個家庭";const list=$("family-list");list.replaceChildren();$("empty-family").classList.toggle("hidden",result.total!==0);if(!selectedFamilyId&&result.families.length){selectedFamilyId=result.families[0].family_id;}for(const family of result.families){const card=document.createElement("button");card.type="button";card.className="family-card"+(selectedFamilyId===family.family_id?" selected":"");const title=document.createElement("strong");title.textContent=family.family_name;const meta=document.createElement("span");meta.textContent=family.currency+" · 家庭成員";card.append(title,meta);card.addEventListener("click",async()=>{selectedFamilyId=family.family_id;for(const node of list.children)node.classList.remove("selected");card.classList.add("selected");notice("notice-app","已切換至「"+family.family_name+"」。","success");if(!$("accounts-view").classList.contains("hidden")){await loadAccounts();}if(!$("transactions-view").classList.contains("hidden")){await showTransactions();}if(!$("transfers-view").classList.contains("hidden")){await showTransfers();}if(!$("credit-card-payments-view").classList.contains("hidden")){await showCreditCardPayments();}if(!$("bills-view").classList.contains("hidden")){await showBills();}if(!$("bill-payments-view").classList.contains("hidden")){$("bill-payments-view").classList.add("hidden");activeBillForPayments=null;}if(!$("recurring-bills-view").classList.contains("hidden")){await showRecurringBills();}if(!$("reports-view").classList.contains("hidden")){await loadFinancialReports();}if(!$("family-members-view").classList.contains("hidden")){await loadFamilyMembers();}if(!$("family-roles-view").classList.contains("hidden")){await loadFamilyRoles();}if(!$("audit-logs-view").classList.contains("hidden")){await loadAuditLogs();}});list.append(card);}}
 function accountTypeLabel(type){return({bank:"銀行帳戶",time_deposit:"定期存款",cash:"現金",credit_card:"信用卡",e_wallet:"電子支付",other:"其他"})[type]||type;}
 function money(value,currency){const amount=Number(value||0);try{return new Intl.NumberFormat("zh-TW",{style:"currency",currency:currency||"TWD",minimumFractionDigits:2,maximumFractionDigits:2}).format(amount);}catch{return amount.toFixed(2)+" "+(currency||"");}}
 function toggleCreditFields(){const isCard=$("account-type").value==="credit_card";$("credit-fields").classList.toggle("hidden",!isCard);}
@@ -2123,3 +2123,144 @@ async function voidFamilyRole(role) {
     notice("family-roles-notice", "作廢角色失敗：" + error.message, "error");
   }
 }
+
+
+// --------------------------------------------------
+// G-02-12：家庭稽核紀錄查詢
+// --------------------------------------------------
+let auditLogOffset = 0;
+const AUDIT_LOG_LIMIT = 50;
+const AUDIT_ACTION_LABELS = {
+  "role.create":"建立角色", "role.update":"修改角色權限",
+  "role.void":"作廢角色", "member.roles.update":"調整成員角色",
+  "transaction.create":"新增帳務", "transaction.update":"修改帳務",
+  "transaction.void":"作廢帳務", "account.create":"新增帳戶",
+  "account.update":"修改帳戶", "account.void":"作廢帳戶"
+};
+
+function renderAuditLogs(records) {
+  const host = $("audit-logs-list");
+  host.replaceChildren();
+  $("audit-logs-empty").classList.toggle("hidden", records.length > 0);
+  for (const record of records) {
+    const card = document.createElement("article");
+    card.className = "audit-log-card";
+    const top = document.createElement("div");
+    top.className = "audit-log-card-top";
+    const summary = document.createElement("div");
+    const action = document.createElement("strong");
+    action.textContent = AUDIT_ACTION_LABELS[record.action] || record.action;
+    const details = document.createElement("p");
+    details.className = "tiny muted";
+    details.textContent = (record.actor_name || "未知操作者") + " · " + (record.actor_email || "系統操作");
+    const entity = document.createElement("span");
+    entity.className = "member-role-tag";
+    entity.textContent = record.entity_type + (record.entity_id ? " #" + record.entity_id : "");
+    summary.append(action, details, entity);
+    const time = document.createElement("time");
+    time.className = "tiny muted audit-log-time";
+    time.textContent = record.created_at ? new Date(record.created_at).toLocaleString("zh-TW", {hour12:false}) : "時間未知";
+    top.append(summary, time);
+    card.append(top);
+    if (record.description) {
+      const description = document.createElement("p");
+      description.className = "audit-log-description";
+      description.textContent = record.description;
+      card.append(description);
+    }
+    if (record.old_values || record.new_values) {
+      const disclosure = document.createElement("details");
+      disclosure.className = "audit-log-values";
+      const label = document.createElement("summary");
+      label.textContent = "查看異動內容";
+      const values = document.createElement("div");
+      values.className = "audit-log-value-grid";
+      if (record.old_values) {
+        const old = document.createElement("div");
+        const oldTitle = document.createElement("strong");
+        oldTitle.textContent = "異動前";
+        const oldPre = document.createElement("pre");
+        oldPre.textContent = JSON.stringify(record.old_values, null, 2);
+        old.append(oldTitle, oldPre);
+        values.append(old);
+      }
+      if (record.new_values) {
+        const next = document.createElement("div");
+        const nextTitle = document.createElement("strong");
+        nextTitle.textContent = "異動後";
+        const nextPre = document.createElement("pre");
+        nextPre.textContent = JSON.stringify(record.new_values, null, 2);
+        next.append(nextTitle, nextPre);
+        values.append(next);
+      }
+      disclosure.append(label, values);
+      card.append(disclosure);
+    }
+    host.append(card);
+  }
+}
+
+async function loadAuditLogs() {
+  if (!selectedFamilyId) return;
+  $("audit-logs-loading").classList.remove("hidden");
+  clearNotice("audit-logs-notice");
+  try {
+    const params = new URLSearchParams({limit:String(AUDIT_LOG_LIMIT), offset:String(auditLogOffset)});
+    const start = $("audit-log-start-date").value;
+    const end = $("audit-log-end-date").value;
+    const action = $("audit-log-action").value.trim();
+    const entity = $("audit-log-entity").value.trim();
+    if (start) params.set("start_date", start);
+    if (end) params.set("end_date", end);
+    if (action) params.set("action", action);
+    if (entity) params.set("entity_type", entity);
+    const result = await api("/families/" + selectedFamilyId + "/audit-logs?" + params.toString());
+    renderAuditLogs(result.records || []);
+    $("audit-logs-count").textContent = result.total + " 筆紀錄";
+    $("audit-logs-scope").textContent = result.scope === "family" ? "目前可查看全家庭紀錄" : "目前僅顯示自己執行的紀錄";
+    const page = Math.floor(auditLogOffset / AUDIT_LOG_LIMIT) + 1;
+    $("audit-log-page-label").textContent = "第 " + page + " 頁";
+    $("audit-log-prev").disabled = auditLogOffset === 0;
+    $("audit-log-next").disabled = auditLogOffset + AUDIT_LOG_LIMIT >= result.total;
+  } catch (error) {
+    notice("audit-logs-notice", "稽核紀錄載入失敗：" + error.message, "error");
+    $("audit-logs-list").replaceChildren();
+    $("audit-logs-count").textContent = "—";
+    $("audit-logs-scope").textContent = "無法取得資料範圍";
+  } finally {
+    $("audit-logs-loading").classList.add("hidden");
+  }
+}
+
+async function openAuditLogs() {
+  if (!selectedFamilyId) {
+    notice("notice-app", "請先建立或選擇家庭，再查看稽核紀錄。", "error");
+    return;
+  }
+  $("audit-logs-view").classList.remove("hidden");
+  $("audit-logs-view").scrollIntoView({behavior:"smooth", block:"start"});
+  auditLogOffset = 0;
+  await loadAuditLogs();
+}
+
+$("open-audit-logs").addEventListener("click", openAuditLogs);
+$("close-audit-logs").addEventListener("click", () => $("audit-logs-view").classList.add("hidden"));
+$("refresh-audit-logs").addEventListener("click", loadAuditLogs);
+$("audit-log-filter-form").addEventListener("submit", event => {
+  event.preventDefault();
+  auditLogOffset = 0;
+  loadAuditLogs();
+});
+$("clear-audit-log-filters").addEventListener("click", () => {
+  $("audit-log-filter-form").reset();
+  auditLogOffset = 0;
+  loadAuditLogs();
+});
+$("audit-log-prev").addEventListener("click", () => {
+  auditLogOffset = Math.max(0, auditLogOffset - AUDIT_LOG_LIMIT);
+  loadAuditLogs();
+});
+$("audit-log-next").addEventListener("click", () => {
+  auditLogOffset += AUDIT_LOG_LIMIT;
+  loadAuditLogs();
+});
