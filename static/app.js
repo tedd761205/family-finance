@@ -16,7 +16,7 @@ function setMode(next){mode=next;$("login-tab").classList.toggle("active",mode==
 function showAuth(){currentUser=null;$("auth-view").classList.remove("hidden");$("app-view").classList.add("hidden");}
 function showApp(){$("auth-view").classList.add("hidden");$("app-view").classList.remove("hidden");}
 async function loadApp(){try{currentUser=await api("/auth/me");}catch(error){showAuth();notice("notice",error.message,"error");return;}$("user-greeting").textContent=currentUser.display_name+"（"+currentUser.email+"）";showApp();try{await loadFamilies();}catch(error){notice("notice-app","已登入，但家庭清單載入失敗："+error.message,"error");}}
-async function loadFamilies(){const result=await api("/families/mine");$("family-count").textContent=result.total+" 個家庭";const list=$("family-list");list.replaceChildren();$("empty-family").classList.toggle("hidden",result.total!==0);if(!selectedFamilyId&&result.families.length){selectedFamilyId=result.families[0].family_id;}for(const family of result.families){const card=document.createElement("button");card.type="button";card.className="family-card"+(selectedFamilyId===family.family_id?" selected":"");const title=document.createElement("strong");title.textContent=family.family_name;const meta=document.createElement("span");meta.textContent=family.currency+" · 家庭成員";card.append(title,meta);card.addEventListener("click",async()=>{selectedFamilyId=family.family_id;for(const node of list.children)node.classList.remove("selected");card.classList.add("selected");notice("notice-app","已切換至「"+family.family_name+"」。","success");if(!$("accounts-view").classList.contains("hidden")){await loadAccounts();}if(!$("transactions-view").classList.contains("hidden")){await showTransactions();}if(!$("transfers-view").classList.contains("hidden")){await showTransfers();}if(!$("credit-card-payments-view").classList.contains("hidden")){await showCreditCardPayments();}if(!$("bills-view").classList.contains("hidden")){await showBills();}if(!$("bill-payments-view").classList.contains("hidden")){$("bill-payments-view").classList.add("hidden");activeBillForPayments=null;}if(!$("recurring-bills-view").classList.contains("hidden")){await showRecurringBills();}if(!$("reports-view").classList.contains("hidden")){await loadFinancialReports();}if(!$("family-members-view").classList.contains("hidden")){await loadFamilyMembers();}});list.append(card);}}
+async function loadFamilies(){const result=await api("/families/mine");$("family-count").textContent=result.total+" 個家庭";const list=$("family-list");list.replaceChildren();$("empty-family").classList.toggle("hidden",result.total!==0);if(!selectedFamilyId&&result.families.length){selectedFamilyId=result.families[0].family_id;}for(const family of result.families){const card=document.createElement("button");card.type="button";card.className="family-card"+(selectedFamilyId===family.family_id?" selected":"");const title=document.createElement("strong");title.textContent=family.family_name;const meta=document.createElement("span");meta.textContent=family.currency+" · 家庭成員";card.append(title,meta);card.addEventListener("click",async()=>{selectedFamilyId=family.family_id;for(const node of list.children)node.classList.remove("selected");card.classList.add("selected");notice("notice-app","已切換至「"+family.family_name+"」。","success");if(!$("accounts-view").classList.contains("hidden")){await loadAccounts();}if(!$("transactions-view").classList.contains("hidden")){await showTransactions();}if(!$("transfers-view").classList.contains("hidden")){await showTransfers();}if(!$("credit-card-payments-view").classList.contains("hidden")){await showCreditCardPayments();}if(!$("bills-view").classList.contains("hidden")){await showBills();}if(!$("bill-payments-view").classList.contains("hidden")){$("bill-payments-view").classList.add("hidden");activeBillForPayments=null;}if(!$("recurring-bills-view").classList.contains("hidden")){await showRecurringBills();}if(!$("reports-view").classList.contains("hidden")){await loadFinancialReports();}if(!$("family-members-view").classList.contains("hidden")){await loadFamilyMembers();}if(!$("family-roles-view").classList.contains("hidden")){await loadFamilyRoles();}});list.append(card);}}
 function accountTypeLabel(type){return({bank:"銀行帳戶",time_deposit:"定期存款",cash:"現金",credit_card:"信用卡",e_wallet:"電子支付",other:"其他"})[type]||type;}
 function money(value,currency){const amount=Number(value||0);try{return new Intl.NumberFormat("zh-TW",{style:"currency",currency:currency||"TWD",minimumFractionDigits:2,maximumFractionDigits:2}).format(amount);}catch{return amount.toFixed(2)+" "+(currency||"");}}
 function toggleCreditFields(){const isCard=$("account-type").value==="credit_card";$("credit-fields").classList.toggle("hidden",!isCard);}
@@ -1858,3 +1858,268 @@ $("family-member-invite-form").addEventListener("submit", async (event) => {
     button.disabled = false;
   }
 });
+
+
+// --------------------------------------------------
+// G-02-11：角色、細項權限及成員角色指派
+// --------------------------------------------------
+let familyRoles = [];
+let familyMembersForRoles = [];
+let familyPermissionCatalog = [];
+let editingFamilyRoleId = null;
+
+const ROLE_CATEGORY_NAMES = {
+  dashboard:"儀表板", transactions:"帳務紀錄", accounts:"帳戶管理",
+  categories:"收支分類", bills:"帳單管理", recurring_bills:"定期帳單",
+  payments:"帳單付款", reconciliation:"帳務對帳", reports:"財務報表",
+  notifications:"通知", exports:"匯出管理", imports:"資料匯入",
+  attachments:"附件", ocr:"文字辨識", family:"家庭設定",
+  members:"家庭成員", roles:"角色權限", audit_logs:"稽核紀錄",
+  backups:"備份管理", exchange_rates:"匯率管理"
+};
+
+function renderFamilyRoles() {
+  const host = $("family-roles-list");
+  host.replaceChildren();
+  if (!familyRoles.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted tiny";
+    empty.textContent = "目前沒有可顯示的角色，或目前帳號沒有查看角色的權限。";
+    host.append(empty);
+  }
+  for (const role of familyRoles) {
+    const card = document.createElement("article");
+    card.className = "family-role-card";
+    const top = document.createElement("div");
+    top.className = "family-role-card-top";
+    const info = document.createElement("div");
+    const name = document.createElement("strong");
+    name.textContent = role.name + (role.is_system ? "（系統預設）" : "");
+    const desc = document.createElement("p");
+    desc.className = "tiny muted";
+    desc.textContent = role.description || "未設定說明";
+    const meta = document.createElement("span");
+    meta.className = "tiny muted";
+    meta.textContent = role.permission_codes.length + " 項權限 · " + role.assigned_member_count + " 位成員";
+    info.append(name, desc, meta);
+    top.append(info);
+    const actions = document.createElement("div");
+    actions.className = "form-actions";
+    if (!role.is_system) {
+      const edit = document.createElement("button");
+      edit.type = "button"; edit.className = "secondary small"; edit.textContent = "編輯";
+      edit.addEventListener("click", () => openFamilyRoleEditor(role));
+      const remove = document.createElement("button");
+      remove.type = "button"; remove.className = "danger small"; remove.textContent = "作廢";
+      remove.addEventListener("click", () => voidFamilyRole(role));
+      actions.append(edit, remove);
+    } else {
+      const locked = document.createElement("span");
+      locked.className = "member-role-tag"; locked.textContent = "受保護";
+      actions.append(locked);
+    }
+    card.append(top, actions);
+    host.append(card);
+  }
+}
+
+function renderRolePermissionEditor(selectedCodes = [], selectedScopes = {}) {
+  const host = $("family-role-permissions");
+  host.replaceChildren();
+  const grouped = new Map();
+  for (const permission of familyPermissionCatalog) {
+    if (!grouped.has(permission.category)) grouped.set(permission.category, []);
+    grouped.get(permission.category).push(permission);
+  }
+  for (const [category, permissions] of grouped) {
+    const group = document.createElement("section");
+    group.className = "role-permission-group";
+    const heading = document.createElement("h4");
+    heading.textContent = ROLE_CATEGORY_NAMES[category] || category;
+    group.append(heading);
+    for (const permission of permissions) {
+      const label = document.createElement("label");
+      label.className = "role-permission-option";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.dataset.permissionCode = permission.code;
+      checkbox.checked = selectedCodes.includes(permission.code);
+      checkbox.disabled = !permission.grantable && !checkbox.checked;
+      const textWrap = document.createElement("span");
+      const title = document.createElement("strong");
+      title.textContent = permission.name;
+      const code = document.createElement("small");
+      code.textContent = permission.code;
+      textWrap.append(title, code);
+      label.append(checkbox, textWrap);
+      group.append(label);
+    }
+    host.append(group);
+  }
+  renderRoleScopeEditor(selectedScopes);
+}
+
+function renderRoleScopeEditor(selectedScopes = {}) {
+  const host = $("family-role-scopes");
+  host.replaceChildren();
+  const categories = new Set(
+    [...$("family-role-permissions").querySelectorAll("input:checked")]
+      .map(input => input.dataset.permissionCode.split(".")[0])
+  );
+  for (const category of [...categories].sort()) {
+    const label = document.createElement("label");
+    label.className = "field role-scope-field";
+    const title = document.createElement("span");
+    title.textContent = (ROLE_CATEGORY_NAMES[category] || category) + "資料範圍";
+    const select = document.createElement("select");
+    select.dataset.scopeResource = category;
+    for (const [value, text] of [["own","僅自己建立（own）"],["family","整個家庭（family）"]]) {
+      const option = document.createElement("option");
+      option.value = value; option.textContent = text;
+      select.append(option);
+    }
+    select.value = selectedScopes[category] || "own";
+    label.append(title, select);
+    host.append(label);
+  }
+}
+
+function openFamilyRoleEditor(role = null) {
+  editingFamilyRoleId = role ? role.id : null;
+  $("family-role-form-title").textContent = role ? "編輯自訂角色" : "建立自訂角色";
+  $("family-role-name").value = role ? role.name : "";
+  $("family-role-description").value = role ? (role.description || "") : "";
+  renderRolePermissionEditor(role ? role.permission_codes : [], role ? role.data_scopes : {});
+  $("family-role-form").classList.remove("hidden");
+  $("family-role-form").scrollIntoView({behavior:"smooth", block:"start"});
+}
+
+function renderRoleMembers() {
+  const host = $("family-role-members");
+  host.replaceChildren();
+  for (const member of familyMembersForRoles) {
+    const card = document.createElement("article");
+    card.className = "family-role-member-card";
+    const identity = document.createElement("div");
+    const name = document.createElement("strong");
+    name.textContent = (member.display_name || "未設定名稱") + (member.is_me ? "（我）" : "");
+    const email = document.createElement("span");
+    email.className = "tiny muted"; email.textContent = member.email;
+    identity.append(name, email);
+    const controls = document.createElement("div");
+    controls.className = "family-role-member-controls";
+    const select = document.createElement("select");
+    select.multiple = true;
+    select.size = Math.min(Math.max(familyRoles.length, 2), 5);
+    select.setAttribute("aria-label", "選擇" + (member.display_name || member.email) + "的角色");
+    for (const role of familyRoles) {
+      const option = document.createElement("option");
+      option.value = String(role.id); option.textContent = role.name;
+      option.selected = (member.role_ids || []).includes(role.id);
+      select.append(option);
+    }
+    const save = document.createElement("button");
+    save.type = "button"; save.className = "primary small"; save.textContent = "儲存指派";
+    save.addEventListener("click", async () => {
+      const roleIds = [...select.selectedOptions].map(option => Number(option.value));
+      if (!roleIds.length) {
+        notice("family-roles-notice", "每位有效成員至少必須保留一個角色。", "error");
+        return;
+      }
+      save.disabled = true;
+      try {
+        await api("/families/" + selectedFamilyId + "/members/" + member.family_member_id + "/roles", {
+          method:"PUT", body:JSON.stringify({role_ids:roleIds})
+        });
+        notice("family-roles-notice", "已更新 " + (member.display_name || member.email) + " 的角色。", "success");
+        await loadFamilyRoles();
+      } catch (error) {
+        notice("family-roles-notice", "角色指派失敗：" + error.message, "error");
+      } finally { save.disabled = false; }
+    });
+    controls.append(select, save);
+    card.append(identity, controls);
+    host.append(card);
+  }
+}
+
+async function loadFamilyRoles() {
+  if (!selectedFamilyId) return;
+  clearNotice("family-roles-notice");
+  try {
+    const [roleResult, permissionResult, memberResult] = await Promise.all([
+      api("/families/" + selectedFamilyId + "/roles"),
+      api("/families/" + selectedFamilyId + "/permissions"),
+      api("/families/" + selectedFamilyId + "/members")
+    ]);
+    familyRoles = roleResult.roles || [];
+    familyPermissionCatalog = permissionResult.permissions || [];
+    familyMembersForRoles = memberResult.members || [];
+    renderFamilyRoles();
+    renderRoleMembers();
+  } catch (error) {
+    notice("family-roles-notice", "角色資料載入失敗：" + error.message, "error");
+    $("family-roles-list").replaceChildren();
+    $("family-role-members").replaceChildren();
+  }
+}
+
+async function openFamilyRoles() {
+  if (!selectedFamilyId) {
+    notice("notice-app", "請先建立或選擇家庭，再管理角色與權限。", "error");
+    return;
+  }
+  $("family-roles-view").classList.remove("hidden");
+  $("family-roles-view").scrollIntoView({behavior:"smooth", block:"start"});
+  await loadFamilyRoles();
+}
+
+$("open-family-roles").addEventListener("click", openFamilyRoles);
+$("close-family-roles").addEventListener("click", () => $("family-roles-view").classList.add("hidden"));
+$("refresh-family-roles").addEventListener("click", loadFamilyRoles);
+$("new-family-role").addEventListener("click", () => openFamilyRoleEditor());
+$("cancel-family-role").addEventListener("click", () => {
+  $("family-role-form").classList.add("hidden");
+  editingFamilyRoleId = null;
+});
+$("family-role-permissions").addEventListener("change", event => {
+  if (event.target.matches("input[data-permission-code]")) renderRoleScopeEditor();
+});
+$("family-role-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const button = $("save-family-role");
+  button.disabled = true;
+  try {
+    const permissionCodes = [...$("family-role-permissions").querySelectorAll("input:checked")]
+      .map(input => input.dataset.permissionCode);
+    const dataScopes = {};
+    for (const select of $("family-role-scopes").querySelectorAll("select[data-scope-resource]")) {
+      dataScopes[select.dataset.scopeResource] = select.value;
+    }
+    const payload = {
+      name:$("family-role-name").value.trim(),
+      description:$("family-role-description").value.trim() || null,
+      permission_codes:permissionCodes,
+      data_scopes:dataScopes
+    };
+    const path = "/families/" + selectedFamilyId + "/roles" + (editingFamilyRoleId ? "/" + editingFamilyRoleId : "");
+    await api(path, {method:editingFamilyRoleId ? "PATCH" : "POST", body:JSON.stringify(payload)});
+    $("family-role-form").classList.add("hidden");
+    editingFamilyRoleId = null;
+    notice("family-roles-notice", "角色設定已儲存。", "success");
+    await loadFamilyRoles();
+  } catch (error) {
+    notice("family-roles-notice", "儲存角色失敗：" + error.message, "error");
+  } finally { button.disabled = false; }
+});
+
+async function voidFamilyRole(role) {
+  if (!window.confirm("確定作廢自訂角色「" + role.name + "」？此操作不會刪除歷史資料。")) return;
+  try {
+    await api("/families/" + selectedFamilyId + "/roles/" + role.id, {method:"DELETE"});
+    notice("family-roles-notice", "自訂角色已作廢。", "success");
+    await loadFamilyRoles();
+  } catch (error) {
+    notice("family-roles-notice", "作廢角色失敗：" + error.message, "error");
+  }
+}
