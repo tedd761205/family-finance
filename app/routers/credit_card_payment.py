@@ -22,6 +22,7 @@ from app.models.user import User
 from app.models.account import Account
 from app.models.credit_card_payment import CreditCardPayment
 from app.models.transaction import Transaction
+from app.services.audit_log import add_audit_log
 from app.schemas.credit_card_payment import (
     CreditCardPaymentCreate,
     CreditCardPaymentUpdate,
@@ -383,6 +384,40 @@ def create_credit_card_payment(
             payment=payment,
         )
 
+        add_audit_log(
+            db,
+            family_id=family_id,
+            actor_user_id=current_user.id,
+            action="create",
+            entity_type="credit_card_payment",
+            entity_id=payment.id,
+            new_values={
+                "from_account_id": payment.from_account_id,
+                "credit_card_account_id": payment.credit_card_account_id,
+                "amount": payment.amount,
+                "currency_code": payment.currency_code,
+                "payment_date": payment.payment_date,
+                "description": payment.description,
+                "note": payment.note,
+            },
+            description="新增信用卡繳款（含自動產生的交易明細）",
+        )
+
+        add_audit_log(
+            db,
+            family_id=family_id,
+            actor_user_id=current_user.id,
+            action="update",
+            entity_type="credit_card_payment",
+            entity_id=payment.id,
+            old_values=old_values,
+            new_values={
+                field: getattr(payment, field)
+                for field in changes
+            },
+            description="修改信用卡繳款及其交易明細",
+        )
+
         db.commit()
         db.refresh(payment)
 
@@ -606,6 +641,11 @@ def update_credit_card_payment(
 
     changes = payload.model_dump(exclude_unset=True)
 
+    old_values = {
+        field: getattr(payment, field)
+        for field in changes
+    }
+
     try:
         for field, value in changes.items():
             setattr(payment, field, value)
@@ -690,6 +730,10 @@ def void_credit_card_payment(
     validate_payment_transactions(transactions)
 
     now = datetime.now(timezone.utc)
+    old_values = {
+        "is_voided": payment.is_voided,
+        "voided_at": payment.voided_at,
+    }
 
     try:
         payment.is_voided = True
@@ -698,6 +742,22 @@ def void_credit_card_payment(
         for transaction in transactions:
             transaction.is_voided = True
             transaction.voided_at = now
+
+        add_audit_log(
+            db,
+            family_id=family_id,
+            actor_user_id=current_user.id,
+            action="void",
+            entity_type="credit_card_payment",
+            entity_id=payment.id,
+            old_values=old_values,
+            new_values={
+                "is_voided": payment.is_voided,
+                "voided_at": payment.voided_at,
+                "voided_transaction_count": len(transactions),
+            },
+            description="作廢信用卡繳款及其交易明細",
+        )
 
         db.commit()
         db.refresh(payment)
