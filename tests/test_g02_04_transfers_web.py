@@ -50,3 +50,13 @@ def test_transfer_workspace_has_mobile_responsive_styles():
 
     assert ".transfers-panel" in css
     assert "@media(max-width:760px)" in css
+
+
+def test_transfer_date_filters_cover_full_taiwan_local_days():
+    with TestClient(app) as client:
+        javascript = client.get("/static/app.js").text
+
+    assert 'transferFilterDateTime(value, endOfDay=false)' in javascript
+    assert 'endOfDay?"T23:59:59+08:00":"T00:00:00+08:00"' in javascript
+    assert 'params.set("start_date",transferFilterDateTime(start))' in javascript
+    assert 'params.set("end_date",transferFilterDateTime(end,true))' in javascript
