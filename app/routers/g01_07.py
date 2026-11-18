@@ -420,16 +420,15 @@ def run_export(
     data_permission = "transactions.view" if dataset == "transactions" else "bills.view"
     data_resource = dataset
     data_scope = _authorize(db, current_user.id, family_id, data_permission, data_resource)
-    if data_scope == "own" and scope == "family":
-        scope = "own"
+    effective_scope = "own" if scope == "own" or data_scope == "own" else "family"
     run = ExportRun(
         family_id=family_id, template_id=template.id, template_version=template.version,
-        template_snapshot={**_snapshot(template), "data_scope": data_scope or "family"}, status="running", requested_by=current_user.id,
+        template_snapshot={**_snapshot(template), "data_scope": effective_scope}, status="running", requested_by=current_user.id,
     )
     db.add(run)
     db.flush()
     try:
-        content = _render_export(db, family_id, run, current_user.id, data_scope or "family")
+        content = _render_export(db, family_id, run, current_user.id, effective_scope)
         digest = hashlib.sha256(content).hexdigest()
         key = f"family-{family_id}/exports/{uuid.uuid4().hex}.csv"
         attachment_storage.upload_object(key, content, "text/csv; charset=utf-8", digest)
@@ -544,6 +543,9 @@ def process_due_exports(db: Session, *, limit: int = 25) -> dict:
     result = {"checked": 0, "succeeded": 0, "failed": 0, "disabled": 0}
     for schedule in schedules:
         result["checked"] += 1
+        template = None
+        published = None
+        key = None
         try:
             template = _template(db, schedule.family_id, schedule.template_id, lock=True)
             published = db.query(ExportTemplateVersion).filter(
@@ -631,19 +633,32 @@ def process_due_exports(db: Session, *, limit: int = 25) -> dict:
             result["succeeded"] += 1
         except Exception as exc:
             db.rollback()
+            if key is not None:
+                try:
+                    attachment_storage.delete_object(key)
+                except Exception:
+                    pass
             current = db.query(ExportSchedule).filter(
                 ExportSchedule.id == schedule.id, ExportSchedule.family_id == schedule.family_id,
             ).with_for_update().first()
             if current is not None:
-                failed = ExportRun(
-                    family_id=current.family_id, template_id=current.template_id,
-                    schedule_id=current.id, requested_by=current.created_by,
-                    template_version=template.version if "template" in locals() else 1,
-                    template_snapshot=_snapshot(template) if "template" in locals() else {"config": {"dataset": "transactions"}, "data_scope": "own"},
-                    status="failed", error_code=type(exc).__name__[:80],
-                    completed_at=datetime.now(timezone.utc),
-                )
-                db.add(failed)
+                if template is not None:
+                    failed = ExportRun(
+                        family_id=current.family_id, template_id=current.template_id,
+                        schedule_id=current.id, requested_by=current.created_by,
+                        template_version=published.version if published is not None else template.version,
+                        template_snapshot={
+                            "name": published.name if published is not None else template.name,
+                            "description": published.description if published is not None else template.description,
+                            "config": published.config if published is not None else template.config,
+                            "version": published.version if published is not None else template.version,
+                            "status": "published" if published is not None else template.status,
+                            "data_scope": "own",
+                        },
+                        status="failed", error_code=type(exc).__name__[:80],
+                        completed_at=datetime.now(timezone.utc),
+                    )
+                    db.add(failed)
                 _notify(db, family_id=current.family_id, recipient_user_id=current.created_by,
                         actor_user_id=None, notification_type="export.failed",
                         title="定期家庭資料匯出失敗",
