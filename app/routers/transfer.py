@@ -23,6 +23,7 @@ from app.models.user import User
 from app.models.account import Account
 from app.models.transfer import Transfer
 from app.models.transaction import Transaction
+from app.services.audit_log import add_audit_log
 from app.schemas.transfer import (
     TransferCreate,
     TransferUpdate,
@@ -345,6 +346,49 @@ def create_transfer(
             transfer=transfer,
         )
 
+        add_audit_log(
+            db,
+            family_id=family_id,
+            actor_user_id=current_user.id,
+            action="create",
+            entity_type="transfer",
+            entity_id=transfer.id,
+            new_values={
+                "from_account_id": transfer.from_account_id,
+                "to_account_id": transfer.to_account_id,
+                "amount": transfer.amount,
+                "currency_code": transfer.currency_code,
+                "transfer_date": transfer.transfer_date,
+                "description": transfer.description,
+                "fee_amount": transfer.fee_amount,
+                "fee_account_id": transfer.fee_account_id,
+                "note": transfer.note,
+            },
+            description="新增轉帳（含自動產生的交易明細）",
+        )
+
+        add_audit_log(
+            db,
+            family_id=family_id,
+            actor_user_id=current_user.id,
+            action="update",
+            entity_type="transfer",
+            entity_id=transfer.id,
+            old_values=old_values,
+            new_values={
+                "from_account_id": transfer.from_account_id,
+                "to_account_id": transfer.to_account_id,
+                "amount": transfer.amount,
+                "currency_code": transfer.currency_code,
+                "transfer_date": transfer.transfer_date,
+                "description": transfer.description,
+                "fee_amount": transfer.fee_amount,
+                "fee_account_id": transfer.fee_account_id,
+                "note": transfer.note,
+            },
+            description="修改轉帳及其交易明細",
+        )
+
         db.commit()
         db.refresh(transfer)
 
@@ -642,6 +686,18 @@ def update_transfer(
         else None
     )
 
+    old_values = {
+        "from_account_id": transfer.from_account_id,
+        "to_account_id": transfer.to_account_id,
+        "amount": transfer.amount,
+        "currency_code": transfer.currency_code,
+        "transfer_date": transfer.transfer_date,
+        "description": transfer.description,
+        "fee_amount": transfer.fee_amount,
+        "fee_account_id": transfer.fee_account_id,
+        "note": transfer.note,
+    }
+
     try:
         for field, value in new_values.items():
             setattr(transfer, field, value)
@@ -764,6 +820,11 @@ def void_transfer(
 
     now = datetime.now(timezone.utc)
 
+    old_values = {
+        "is_voided": transfer.is_voided,
+        "voided_at": transfer.voided_at,
+    }
+
     try:
         transfer.is_voided = True
         transfer.voided_at = now
@@ -772,6 +833,22 @@ def void_transfer(
             if not transaction.is_voided:
                 transaction.is_voided = True
                 transaction.voided_at = now
+
+        add_audit_log(
+            db,
+            family_id=family_id,
+            actor_user_id=current_user.id,
+            action="void",
+            entity_type="transfer",
+            entity_id=transfer.id,
+            old_values=old_values,
+            new_values={
+                "is_voided": transfer.is_voided,
+                "voided_at": transfer.voided_at,
+                "voided_transaction_count": len(transactions),
+            },
+            description="作廢轉帳及其交易明細",
+        )
 
         db.commit()
         db.refresh(transfer)
