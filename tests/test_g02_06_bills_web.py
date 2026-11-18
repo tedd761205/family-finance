@@ -47,14 +47,15 @@ def test_bill_void_uses_reason_and_warns_about_active_payments():
         javascript = client.get("/static/app.js").text
 
     assert 'params.set("reason",reason.trim())' in javascript
-    assert "仍有有效付款／退款紀錄" in javascript
+    assert "需先處理付款紀錄" in javascript
 
 
 def test_bill_currency_is_locked_after_payment_history():
     with TestClient(app) as client:
         javascript = client.get("/static/app.js").text
 
-    assert "editingBillPaymentHistory=Number(item.paid_amount||0)>0" in javascript
+    assert 'include_voided=true&limit=200' in javascript
+    assert '$("bill-currency").disabled=editingBillPaymentHistory' in javascript
     assert '$("bill-currency").disabled=editingBillPaymentHistory' in javascript
 
 
