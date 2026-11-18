@@ -235,6 +235,8 @@ def update_export_template(
 ):
     _authorize(db, current_user.id, family_id, "exports.update", "exports")
     template = _template(db, family_id, template_id, lock=True)
+    if _authorize(db, current_user.id, family_id, "exports.update", "exports") == "own" and template.created_by != current_user.id:
+        raise HTTPException(status_code=404, detail="找不到此家庭匯出範本")
     if template.version != body.expected_version:
         raise HTTPException(status_code=409, detail={
             "code": "EXPORT_TEMPLATE_VERSION_CONFLICT",
@@ -272,6 +274,8 @@ def publish_export_template(
 ):
     _authorize(db, current_user.id, family_id, "exports.publish", "exports")
     template = _template(db, family_id, template_id, lock=True)
+    if _authorize(db, current_user.id, family_id, "exports.publish", "exports") == "own" and template.created_by != current_user.id:
+        raise HTTPException(status_code=404, detail="找不到此家庭匯出範本")
     if template.version != expected_version:
         raise HTTPException(status_code=409, detail={
             "code": "EXPORT_TEMPLATE_VERSION_CONFLICT",
@@ -319,6 +323,8 @@ def create_export_schedule(
 ):
     _authorize(db, current_user.id, family_id, "exports.schedule", "exports")
     template = _template(db, family_id, body.template_id)
+    if _authorize(db, current_user.id, family_id, "exports.schedule", "exports") == "own" and template.created_by != current_user.id:
+        raise HTTPException(status_code=404, detail="找不到此家庭匯出範本")
     if template.status != "published":
         raise HTTPException(status_code=409, detail="只有已發布的範本可以建立定期匯出")
     next_run = _next_run(body.frequency, body.local_hour, body.local_minute, body.weekday, body.monthday)
@@ -381,6 +387,8 @@ def run_export(
 ):
     scope = _authorize(db, current_user.id, family_id, "exports.create", "exports")
     template = _template(db, family_id, template_id)
+    if scope == "own" and template.created_by != current_user.id:
+        raise HTTPException(status_code=404, detail="找不到此家庭匯出範本")
     if template.status != "published":
         raise HTTPException(status_code=409, detail="只有已發布的匯出範本可以執行")
     dataset = template.config.get("dataset")
@@ -391,7 +399,7 @@ def run_export(
         scope = "own"
     run = ExportRun(
         family_id=family_id, template_id=template.id, template_version=template.version,
-        template_snapshot=_snapshot(template), status="running", requested_by=current_user.id,
+        template_snapshot={**_snapshot(template), "data_scope": data_scope or "family"}, status="running", requested_by=current_user.id,
     )
     db.add(run)
     db.flush()
@@ -458,6 +466,9 @@ def download_export_run(
     dataset = run.template_snapshot["config"]["dataset"]
     data_permission = "transactions.view" if dataset == "transactions" else "bills.view"
     data_scope = _authorize(db, current_user.id, family_id, data_permission, dataset)
+    original_scope = run.template_snapshot.get("data_scope", "family")
+    if original_scope == "family" and data_scope != "family":
+        raise HTTPException(status_code=403, detail="目前資料範圍已縮小，無法下載先前包含全家庭資料的匯出檔案")
     if data_scope == "own" and run.requested_by != current_user.id:
         raise HTTPException(status_code=404, detail="目前權限不允許下載此家庭匯出檔案")
     content = attachment_storage.download_object(run.object_key)
