@@ -16,13 +16,13 @@ class ReconciliationSession(Base):
     __tablename__ = "reconciliation_sessions"
     __table_args__ = (
         UniqueConstraint("family_id", "id", name="uq_reconciliation_sessions_family_id_id"),
-        UniqueConstraint("family_id", "id", "source_batch_id", name="uq_reconciliation_sessions_family_id_batch"),
+        UniqueConstraint("family_id", "id", "account_id", "source_batch_id", name="uq_reconciliation_sessions_family_id_account_batch"),
         ForeignKeyConstraint(
             ["family_id", "account_id"], ["accounts.family_id", "accounts.id"],
             ondelete="RESTRICT", name="fk_reconciliation_sessions_family_account",
         ),
         ForeignKeyConstraint(
-            ["family_id", "source_batch_id"], ["bank_import_batches.family_id", "bank_import_batches.id"],
+            ["family_id", "account_id", "source_batch_id"], ["bank_import_batches.family_id", "bank_import_batches.account_id", "bank_import_batches.id"],
             ondelete="RESTRICT", name="fk_reconciliation_sessions_family_batch",
         ),
         ForeignKeyConstraint(
@@ -85,8 +85,8 @@ class ReconciliationMatch(Base):
     __table_args__ = (
         UniqueConstraint("family_id", "id", name="uq_reconciliation_matches_family_id_id"),
         ForeignKeyConstraint(
-            ["family_id", "session_id", "batch_id"],
-            ["reconciliation_sessions.family_id", "reconciliation_sessions.id", "reconciliation_sessions.source_batch_id"],
+            ["family_id", "session_id", "account_id", "batch_id"],
+            ["reconciliation_sessions.family_id", "reconciliation_sessions.id", "reconciliation_sessions.account_id", "reconciliation_sessions.source_batch_id"],
             ondelete="RESTRICT", name="fk_reconciliation_matches_family_session_batch",
         ),
         ForeignKeyConstraint(
@@ -95,8 +95,8 @@ class ReconciliationMatch(Base):
             ondelete="RESTRICT", name="fk_reconciliation_matches_family_import_row",
         ),
         ForeignKeyConstraint(
-            ["family_id", "transaction_id"],
-            ["transactions.family_id", "transactions.id"],
+            ["family_id", "account_id", "transaction_id"],
+            ["transactions.family_id", "transactions.account_id", "transactions.id"],
             ondelete="RESTRICT", name="fk_reconciliation_matches_family_transaction",
         ),
         ForeignKeyConstraint(
@@ -131,6 +131,7 @@ class ReconciliationMatch(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     family_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     session_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    account_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     bank_import_row_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     transaction_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
