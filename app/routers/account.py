@@ -58,6 +58,7 @@ from app.schemas.account_balance import (
 from app.services.account_balance import (
     calculate_account_balance,
 )
+from app.services.audit_log import add_audit_log
 
 
 logger = logging.getLogger(__name__)
@@ -273,6 +274,30 @@ def create_account(
         )
 
         db.add(account)
+        db.flush()
+
+        add_audit_log(
+            db,
+            family_id=family_id,
+            actor_user_id=current_user.id,
+            action="create",
+            entity_type="account",
+            entity_id=account.id,
+            new_values={
+                "name": account.name,
+                "account_type": account.account_type,
+                "currency_code": account.currency_code,
+                "institution_name": account.institution_name,
+                "account_number_last4": account.account_number_last4,
+                "credit_limit": account.credit_limit,
+                "statement_day": account.statement_day,
+                "payment_due_day": account.payment_due_day,
+                "note": account.note,
+                "is_active": account.is_active,
+            },
+            description="新增帳戶",
+        )
+
         db.commit()
         db.refresh(account)
 
@@ -642,8 +667,28 @@ def update_account(
     )
 
     try:
+        old_values = {
+            field: getattr(account, field)
+            for field in changes
+        }
+
         for field, value in changes.items():
             setattr(account, field, value)
+
+        add_audit_log(
+            db,
+            family_id=family_id,
+            actor_user_id=current_user.id,
+            action="update",
+            entity_type="account",
+            entity_id=account.id,
+            old_values=old_values,
+            new_values={
+                field: getattr(account, field)
+                for field in changes
+            },
+            description="修改帳戶",
+        )
 
         db.commit()
         db.refresh(account)
@@ -719,7 +764,20 @@ def deactivate_account(
         )
 
     try:
+        old_values = {"is_active": account.is_active}
         account.is_active = False
+
+        add_audit_log(
+            db,
+            family_id=family_id,
+            actor_user_id=current_user.id,
+            action="void",
+            entity_type="account",
+            entity_id=account.id,
+            old_values=old_values,
+            new_values={"is_active": account.is_active},
+            description="作廢帳戶",
+        )
 
         db.commit()
         db.refresh(account)
