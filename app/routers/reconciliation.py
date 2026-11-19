@@ -129,7 +129,7 @@ def _refresh_session_counts(db: Session, session: ReconciliationSession) -> None
 
 
 def _normalize_description(value: str | None) -> str:
-    return re.sub(r"[^\\w]", "", (value or "").casefold(), flags=re.UNICODE)
+    return re.sub(r"[^\w]", "", (value or "").casefold(), flags=re.UNICODE)
 
 
 def _score_reconciliation_candidate(
