@@ -1118,18 +1118,21 @@ def complete_reconciliation_session(
         statement_opening_balance=session.opening_balance,
         statement_closing_balance=session.closing_balance,
     )
-    balance_mismatch = (
-        balance_result["opening_matches"] is False
-        or balance_result["closing_matches"] is False
+    from app.services.reconciliation_completion import evaluate_reconciliation_completion
+
+    completion = evaluate_reconciliation_completion(
+        unresolved_bank_rows=session.difference_row_count,
+        unmatched_ledger_transactions=ledger_only_count,
+        open_issues=open_issue_count,
+        opening_balance_matches=balance_result["opening_matches"],
+        closing_balance_matches=balance_result["closing_matches"],
     )
-    if ledger_only_count or open_issue_count or balance_mismatch:
+    if not completion["ready_to_complete"]:
         raise HTTPException(
             status_code=409,
             detail={
                 "message": "雙向對帳仍有未處理項目，不能完成對帳",
-                "ledger_only_count": ledger_only_count,
-                "open_issue_count": open_issue_count,
-                "balance_mismatch": balance_mismatch,
+                **completion["completion_blockers"],
                 "opening_difference": (
                     str(balance_result["opening_difference"])
                     if balance_result["opening_difference"] is not None else None
