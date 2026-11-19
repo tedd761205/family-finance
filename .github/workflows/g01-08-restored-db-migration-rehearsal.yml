@@ -200,6 +200,12 @@ jobs:
                       "ix_bank_import_batches_account_created",
                       "ix_bank_import_rows_family_batch_status",
                       "ix_bank_import_rows_family_account_fingerprint",
+                      "uq_bank_import_batches_family_id_id",
+                      "uq_bank_import_rows_family_id_id",
+                      "uq_bank_import_rows_batch_row",
+                      "uq_bank_import_batches_family_account_id",
+                      "uq_bank_import_rows_family_batch_id",
+                      "uq_transactions_family_account_id",
                       "uq_transactions_import_row_id",
                       "uq_reconciliation_sessions_active_period",
                       "uq_reconciliation_sessions_source_batch",
@@ -221,6 +227,13 @@ jobs:
                       raise SystemExit(f"Required migration indexes are missing: {missing_indexes}")
 
                   required_foreign_keys = {
+                      "fk_bank_import_batches_family_account",
+                      "fk_bank_import_batches_family",
+                      "fk_bank_import_batches_created_by",
+                      "fk_bank_import_batches_confirmed_by",
+                      "fk_bank_import_rows_family_batch",
+                      "fk_bank_import_rows_duplicate",
+                      "fk_transactions_family_import_row",
                       "fk_reconciliation_sessions_family_account",
                       "fk_reconciliation_sessions_family_account_batch",
                       "fk_reconciliation_sessions_created_by",
@@ -249,6 +262,11 @@ jobs:
                       raise SystemExit(f"Required G-03 foreign keys are missing: {missing_foreign_keys}")
 
                   required_checks = {
+                      "ck_bank_import_batches_status",
+                      "ck_bank_import_batches_counts",
+                      "ck_bank_import_rows_status",
+                      "ck_bank_import_rows_amount_positive",
+                      "ck_bank_import_rows_fingerprint",
                       "ck_reconciliation_sessions_period",
                       "ck_reconciliation_sessions_status",
                       "ck_reconciliation_sessions_counts",
