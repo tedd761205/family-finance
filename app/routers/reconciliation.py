@@ -186,7 +186,7 @@ def create_reconciliation_session(
     if batch is None:
         raise HTTPException(status_code=404, detail="找不到此家庭帳戶的匯入批次")
     if batch.status != "confirmed" or batch.confirmed_at is None:
-        raise HTTPException(status_code=409, detail="只有已人工確認並正式入帳的匯入批次可以對帳")
+        raise HTTPException(status_code=409, detail="只有已確認匯入的銀行明細批次可以對帳")
 
     start_utc, end_utc = _period_bounds(data.period_start, data.period_end)
     row_query = db.query(BankImportRow.id).filter(
@@ -423,6 +423,8 @@ def create_reconciliation_match(
         raise HTTPException(status_code=409, detail="此正式交易已連結其他銀行匯入明細")
     if row.transaction_type != transaction.transaction_type:
         raise HTTPException(status_code=422, detail="銀行明細與正式交易的收支方向不同")
+    if row.currency_code != session.currency_code or transaction.currency_code != session.currency_code:
+        raise HTTPException(status_code=422, detail="銀行明細與正式交易的幣別必須與對帳帳戶一致")
     if row.currency_code != transaction.currency_code:
         raise HTTPException(status_code=422, detail="銀行明細與正式交易的幣別不同")
     if data.allocated_amount != transaction.amount:
