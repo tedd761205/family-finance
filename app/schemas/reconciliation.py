@@ -101,6 +101,10 @@ class ReconciliationIssueCreate(BaseModel):
             raise ValueError("銀行獨有差異必須關聯銀行明細")
         if self.category == "ledger_only" and self.transaction_id is None:
             raise ValueError("帳務獨有差異必須關聯正式交易")
+        if self.category in {"amount_mismatch", "date_mismatch"} and (
+            self.bank_import_row_id is None or self.transaction_id is None
+        ):
+            raise ValueError("金額或日期差異必須同時關聯銀行明細及正式交易")
         return self
 
 
