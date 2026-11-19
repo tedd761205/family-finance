@@ -13,6 +13,7 @@ from app.dependencies.permissions import require_permission, require_data_scope
 from app.models.account import Account
 from app.models.bank_import import BankImportBatch, BankImportRow
 from app.models.reconciliation import ReconciliationMatch, ReconciliationSession
+from app.models.transaction import Transaction
 from app.models.user import User
 from app.schemas.reconciliation import ReconciliationSessionCreate
 from app.services.audit_log import add_audit_log
@@ -24,7 +25,8 @@ TAIPEI = ZoneInfo("Asia/Taipei")
 def _authorize(db: Session, user: User, family_id: int, permission: str) -> str:
     try:
         _, roles = require_permission(db, user.id, family_id, permission)
-        return require_data_scope(db, roles, family_id, "reconciliation")
+        scope = require_data_scope(db, roles, family_id, "reconciliation")
+        return scope, roles
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
 
@@ -123,6 +125,7 @@ def create_reconciliation_session(
         reconciliation_scope = require_data_scope(db, roles, family_id, "reconciliation")
         account_scope = _require_scope(db, roles, family_id, "accounts")
         import_scope = _require_scope(db, roles, family_id, "imports")
+        transaction_scope = _require_scope(db, roles, family_id, "transactions")
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
 
@@ -161,6 +164,21 @@ def create_reconciliation_session(
     statement_row_count = row_query.count()
     if statement_row_count == 0:
         raise HTTPException(status_code=422, detail="指定對帳期間沒有已入帳的銀行明細")
+    if transaction_scope == "own":
+        owned_transaction_count = db.query(Transaction.id).join(
+            BankImportRow, Transaction.import_row_id == BankImportRow.id
+        ).filter(
+            Transaction.family_id == family_id,
+            Transaction.account_id == account.id,
+            Transaction.created_by == current_user.id,
+            BankImportRow.family_id == family_id,
+            BankImportRow.batch_id == batch.id,
+            BankImportRow.status == "imported",
+            BankImportRow.transaction_date >= start_utc,
+            BankImportRow.transaction_date < end_utc,
+        ).count()
+        if owned_transaction_count != statement_row_count:
+            raise HTTPException(status_code=404, detail="找不到完整的本人帳務資料範圍")
 
     session = ReconciliationSession(
         family_id=family_id,
@@ -218,7 +236,7 @@ def list_reconciliation_sessions(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    scope = _authorize(db, current_user, family_id, "reconciliation.view")
+    scope, _ = _authorize(db, current_user, family_id, "reconciliation.view")
     query = db.query(ReconciliationSession).filter(
         ReconciliationSession.family_id == family_id
     )
@@ -250,11 +268,18 @@ def get_reconciliation_session(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    scope = _authorize(db, current_user, family_id, "reconciliation.view")
+    scope, roles = _authorize(db, current_user, family_id, "reconciliation.view")
+    transaction_scope = _require_scope(db, roles, family_id, "transactions")
     session = _get_session(db, family_id, session_id, scope, current_user)
     start_utc, end_utc = _period_bounds(session.period_start, session.period_end)
 
-    row_query = db.query(BankImportRow).filter(
+    row_query = db.query(BankImportRow)
+    if transaction_scope == "own":
+        row_query = row_query.join(Transaction, Transaction.import_row_id == BankImportRow.id).filter(
+            Transaction.family_id == family_id,
+            Transaction.created_by == current_user.id,
+        )
+    row_query = row_query.filter(
         BankImportRow.family_id == family_id,
         BankImportRow.batch_id == session.source_batch_id,
         BankImportRow.status == "imported",
