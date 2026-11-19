@@ -1,5 +1,6 @@
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
+import re
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -125,6 +126,80 @@ def _refresh_session_counts(db: Session, session: ReconciliationSession) -> None
     session.statement_row_count = len(rows)
     session.matched_row_count = matched
     session.difference_row_count = len(rows) - matched
+
+
+def _normalize_description(value: str | None) -> str:
+    return re.sub(r"[^\\w]", "", (value or "").casefold(), flags=re.UNICODE)
+
+
+def _score_reconciliation_candidate(
+    row: BankImportRow, transaction: Transaction, remaining: Decimal
+) -> dict | None:
+    tx_date = transaction.transaction_date
+    row_date = row.transaction_date
+    if tx_date.tzinfo is None:
+        tx_date = tx_date.replace(tzinfo=timezone.utc)
+    if row_date.tzinfo is None:
+        row_date = row_date.replace(tzinfo=timezone.utc)
+    date_difference_days = abs(
+        (tx_date.astimezone(TAIPEI).date() - row_date.astimezone(TAIPEI).date()).days
+    )
+    if date_difference_days > 7 or transaction.amount > remaining:
+        return None
+
+    score = 0
+    reasons = []
+    if transaction.import_row_id == row.id:
+        score += 200
+        reasons.append("此交易由同一筆銀行明細直接建立")
+    if row.external_reference and transaction.external_reference:
+        if row.external_reference.strip().casefold() == transaction.external_reference.strip().casefold():
+            score += 100
+            reasons.append("銀行交易序號完全相同")
+    if transaction.amount == remaining:
+        score += 50
+        reasons.append("交易金額等於銀行明細剩餘金額")
+    else:
+        score += 20
+        reasons.append("交易金額可納入銀行明細剩餘金額")
+    if date_difference_days == 0:
+        score += 30
+        reasons.append("交易日期相同")
+    elif date_difference_days == 1:
+        score += 20
+        reasons.append("交易日期相差 1 天")
+    elif date_difference_days <= 3:
+        score += 10
+        reasons.append("交易日期相差不超過 3 天")
+    else:
+        score += 5
+        reasons.append("交易日期相差 4 至 7 天")
+
+    row_description = _normalize_description(row.description)
+    tx_description = _normalize_description(transaction.description)
+    if row_description and tx_description:
+        if row_description == tx_description:
+            score += 20
+            reasons.append("交易說明完全相同")
+        elif row_description in tx_description or tx_description in row_description:
+            score += 10
+            reasons.append("交易說明部分相符")
+
+    confidence = "high" if score >= 150 else ("medium" if score >= 90 else "low")
+    return {
+        "transaction_id": transaction.id,
+        "transaction_date": transaction.transaction_date,
+        "transaction_type": transaction.transaction_type,
+        "amount": str(transaction.amount),
+        "currency_code": transaction.currency_code,
+        "description": transaction.description,
+        "external_reference": transaction.external_reference,
+        "allocated_amount": str(transaction.amount),
+        "date_difference_days": date_difference_days,
+        "score": score,
+        "confidence": confidence,
+        "reasons": reasons,
+    }
 
 
 def _get_session(
