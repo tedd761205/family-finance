@@ -210,35 +210,35 @@ jobs:
             exit 1
           fi
           cat > /tmp/expected-public-tables.txt <<'TABLES'
-accounts
-alembic_version
-attachments
-audit_logs
-bill_payments
-bills
-categories
-credit_card_payments
-export_runs
-export_schedules
-export_template_versions
-export_templates
-families
-family_members
-member_roles
-notifications
-ocr_tasks
-password_reset_tokens
-permissions
-recurring_bills
-revoked_tokens
-role_data_scopes
-role_permissions
-roles
-transactions
-transfers
-user_identities
-users
-TABLES
+          accounts
+          alembic_version
+          attachments
+          audit_logs
+          bill_payments
+          bills
+          categories
+          credit_card_payments
+          export_runs
+          export_schedules
+          export_template_versions
+          export_templates
+          families
+          family_members
+          member_roles
+          notifications
+          ocr_tasks
+          password_reset_tokens
+          permissions
+          recurring_bills
+          revoked_tokens
+          role_data_scopes
+          role_permissions
+          roles
+          transactions
+          transfers
+          user_identities
+          users
+          TABLES
           docker run --rm --env DATABASE_URL postgres:18-bookworm \
             psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atc \
             "SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname='public' ORDER BY tablename" \
