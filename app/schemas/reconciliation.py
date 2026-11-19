@@ -40,3 +40,43 @@ class ReconciliationMatchVoid(BaseModel):
         if not self.reason:
             raise ValueError("解除配對必須填寫原因")
         return self
+
+
+class ReconciliationExcludeCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    bank_import_row_id: int = Field(gt=0)
+    reason: str = Field(min_length=1, max_length=500)
+
+    @model_validator(mode="after")
+    def validate_reason(self):
+        self.reason = self.reason.strip()
+        if not self.reason:
+            raise ValueError("排除明細必須填寫原因")
+        return self
+
+
+class ReconciliationExclusionVoid(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1, max_length=500)
+
+    @model_validator(mode="after")
+    def validate_reason(self):
+        self.reason = self.reason.strip()
+        if not self.reason:
+            raise ValueError("解除排除必須填寫原因")
+        return self
+
+
+class ReconciliationLifecycleReason(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1, max_length=500)
+
+    @model_validator(mode="after")
+    def validate_reason(self):
+        self.reason = self.reason.strip()
+        if not self.reason:
+            raise ValueError("此操作必須填寫原因")
+        return self
