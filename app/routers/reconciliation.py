@@ -297,6 +297,7 @@ def get_reconciliation_session(
 ):
     scope, roles = _authorize(db, current_user, family_id, "reconciliation.view")
     account_scope = _require_scope(db, roles, family_id, "accounts")
+    transaction_scope = _require_scope(db, roles, family_id, "transactions")
     session = _get_session(db, family_id, session_id, scope, current_user)
     if account_scope == "own":
         owned_account = db.query(Account.id).filter(
@@ -331,7 +332,32 @@ def get_reconciliation_session(
         ).group_by(ReconciliationMatch.bank_import_row_id).all()
         allocations = {row_id: amount for row_id, amount in values}
 
-    row_items = [_row_state(row, allocations.get(row.id, Decimal("0"))) for row in rows]
+    match_query = db.query(ReconciliationMatch).filter(
+        ReconciliationMatch.family_id == family_id,
+        ReconciliationMatch.session_id == session.id,
+        ReconciliationMatch.bank_import_row_id.in_(row_ids),
+        ReconciliationMatch.status == "active",
+    )
+    if transaction_scope == "own":
+        match_query = match_query.join(
+            Transaction, Transaction.id == ReconciliationMatch.transaction_id
+        ).filter(Transaction.created_by == current_user.id)
+    match_items = match_query.order_by(ReconciliationMatch.id.asc()).all()
+    matches_by_row = {}
+    for match in match_items:
+        matches_by_row.setdefault(match.bank_import_row_id, []).append({
+            "id": match.id,
+            "transaction_id": match.transaction_id,
+            "allocated_amount": str(match.allocated_amount),
+            "matched_by": match.matched_by,
+            "matched_at": match.matched_at,
+        })
+
+    row_items = []
+    for row in rows:
+        item = _row_state(row, allocations.get(row.id, Decimal("0")))
+        item["matches"] = matches_by_row.get(row.id, [])
+        row_items.append(item)
     return {
         "success": True,
         "session": _session_summary(session),
