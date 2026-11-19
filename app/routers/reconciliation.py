@@ -13,8 +13,13 @@ from app.dependencies.permissions import require_permission, require_data_scope
 from app.models.account import Account
 from app.models.bank_import import BankImportBatch, BankImportRow
 from app.models.reconciliation import ReconciliationMatch, ReconciliationSession
+from app.models.transaction import Transaction
 from app.models.user import User
-from app.schemas.reconciliation import ReconciliationSessionCreate
+from app.schemas.reconciliation import (
+    ReconciliationMatchCreate,
+    ReconciliationMatchVoid,
+    ReconciliationSessionCreate,
+)
 from app.services.audit_log import add_audit_log
 
 router = APIRouter(prefix="/reconciliations", tags=["Reconciliations"])
@@ -93,8 +98,38 @@ def _row_state(row: BankImportRow, allocated_amount: Decimal) -> dict:
     }
 
 
+def _refresh_session_counts(db: Session, session: ReconciliationSession) -> None:
+    start_utc, end_utc = _period_bounds(session.period_start, session.period_end)
+    rows = db.query(BankImportRow).filter(
+        BankImportRow.family_id == session.family_id,
+        BankImportRow.batch_id == session.source_batch_id,
+        BankImportRow.status.in_(["imported", "duplicate"]),
+        BankImportRow.transaction_date >= start_utc,
+        BankImportRow.transaction_date < end_utc,
+    ).all()
+    totals = {}
+    if rows:
+        values = db.query(
+            ReconciliationMatch.bank_import_row_id,
+            func.coalesce(func.sum(ReconciliationMatch.allocated_amount), 0),
+        ).filter(
+            ReconciliationMatch.family_id == session.family_id,
+            ReconciliationMatch.session_id == session.id,
+            ReconciliationMatch.status == "active",
+        ).group_by(ReconciliationMatch.bank_import_row_id).all()
+        totals = {row_id: amount for row_id, amount in values}
+    matched = sum(
+        1 for row in rows
+        if totals.get(row.id, Decimal("0")) == (row.amount or Decimal("0"))
+    )
+    session.statement_row_count = len(rows)
+    session.matched_row_count = matched
+    session.difference_row_count = len(rows) - matched
+
+
 def _get_session(
-    db: Session, family_id: int, session_id: int, scope: str, user: User
+    db: Session, family_id: int, session_id: int, scope: str, user: User,
+    lock: bool = False,
 ) -> ReconciliationSession:
     query = db.query(ReconciliationSession).filter(
         ReconciliationSession.id == session_id,
@@ -102,6 +137,8 @@ def _get_session(
     )
     if scope == "own":
         query = query.filter(ReconciliationSession.created_by == user.id)
+    if lock:
+        query = query.with_for_update()
     session = query.first()
     if session is None:
         raise HTTPException(status_code=404, detail="找不到此家庭對帳工作階段")
