@@ -1054,7 +1054,7 @@ def complete_reconciliation_session(
     explained_ledger_ids = db.query(ReconciliationIssue.transaction_id).filter(
         ReconciliationIssue.family_id == family_id,
         ReconciliationIssue.session_id == session.id,
-        ReconciliationIssue.category == "ledger_only",
+        ReconciliationIssue.category.in_(["ledger_only", "explained"]),
         ReconciliationIssue.status == "resolved",
         ReconciliationIssue.transaction_id.isnot(None),
     )
@@ -1628,7 +1628,7 @@ def get_reconciliation_final_report(
     explained_ledger_ids = db.query(ReconciliationIssue.transaction_id).filter(
         ReconciliationIssue.family_id == family_id,
         ReconciliationIssue.session_id == session.id,
-        ReconciliationIssue.category == "ledger_only",
+        ReconciliationIssue.category.in_(["ledger_only", "explained"]),
         ReconciliationIssue.status == "resolved",
         ReconciliationIssue.transaction_id.isnot(None),
     )
