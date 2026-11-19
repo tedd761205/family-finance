@@ -238,10 +238,13 @@ def list_reconciliation_sessions(
 ):
     scope, roles = _authorize(db, current_user, family_id, "reconciliation.view")
     account_scope = _require_scope(db, roles, family_id, "accounts")
+    transaction_scope = _require_scope(db, roles, family_id, "transactions")
     query = db.query(ReconciliationSession).filter(
         ReconciliationSession.family_id == family_id
     )
     if scope == "own":
+        query = query.filter(ReconciliationSession.created_by == current_user.id)
+    if transaction_scope == "own":
         query = query.filter(ReconciliationSession.created_by == current_user.id)
     if account_scope == "own":
         query = query.join(
