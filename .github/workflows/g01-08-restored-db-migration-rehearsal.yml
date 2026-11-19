@@ -71,18 +71,21 @@ jobs:
           if len(heads) != 1:
               raise SystemExit(f"Expected exactly one Alembic head, found: {heads}")
 
-          baseline_revision = "49ed3855c31c"
+          baseline_revision = "a7c9e1f3b5d7"
           expected_existing = {
               "accounts", "alembic_version", "audit_logs", "categories",
               "credit_card_payments", "families", "family_members",
               "member_roles", "password_reset_tokens", "permissions",
               "revoked_tokens", "role_data_scopes", "role_permissions",
               "roles", "transactions", "transfers", "user_identities", "users",
-          }
-          expected_new = {
               "bills", "recurring_bills", "bill_payments", "attachments",
               "ocr_tasks", "notifications", "export_templates",
               "export_template_versions", "export_schedules", "export_runs",
+          }
+          expected_new = {
+              "bank_import_batches", "bank_import_rows",
+              "reconciliation_sessions", "reconciliation_matches",
+              "reconciliation_exclusions", "reconciliation_issues",
           }
           engine = create_engine(url, pool_pre_ping=True, connect_args={"connect_timeout": 10})
           try:
@@ -133,7 +136,7 @@ jobs:
           DATABASE_URL: ${{ secrets.NEON_RESTORE_TEST_DATABASE_URL }}
         run: |
           set -euo pipefail
-          python -m alembic upgrade head 2>&1 | tee migration-rehearsal-artifacts/alembic-upgrade.log
+          python -m alembic upgrade a6b8c0d2e4f6 2>&1 | tee migration-rehearsal-artifacts/alembic-upgrade.log
           python -m alembic current 2>&1 | tee migration-rehearsal-artifacts/alembic-current.txt
 
       - name: Verify upgraded schema and preserved baseline data
@@ -165,7 +168,7 @@ jobs:
                       expected_counts[parts[0]] = int(parts[1])
 
           scripts = ScriptDirectory.from_config(Config("alembic.ini"))
-          expected_heads = set(scripts.get_heads())
+          expected_revision = {"a6b8c0d2e4f6"}
           engine = create_engine(make_url(os.environ["DATABASE_URL"]), pool_pre_ping=True)
           try:
               with engine.connect() as connection:
@@ -176,8 +179,8 @@ jobs:
                       SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname='public'
                   """)).scalars())
                   missing = sorted(expected_new - tables)
-                  if current != expected_heads:
-                      raise SystemExit(f"Alembic revision mismatch: current={sorted(current)}, expected={sorted(expected_heads)}")
+                  if current != expected_revision:
+                      raise SystemExit(f"Alembic revision mismatch: current={sorted(current)}, expected={sorted(expected_revision)}")
                   if missing:
                       raise SystemExit(f"Migration did not create required tables: {missing}")
 
@@ -193,6 +196,22 @@ jobs:
                       "ix_attachments_family_bill_created",
                       "ix_ocr_tasks_family_status_created",
                       "ix_export_schedules_due",
+                      "ix_bank_import_batches_family_created",
+                      "ix_bank_import_batches_account_created",
+                      "ix_bank_import_rows_family_batch_status",
+                      "ix_bank_import_rows_family_account_fingerprint",
+                      "uq_transactions_import_row_id",
+                      "uq_reconciliation_sessions_active_period",
+                      "uq_reconciliation_sessions_source_batch",
+                      "ix_reconciliation_sessions_family_status_period",
+                      "ix_reconciliation_sessions_account_period",
+                      "uq_reconciliation_matches_active_transaction",
+                      "uq_reconciliation_matches_active_row_transaction",
+                      "ix_reconciliation_matches_session_row",
+                      "ix_reconciliation_matches_transaction",
+                      "uq_reconciliation_exclusions_active_row",
+                      "ix_reconciliation_exclusions_session_status",
+                      "ix_reconciliation_issues_session_status",
                   }
                   indexes = set(connection.execute(text("""
                       SELECT indexname FROM pg_indexes WHERE schemaname='public'
@@ -200,6 +219,58 @@ jobs:
                   missing_indexes = sorted(required_indexes - indexes)
                   if missing_indexes:
                       raise SystemExit(f"Required migration indexes are missing: {missing_indexes}")
+
+                  required_foreign_keys = {
+                      "fk_reconciliation_sessions_family_account",
+                      "fk_reconciliation_sessions_family_account_batch",
+                      "fk_reconciliation_sessions_created_by",
+                      "fk_reconciliation_sessions_completed_by",
+                      "fk_reconciliation_matches_family_session_account_batch",
+                      "fk_reconciliation_matches_family_import_row",
+                      "fk_reconciliation_matches_family_account_transaction",
+                      "fk_reconciliation_matches_matched_by",
+                      "fk_reconciliation_matches_voided_by",
+                      "fk_reconciliation_exclusions_session",
+                      "fk_reconciliation_exclusions_import_row",
+                      "fk_reconciliation_exclusions_created_by",
+                      "fk_reconciliation_exclusions_voided_by",
+                      "fk_reconciliation_issues_session",
+                      "fk_reconciliation_issues_bank_row",
+                      "fk_reconciliation_issues_transaction",
+                      "fk_reconciliation_issues_created_by",
+                      "fk_reconciliation_issues_updated_by",
+                  }
+                  foreign_keys = set(connection.execute(text("""
+                      SELECT conname FROM pg_constraint
+                      WHERE contype='f' AND connamespace='public'::regnamespace
+                  """)).scalars())
+                  missing_foreign_keys = sorted(required_foreign_keys - foreign_keys)
+                  if missing_foreign_keys:
+                      raise SystemExit(f"Required G-03 foreign keys are missing: {missing_foreign_keys}")
+
+                  required_checks = {
+                      "ck_reconciliation_sessions_period",
+                      "ck_reconciliation_sessions_status",
+                      "ck_reconciliation_sessions_counts",
+                      "ck_reconciliation_matches_amount_positive",
+                      "ck_reconciliation_matches_status",
+                      "ck_reconciliation_matches_void_metadata",
+                      "ck_reconciliation_exclusions_status",
+                      "ck_reconciliation_exclusions_void_metadata",
+                      "ck_reconciliation_exclusions_reason",
+                      "ck_reconciliation_issues_category",
+                      "ck_reconciliation_issues_status",
+                      "ck_reconciliation_issues_source_required",
+                      "ck_reconciliation_issues_resolution",
+                      "ck_reconciliation_issues_reason",
+                  }
+                  check_constraints = set(connection.execute(text("""
+                      SELECT conname FROM pg_constraint
+                      WHERE contype='c' AND connamespace='public'::regnamespace
+                  """)).scalars())
+                  missing_checks = sorted(required_checks - check_constraints)
+                  if missing_checks:
+                      raise SystemExit(f"Required G-03 check constraints are missing: {missing_checks}")
 
                   required_triggers = {
                       "trg_check_bill_category_scope",
@@ -215,8 +286,10 @@ jobs:
 
                   print(f"Final Alembic revision: {sorted(current)}")
                   print(f"Public table count after upgrade: {len(tables)}")
-                  print(f"New G-01 tables verified: {len(expected_new)}")
+                  print(f"G-03 tables verified: {len(expected_new)}")
                   print(f"Required indexes verified: {len(required_indexes)}")
+                  print(f"Required G-03 foreign keys verified: {len(required_foreign_keys)}")
+                  print(f"Required G-03 check constraints verified: {len(required_checks)}")
                   print(f"Required category-scope triggers verified: {len(required_triggers)}")
                   print("Selected baseline data row counts remained unchanged.")
           finally:
