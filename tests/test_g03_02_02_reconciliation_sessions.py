@@ -91,11 +91,7 @@ def test_reconciliation_session_schema_rejects_unknown_fields():
 def test_reconciliation_session_routes_are_registered():
     from main import app
 
-    routes = {
-        (route.path, method)
-        for route in app.routes
-        for method in getattr(route, "methods", set())
-    }
-    assert ("/reconciliations/sessions", "POST") in routes
-    assert ("/reconciliations/sessions", "GET") in routes
-    assert ("/reconciliations/sessions/{session_id}", "GET") in routes
+    paths = app.openapi()["paths"]
+    assert "post" in paths["/reconciliations/sessions"]
+    assert "get" in paths["/reconciliations/sessions"]
+    assert "get" in paths["/reconciliations/sessions/{session_id}"]
