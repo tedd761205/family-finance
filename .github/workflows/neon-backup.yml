@@ -62,7 +62,7 @@ jobs:
           SNAPSHOT_READ_FD="${SNAPSHOT_SESSION[0]}"
           SNAPSHOT_WRITE_FD="${SNAPSHOT_SESSION[1]}"
 
-          printf 'BEGIN ISOLATION LEVEL REPEATABLE READ;\\nSELECT pg_export_snapshot();\\n' >&"$SNAPSHOT_WRITE_FD"
+          printf 'BEGIN ISOLATION LEVEL REPEATABLE READ;\nSELECT pg_export_snapshot();\n' >&"$SNAPSHOT_WRITE_FD"
           if ! IFS= read -r SNAPSHOT_ID <&"$SNAPSHOT_READ_FD"; then
             echo "Could not export a PostgreSQL snapshot for the backup."
             exit 1
@@ -89,8 +89,7 @@ jobs:
             --env DATABASE_URL \
             --env SNAPSHOT_ID \
             postgres:18-bookworm \
-            psql "$DATABASE_URL" -X -qAt -F '|' -v ON_ERROR_STOP=1 <<SQL \
-            > "$GITHUB_WORKSPACE/backups/row-counts.tsv"
+            psql "$DATABASE_URL" -X -qAt -F '|' -v ON_ERROR_STOP=1 <<SQL > "$GITHUB_WORKSPACE/backups/row-counts.tsv"
           BEGIN ISOLATION LEVEL REPEATABLE READ;
           SET TRANSACTION SNAPSHOT '$SNAPSHOT_ID';
           SELECT format(
@@ -100,7 +99,7 @@ jobs:
           FROM pg_catalog.pg_tables
           WHERE schemaname = 'public'
           ORDER BY tablename
-          \\gexec
+          \gexec
           COMMIT;
           SQL
 
@@ -108,7 +107,7 @@ jobs:
           echo "Created snapshot-consistent row-count manifest:"
           cat "$GITHUB_WORKSPACE/backups/row-counts.tsv"
 
-          printf 'COMMIT;\\n' >&"$SNAPSHOT_WRITE_FD"
+          printf 'COMMIT;\n' >&"$SNAPSHOT_WRITE_FD"
           exec {SNAPSHOT_WRITE_FD}>&-
           exec {SNAPSHOT_READ_FD}<&-
           wait "$SNAPSHOT_PID"
