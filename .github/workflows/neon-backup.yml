@@ -98,7 +98,7 @@ jobs:
             exit 1
           fi
           docker run --rm --env DATABASE_URL postgres:18-bookworm \
-            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -AtF \\t' \
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -AtF '|' \
             -c "$COUNT_QUERY ORDER BY table_name" > backups/row-counts.tsv
           test -s backups/row-counts.tsv
           echo "Created backup row-count manifest:"
