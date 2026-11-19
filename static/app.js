@@ -2543,7 +2543,7 @@ async function loadBankImportBatches(){
  for(const item of result.batches||[]){
   const card=document.createElement("article");card.className="import-batch-card";
   const info=document.createElement("div");const title=document.createElement("strong");title.textContent=item.source_filename;
-  const meta=document.createElement("p");meta.className="tiny muted";meta.textContent="批次 #"+item.id+" · "+(labels[item.status]||item.status)+" · 總計 "+item.total_rows+" 筆 · 可入帳 "+item.ready_rows+" · 重複 "+item.duplicate_rows+" · 錯誤 "+item.invalid_rows+" · 已匯入對帳 "+item.imported_rows;
+  const meta=document.createElement("p");meta.className="tiny muted";meta.textContent="批次 #"+item.id+" · "+(labels[item.status]||item.status)+" · 總計 "+item.total_rows+" 筆 · 待確認 "+item.ready_rows+" · 重複 "+item.duplicate_rows+" · 錯誤 "+item.invalid_rows+" · 已匯入對帳 "+item.imported_rows;
   info.append(title,meta);card.append(info);
   const view=document.createElement("button");view.type="button";view.className="secondary small";view.textContent="查看明細";view.addEventListener("click",()=>loadBankImportBatch(item.id));card.append(view);host.append(card);
  }
@@ -2551,7 +2551,7 @@ async function loadBankImportBatches(){
 async function loadBankImportBatch(id){
  try{const result=await api("/imports/batches/"+id+"?family_id="+selectedFamilyId+"&limit=500");const batch=result.batch;selectedImportBatchId=id;
   $("bank-import-detail-title").textContent="匯入批次 #"+id+" · "+batch.source_filename;
-  $("bank-import-counts").textContent="狀態："+batch.status+" · 總計 "+batch.total_rows+" · 可入帳 "+batch.ready_rows+" · 重複 "+batch.duplicate_rows+" · 錯誤 "+batch.invalid_rows+" · 已匯入對帳 "+batch.imported_rows;
+  $("bank-import-counts").textContent="狀態："+batch.status+" · 總計 "+batch.total_rows+" · 待確認 "+batch.ready_rows+" · 重複 "+batch.duplicate_rows+" · 錯誤 "+batch.invalid_rows+" · 已匯入對帳 "+batch.imported_rows;
   const body=$("bank-import-rows");body.replaceChildren();
   const statusLabels={ready:"待確認",duplicate:"疑似重複，仍保留對帳",invalid:"格式錯誤",imported:"已匯入對帳",skipped:"已略過"};
   for(const row of result.rows||[]){
