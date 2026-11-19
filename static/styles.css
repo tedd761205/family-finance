@@ -226,3 +226,52 @@
 /* G-03-01 staged bank statement import */
 .bank-import-batches{display:grid;gap:10px}.import-batch-card{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px;border:1px solid var(--line,#dce5e1);border-radius:12px;background:var(--surface,#fff)}.import-batch-card p{margin:5px 0}.import-sample-data{max-height:180px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;padding:12px;border-radius:10px;background:var(--surface-soft,#f4f7f5);font-size:.8rem}.import-table-wrap{overflow-x:auto}.import-preview-table{width:100%;border-collapse:collapse;font-size:.86rem}.import-preview-table th,.import-preview-table td{padding:9px;border-bottom:1px solid var(--line,#dce5e1);text-align:left;vertical-align:top;white-space:nowrap}.import-preview-table td:last-child{white-space:normal;min-width:180px}
 @media(max-width:760px){.import-batch-card{align-items:flex-start;flex-direction:column}.import-batch-card button{width:100%}.import-preview-table{min-width:720px}}
+
+
+/* G-03-02-06 responsive bank reconciliation workspace */
+.bank-reconciliation-panel{padding:28px 30px;margin:18px 0 48px}
+.reconciliation-session-list,.reconciliation-rows{display:grid;gap:12px}
+.reconciliation-session-card,.reconciliation-row-card{border:1px solid var(--line,#dce5e1);border-radius:14px;padding:16px;background:var(--surface,#fff);min-width:0}
+.reconciliation-session-card{display:flex;justify-content:space-between;align-items:center;gap:14px}
+.reconciliation-session-info{display:grid;gap:5px;min-width:0}
+.reconciliation-session-info strong,.reconciliation-session-info p{overflow-wrap:anywhere;margin:0}
+.reconciliation-session-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.reconciliation-status{display:inline-flex;align-items:center;padding:5px 9px;border-radius:999px;background:#edf2ef;color:#4d6258;font-size:11px;white-space:nowrap}
+.reconciliation-status-in_progress{background:#eaf2fb;color:#355d83}
+.reconciliation-status-completed,.reconciliation-status-matched{background:#e8f4ed;color:#276a49}
+.reconciliation-status-unmatched,.reconciliation-status-partially_matched{background:#fff4e5;color:#8a5b1d}
+.reconciliation-status-excluded{background:#f0e9e8;color:#89534d}
+.reconciliation-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:15px 0}
+.reconciliation-kpi{display:grid;gap:5px;padding:13px;border:1px solid var(--line,#dce5e1);border-radius:11px;background:var(--surface,#fff);min-width:0}
+.reconciliation-kpi strong{font-size:22px;color:#205b4b;font-variant-numeric:tabular-nums}
+.reconciliation-row-top{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}
+.reconciliation-row-identity{min-width:0}
+.reconciliation-row-identity strong{overflow-wrap:anywhere}
+.reconciliation-row-identity p{margin:6px 0 0}
+.reconciliation-row-amount{white-space:nowrap;font-size:16px;color:#205b4b}
+.reconciliation-row-meta{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:12px;padding-top:10px;border-top:1px solid #eef2ef}
+.reconciliation-reason{padding:10px 12px;border-radius:9px;background:#f7f3f2;color:#79524c;font-size:12px}
+.reconciliation-match-list{display:grid;gap:7px;margin-top:12px}
+.reconciliation-match-line{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 11px;border-radius:9px;background:#f5f8f6}
+.reconciliation-candidates{display:grid;gap:9px;margin-top:14px}
+.reconciliation-candidates h4{margin:0;font-size:13px;color:#285342}
+.reconciliation-candidate-card{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px;border:1px solid #e3ebe5;border-radius:11px;background:#fbfdfb}
+.reconciliation-candidate-info{min-width:0}
+.reconciliation-candidate-info strong{overflow-wrap:anywhere}
+.reconciliation-candidate-info p{margin:5px 0 0}
+.reconciliation-manual-match{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:12px}
+.reconciliation-manual-select{min-width:0;max-width:100%;flex:1;border:1px solid #dce5df;border-radius:9px;padding:10px;background:white;font:inherit}
+.reconciliation-session-actions{margin-top:10px}
+@media(max-width:760px){
+ .bank-reconciliation-panel{padding:21px 17px}
+ .reconciliation-session-card,.reconciliation-candidate-card{align-items:flex-start;flex-direction:column}
+ .reconciliation-session-card .reconciliation-session-actions,.reconciliation-candidate-card button{width:100%}
+ .reconciliation-session-actions{justify-content:flex-start}
+ .reconciliation-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .reconciliation-row-card{padding:14px}
+ .reconciliation-row-top{gap:8px}
+ .reconciliation-row-amount{font-size:14px}
+ .reconciliation-match-line{align-items:flex-start;flex-direction:column}
+ .reconciliation-manual-match{align-items:stretch;flex-direction:column}
+ .reconciliation-manual-match button,.reconciliation-manual-select{width:100%;max-width:none}
+}
