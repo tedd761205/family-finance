@@ -77,6 +77,7 @@
         <button class="quick-card quick-card-button" id="open-attachments" type="button"><span class="quick-icon">檔</span><span class="quick-card-title">帳單附件與 OCR</span><span class="quick-card-description">上傳帳單或交易圖片、查看附件並核對 OCR 辨識結果。</span><span class="coming">管理附件 →</span></button>
         <button class="quick-card quick-card-button" id="open-notifications-exports" type="button"><span class="quick-icon">匯</span><span class="quick-card-title">通知與資料匯出</span><span class="quick-card-description">查看家庭通知、建立 CSV 匯出範本、管理匯出紀錄與排程。</span><span class="coming">管理通知與匯出 →</span></button>
         <button class="quick-card quick-card-button" id="open-bank-imports" type="button"><span class="quick-icon">匯</span><span class="quick-card-title">銀行／信用卡匯入</span><span class="quick-card-description">上傳對帳單 CSV、對應欄位、檢查重複資料並確認入帳。</span><span class="coming">匯入對帳單 →</span></button>
+        <button class="quick-card quick-card-button" id="open-bank-reconciliation" type="button"><span class="quick-icon">對</span><span class="quick-card-title">銀行／信用卡對帳</span><span class="quick-card-description">比對銀行明細與家庭帳務、處理差異、排除及完成對帳。</span><span class="coming">開啟對帳工作區 →</span></button>
       </section>
 
 
@@ -445,6 +446,43 @@
 <div class="subpanel"><div class="section-heading"><h3>3. 匯入批次紀錄</h3><span class="tiny muted">疑似重複資料會保留供對帳；格式錯誤資料不會匯入</span></div><div id="bank-import-batches" class="bank-import-batches"></div><p id="bank-import-batches-empty" class="empty-state hidden">目前沒有匯入批次。</p></div>
 <div id="bank-import-detail-panel" class="subpanel hidden"><div class="section-heading"><h3 id="bank-import-detail-title">匯入批次明細</h3><div class="heading-actions"><button class="primary small" id="bank-import-confirm" type="button">確認匯入對帳資料</button><button class="secondary small" id="bank-import-void" type="button">取消批次</button></div></div><div id="bank-import-counts" class="accounts-summary"></div><label class="tiny muted"><input type="checkbox" id="bank-import-create-transactions"> 同時將有效且非重複的明細建立為正式交易（選填；預設不勾選）</label><div class="import-table-wrap"><table class="import-preview-table"><thead><tr><th>CSV 列</th><th>日期</th><th>類型</th><th>金額</th><th>說明</th><th>狀態／原因</th></tr></thead><tbody id="bank-import-rows"></tbody></table></div><p class="tiny muted">僅顯示解析後欄位；原始 CSV 未被公開。已確認的銀行原始明細會保留供對帳；若選擇同步建立交易，正式交易須透過一般交易作廢流程處理。</p></div>
 </section>
+
+      <section id="bank-reconciliation-view" class="panel bank-reconciliation-panel hidden">
+        <div class="accounts-heading">
+          <div><p class="eyebrow">BANK RECONCILIATION</p><h2>銀行／信用卡對帳工作區</h2><p class="muted">將已確認的銀行明細與家庭正式交易核對。候選建議只供參考，必須由使用者確認配對。</p></div>
+          <div class="heading-actions"><button class="secondary small" id="close-bank-reconciliation" type="button">收起</button><button class="secondary small" id="refresh-bank-reconciliation" type="button">重新整理</button></div>
+        </div>
+        <div id="bank-reconciliation-notice" class="notice" role="status" aria-live="polite"></div>
+        <div class="subpanel">
+          <h3>1. 建立對帳工作階段</h3>
+          <p class="tiny muted">只能選擇已確認的匯入批次。對帳期間以台灣日期計算；建立工作階段不會新增或修改正式交易。</p>
+          <form id="reconciliation-session-form">
+            <div class="account-form-grid">
+              <label class="field">帳戶<select id="reconciliation-account" required><option value="">載入帳戶中…</option></select></label>
+              <label class="field">已確認的銀行明細批次<select id="reconciliation-batch" required><option value="">請先選擇帳戶</option></select></label>
+              <label class="field">對帳開始日期<input id="reconciliation-period-start" type="date" required></label>
+              <label class="field">對帳結束日期<input id="reconciliation-period-end" type="date" required></label>
+            </div>
+            <div class="form-actions"><button class="primary" id="reconciliation-session-submit" type="submit">建立對帳工作階段</button></div>
+          </form>
+        </div>
+        <div class="subpanel">
+          <div class="section-heading"><h3>2. 對帳工作階段</h3><span id="reconciliation-session-count" class="count">0 個工作階段</span></div>
+          <div id="reconciliation-session-list" class="reconciliation-session-list"></div>
+          <p id="reconciliation-session-empty" class="empty-state hidden">目前沒有對帳工作階段。請先確認銀行／信用卡匯入批次，再建立對帳。</p>
+        </div>
+        <div id="reconciliation-detail-panel" class="subpanel hidden">
+          <div class="section-heading">
+            <div><h3 id="reconciliation-detail-title">對帳明細</h3><p id="reconciliation-detail-subtitle" class="tiny muted"></p></div>
+            <div class="heading-actions"><button class="secondary small" id="reconciliation-refresh-suggestions" type="button">重新產生建議</button><button class="secondary small" id="reconciliation-close-detail" type="button">收起明細</button></div>
+          </div>
+          <div id="reconciliation-kpis" class="reconciliation-kpis"></div>
+          <div id="reconciliation-session-actions" class="reconciliation-session-actions"></div>
+          <p class="tiny muted">配對不會建立、修改或作廢帳務交易。若交易不存在，請先到「收支紀錄」建立正確交易，再回來核對。部分配對、未核對資料不可直接完成對帳。</p>
+          <div id="reconciliation-rows" class="reconciliation-rows"></div>
+          <p id="reconciliation-rows-empty" class="empty-state hidden">此工作階段沒有可顯示的銀行明細。</p>
+        </div>
+      </section>
       <section id="accounts-view" class="panel accounts-panel hidden">
         <div class="accounts-heading">
           <div><p class="eyebrow">FAMILY ACCOUNTS</p><h2>帳戶管理</h2><p class="muted">管理家庭各幣別帳戶與目前餘額。</p></div>
@@ -489,5 +527,6 @@
     <footer>家庭記帳系統 <span>·</span> 安全管理每一筆家庭收支</footer>
   </main>
   <script src="/static/app.js" defer></script>
+  <script src="/static/reconciliation.js" defer></script>
 </body>
 </html>
