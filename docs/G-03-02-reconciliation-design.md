@@ -1,7 +1,7 @@
 # G-03-02 銀行／信用卡對帳工作區設計
 
-狀態：G-03-02-01 至 G-03-02-05 已合併；G-03-02-06 響應式工作區開發中  
-基準主線：`9e7ecf93ea757340ba446d7ee9f7c36a43ba0f0e`（G-03-02-05）
+狀態：G-03-02-01 至 G-03-02-06 全部完成並合併  
+基準主線：`9c8c96cb462db375795afdcad3f77171932985cf`（G-03-02-06）
 
 ## 1. 目標與邊界
 
@@ -93,8 +93,6 @@ G-03-01 負責將 CSV 保存為銀行／信用卡原始對帳明細。人工確�
 - `POST /sessions/{session_id}/suggestions`：產生候選配對（唯讀計算，不寫入配對）。
 - `POST /sessions/{session_id}/matches`：人工建立配對，支援一筆銀行列分配多筆完整交易。
 - `POST /sessions/{session_id}/matches/{match_id}/void`：解除配對，需理由並保留歷史。
-- `POST /sessions/{session_id}/matches`：人工建立一筆配對；可多次呼叫完成拆分。
-- `DELETE /sessions/{session_id}/matches/{match_id}`：作廢配對，需理由，不刪除歷史。
 - `POST /sessions/{session_id}/exclude`：排除銀行列，需理由。
 - `POST /sessions/{session_id}/exclusions/{exclusion_id}/void`：解除排除，需理由並保留歷史。
 - `POST /sessions/{session_id}/complete`：檢查所有銀行列均已 matched 或 excluded，再完成對帳。
@@ -162,6 +160,6 @@ G-03-01 負責將 CSV 保存為銀行／信用卡原始對帳明細。人工確�
 - G-03-02-03：人工配對／解除 API、金額驗證、併發防重與稽核測試。
 - G-03-02-04：候選比對建議與可解釋分數（PR #46，已合併）。
 - G-03-02-05：排除明細、完成對帳及重新開啟流程（PR #47，已合併）。
-- G-03-02-06：響應式對帳工作區、人工候選確認、手動搜尋配對及 Web smoke tests（開發中）。
+- G-03-02-06：響應式對帳工作區、人工候選確認、手動搜尋配對、排除／完成／重新開啟操作及 Web smoke tests（PR #48，已合併）。
 
 第一版以人工核對與資料完整性為優先，自動比對僅提供建議，避免錯誤配對影響家庭帳務。
