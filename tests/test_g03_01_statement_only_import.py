@@ -7,7 +7,6 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.database import Base, engine
-from app.models import bank_import  # noqa: F401
 from app.models.bank_import import BankImportBatch, BankImportRow
 from app.models.transaction import Transaction
 from app.models.user import User
