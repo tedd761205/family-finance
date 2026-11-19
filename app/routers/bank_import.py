@@ -370,24 +370,27 @@ def get_import_batch(
     return {"success": True, "batch": _batch_summary(batch), "rows": [_row_summary(x) for x in rows]}
 
 
-@router.post("/batches/{batch_id}/confirm", summary="人工確認匯入批次並建立正式交易")
+@router.post("/batches/{batch_id}/confirm", summary="確認銀行明細；可選擇同步建立正式交易")
 def confirm_import_batch(
     batch_id: int,
     family_id: int = Query(..., gt=0),
+    create_transactions: bool = Query(False, description="是否同時將有效明細建立為正式交易；預設只匯入對帳資料"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     import_scope = _authorize(db, current_user, family_id, "imports.confirm")
-    try:
-        _, roles = require_permission(db, current_user.id, family_id, "transactions.create")
-        transaction_scope = require_data_scope(db, roles, family_id, "transactions")
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc))
+    transaction_scope = None
+    if create_transactions:
+        try:
+            _, roles = require_permission(db, current_user.id, family_id, "transactions.create")
+            transaction_scope = require_data_scope(db, roles, family_id, "transactions")
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc))
     batch = _get_batch(db, family_id, batch_id, lock=True)
     _check_batch_scope(batch, current_user, import_scope)
     if batch.status != "previewed":
-        raise HTTPException(status_code=409, detail="只有尚未確認的匯入批次可以入帳")
-    if transaction_scope == "own" and batch.created_by != current_user.id:
+        raise HTTPException(status_code=409, detail="只有待確認的匯入批次可以確認")
+    if create_transactions and transaction_scope == "own" and batch.created_by != current_user.id:
         raise HTTPException(status_code=404, detail="找不到此家庭匯入批次")
     account = db.query(Account).filter(
         Account.id == batch.account_id, Account.family_id == family_id, Account.is_active.is_(True),
@@ -396,47 +399,58 @@ def confirm_import_batch(
         raise HTTPException(status_code=409, detail="匯入帳戶已停用或不存在，無法入帳")
     rows = db.query(BankImportRow).filter(
         BankImportRow.family_id == family_id, BankImportRow.batch_id == batch.id,
-        BankImportRow.status == "ready",
+        BankImportRow.status.in_(["ready", "duplicate"]),
     ).order_by(BankImportRow.row_number.asc()).with_for_update().all()
     if not rows:
-        raise HTTPException(status_code=409, detail="此批次沒有可確認的有效資料列")
+        raise HTTPException(status_code=409, detail="此批次沒有可確認的有效或疑似重複明細")
     created_ids = []
     try:
         for row in rows:
             if row.transaction_date is None or row.amount is None or row.transaction_type not in {"income", "expense"}:
                 raise HTTPException(status_code=409, detail=f"第 {row.row_number} 列資料不完整，請重新匯入")
-            transaction = Transaction(
-                family_id=family_id, account_id=batch.account_id,
-                transaction_type=row.transaction_type, amount=row.amount,
-                currency_code=row.currency_code or account.currency_code,
-                transaction_date=row.transaction_date, description=row.description,
-                external_reference=row.external_reference,
-                note=f"由匯入批次 #{batch.id} 第 {row.row_number} 列建立",
-                import_row_id=row.id, created_by=current_user.id,
-            )
-            db.add(transaction)
-            db.flush()
+            if row.status == "duplicate":
+                # Keep suspected duplicates in the confirmed statement for manual reconciliation.
+                continue
+            if create_transactions:
+                transaction = Transaction(
+                    family_id=family_id, account_id=batch.account_id,
+                    transaction_type=row.transaction_type, amount=row.amount,
+                    currency_code=row.currency_code or account.currency_code,
+                    transaction_date=row.transaction_date, description=row.description,
+                    external_reference=row.external_reference,
+                    note=f"由匯入批次 #{batch.id} 第 {row.row_number} 列建立",
+                    import_row_id=row.id, created_by=current_user.id,
+                )
+                db.add(transaction)
+                db.flush()
+                created_ids.append(transaction.id)
+                add_audit_log(
+                    db, family_id=family_id, actor_user_id=current_user.id,
+                    action="create", entity_type="transaction", entity_id=transaction.id,
+                    new_values={"account_id": transaction.account_id, "transaction_type": transaction.transaction_type,
+                                "amount": transaction.amount, "currency_code": transaction.currency_code,
+                                "transaction_date": transaction.transaction_date, "description": transaction.description,
+                                "external_reference": transaction.external_reference, "import_row_id": row.id},
+                    description="由銀行／信用卡對帳單明細建立正式交易",
+                )
             row.status = "imported"
-            created_ids.append(transaction.id)
-            add_audit_log(
-                db, family_id=family_id, actor_user_id=current_user.id,
-                action="create", entity_type="transaction", entity_id=transaction.id,
-                new_values={"account_id": transaction.account_id, "transaction_type": transaction.transaction_type,
-                            "amount": transaction.amount, "currency_code": transaction.currency_code,
-                            "transaction_date": transaction.transaction_date, "description": transaction.description,
-                            "external_reference": transaction.external_reference, "import_row_id": row.id},
-                description="由銀行／信用卡對帳單匯入交易",
-            )
+
         batch.status = "confirmed"
         batch.ready_rows = 0
-        batch.imported_rows = len(created_ids)
+        batch.imported_rows = len(rows)
         batch.confirmed_by = current_user.id
         batch.confirmed_at = datetime.now(timezone.utc)
         add_audit_log(
             db, family_id=family_id, actor_user_id=current_user.id,
             action="confirm", entity_type="bank_import_batch", entity_id=batch.id,
-            new_values={"status": batch.status, "imported_rows": batch.imported_rows, "transaction_ids": created_ids},
-            description="人工確認匯入批次並正式建立交易",
+            new_values={
+                "status": batch.status,
+                "imported_rows": batch.imported_rows,
+                "create_transactions": create_transactions,
+                "created_transaction_count": len(created_ids),
+                "transaction_ids": created_ids,
+            },
+            description="人工確認銀行／信用卡對帳明細；正式交易僅依使用者選擇建立",
         )
         db.commit()
         db.refresh(batch)
@@ -446,7 +460,19 @@ def confirm_import_batch(
     except Exception:
         db.rollback()
         raise
-    return {"success": True, "message": f"已成功建立 {len(created_ids)} 筆正式交易", "batch": _batch_summary(batch), "transaction_ids": created_ids}
+    message = (
+        f"已確認 {len(rows)} 筆銀行明細，並建立 {len(created_ids)} 筆正式交易"
+        if create_transactions
+        else f"已確認 {len(rows)} 筆銀行明細；未自動新增正式交易，可前往銀行對帳進行核對"
+    )
+    return {
+        "success": True,
+        "message": message,
+        "batch": _batch_summary(batch),
+        "transaction_ids": created_ids,
+        "created_transaction_count": len(created_ids),
+        "statement_only": not create_transactions,
+    }
 
 
 @router.post("/batches/{batch_id}/void", summary="取消尚未入帳的匯入批次")

@@ -13,7 +13,6 @@ from app.dependencies.permissions import require_permission, require_data_scope
 from app.models.account import Account
 from app.models.bank_import import BankImportBatch, BankImportRow
 from app.models.reconciliation import ReconciliationMatch, ReconciliationSession
-from app.models.transaction import Transaction
 from app.models.user import User
 from app.schemas.reconciliation import ReconciliationSessionCreate
 from app.services.audit_log import add_audit_log
@@ -125,7 +124,6 @@ def create_reconciliation_session(
         require_data_scope(db, roles, family_id, "reconciliation")
         account_scope = _require_scope(db, roles, family_id, "accounts")
         import_scope = _require_scope(db, roles, family_id, "imports")
-        transaction_scope = _require_scope(db, roles, family_id, "transactions")
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
 
@@ -157,28 +155,13 @@ def create_reconciliation_session(
     row_query = db.query(BankImportRow.id).filter(
         BankImportRow.family_id == family_id,
         BankImportRow.batch_id == batch.id,
-        BankImportRow.status == "imported",
+        BankImportRow.status.in_(["imported", "duplicate"]),
         BankImportRow.transaction_date >= start_utc,
         BankImportRow.transaction_date < end_utc,
     )
     statement_row_count = row_query.count()
     if statement_row_count == 0:
         raise HTTPException(status_code=422, detail="指定對帳期間沒有已入帳的銀行明細")
-    if transaction_scope == "own":
-        owned_transaction_count = db.query(Transaction.id).join(
-            BankImportRow, Transaction.import_row_id == BankImportRow.id
-        ).filter(
-            Transaction.family_id == family_id,
-            Transaction.account_id == account.id,
-            Transaction.created_by == current_user.id,
-            BankImportRow.family_id == family_id,
-            BankImportRow.batch_id == batch.id,
-            BankImportRow.status == "imported",
-            BankImportRow.transaction_date >= start_utc,
-            BankImportRow.transaction_date < end_utc,
-        ).count()
-        if owned_transaction_count != statement_row_count:
-            raise HTTPException(status_code=404, detail="找不到完整的本人帳務資料範圍")
 
     session = ReconciliationSession(
         family_id=family_id,
@@ -238,13 +221,10 @@ def list_reconciliation_sessions(
 ):
     scope, roles = _authorize(db, current_user, family_id, "reconciliation.view")
     account_scope = _require_scope(db, roles, family_id, "accounts")
-    transaction_scope = _require_scope(db, roles, family_id, "transactions")
     query = db.query(ReconciliationSession).filter(
         ReconciliationSession.family_id == family_id
     )
     if scope == "own":
-        query = query.filter(ReconciliationSession.created_by == current_user.id)
-    if transaction_scope == "own":
         query = query.filter(ReconciliationSession.created_by == current_user.id)
     if account_scope == "own":
         query = query.join(
@@ -280,7 +260,6 @@ def get_reconciliation_session(
 ):
     scope, roles = _authorize(db, current_user, family_id, "reconciliation.view")
     account_scope = _require_scope(db, roles, family_id, "accounts")
-    transaction_scope = _require_scope(db, roles, family_id, "transactions")
     session = _get_session(db, family_id, session_id, scope, current_user)
     if account_scope == "own":
         owned_account = db.query(Account.id).filter(
@@ -292,17 +271,10 @@ def get_reconciliation_session(
             raise HTTPException(status_code=404, detail="找不到此家庭對帳工作階段")
     start_utc, end_utc = _period_bounds(session.period_start, session.period_end)
 
-    row_query = db.query(BankImportRow)
-    if transaction_scope == "own":
-        row_query = row_query.join(Transaction, Transaction.import_row_id == BankImportRow.id).filter(
-            Transaction.family_id == family_id,
-            Transaction.created_by == current_user.id,
-            Transaction.account_id == session.account_id,
-        )
-    row_query = row_query.filter(
+    row_query = db.query(BankImportRow).filter(
         BankImportRow.family_id == family_id,
         BankImportRow.batch_id == session.source_batch_id,
-        BankImportRow.status == "imported",
+        BankImportRow.status.in_(["imported", "duplicate"]),
         BankImportRow.transaction_date >= start_utc,
         BankImportRow.transaction_date < end_utc,
     )
