@@ -80,3 +80,38 @@ class ReconciliationLifecycleReason(BaseModel):
         if not self.reason:
             raise ValueError("此操作必須填寫原因")
         return self
+
+
+class ReconciliationIssueCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    bank_import_row_id: int | None = Field(default=None, gt=0)
+    transaction_id: int | None = Field(default=None, gt=0)
+    category: str = Field(pattern="^(bank_only|ledger_only|amount_mismatch|date_mismatch|pending|explained)$")
+    reason: str = Field(min_length=1, max_length=500)
+
+    @model_validator(mode="after")
+    def validate_issue(self):
+        if self.bank_import_row_id is None and self.transaction_id is None:
+            raise ValueError("差異至少需要關聯一筆銀行明細或正式交易")
+        self.reason = self.reason.strip()
+        if not self.reason:
+            raise ValueError("差異原因不可空白")
+        if self.category == "bank_only" and self.bank_import_row_id is None:
+            raise ValueError("銀行獨有差異必須關聯銀行明細")
+        if self.category == "ledger_only" and self.transaction_id is None:
+            raise ValueError("帳務獨有差異必須關聯正式交易")
+        return self
+
+
+class ReconciliationIssueResolve(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    resolution_note: str = Field(min_length=1, max_length=500)
+
+    @model_validator(mode="after")
+    def validate_note(self):
+        self.resolution_note = self.resolution_note.strip()
+        if not self.resolution_note:
+            raise ValueError("結案說明不可空白")
+        return self
