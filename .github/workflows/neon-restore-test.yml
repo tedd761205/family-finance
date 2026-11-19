@@ -88,13 +88,12 @@ jobs:
           mapfile -t MANIFESTS < <(find restore-input -type f -name 'row-counts.tsv' -print)
           if [ "${#MANIFESTS[@]}" -ne 1 ]; then
             echo "Expected exactly one row-count manifest in the selected backup artifact; found ${#MANIFESTS[@]}."
-            find restore-input -maxdepth 3 -type f -printf '%p\\n'
+            find restore-input -maxdepth 3 -type f -print
             exit 1
           fi
           MANIFEST_PATH="${MANIFESTS[0]}"
           test -s "$MANIFEST_PATH"
-          awk -F '\\t' 'NF != 2 || $1 == "" || $2 !~ /^[0-9]+$/ { exit 1 }' "$MANIFEST_PATH"
-          if [ "$?" -ne 0 ]; then
+          if ! awk -F '|' 'NF != 2 || $1 == "" || $2 !~ /^[0-9]+$/ { exit 1 }' "$MANIFEST_PATH"; then
             echo "Backup row-count manifest has an invalid format."
             exit 1
           fi
@@ -271,18 +270,6 @@ jobs:
             echo "Missing backup row-count manifest."
             exit 1
           fi
-          docker run --rm --env DATABASE_URL postgres:18-bookworm \
-            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -AtF $'\\t' -c "
-              SELECT format('SELECT %L AS table_name, count(*)::bigint AS row_count FROM %I.%I',
-                            tablename, schemaname, tablename)
-              FROM pg_catalog.pg_tables
-              WHERE schemaname = 'public'
-              ORDER BY tablename;
-            " | while IFS= read -r COUNT_QUERY; do
-              [ -n "$COUNT_QUERY" ] || continue
-              printf '%s UNION ALL ' "$COUNT_QUERY"
-            done > /tmp/row-count-query-fragments.txt
-
           # Build one deterministic query from the restored public tables.
           COUNT_QUERY="$(docker run --rm --env DATABASE_URL postgres:18-bookworm \
             psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atc "
@@ -299,7 +286,7 @@ jobs:
             exit 1
           fi
           docker run --rm --env DATABASE_URL postgres:18-bookworm \
-            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -AtF $'\\t' \
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -AtF '|' \
             -c "$COUNT_QUERY ORDER BY table_name" > /tmp/restored-row-counts.tsv
 
           sort "$MANIFEST_PATH" > /tmp/expected-row-counts.tsv
