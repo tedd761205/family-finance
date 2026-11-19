@@ -226,8 +226,6 @@ def list_reconciliation_sessions(
     )
     if scope == "own":
         query = query.filter(ReconciliationSession.created_by == current_user.id)
-    if transaction_scope == "own":
-        query = query.filter(ReconciliationSession.created_by == current_user.id)
     if account_scope == "own":
         query = query.join(
             Account,
@@ -262,7 +260,6 @@ def get_reconciliation_session(
 ):
     scope, roles = _authorize(db, current_user, family_id, "reconciliation.view")
     account_scope = _require_scope(db, roles, family_id, "accounts")
-    transaction_scope = _require_scope(db, roles, family_id, "transactions")
     session = _get_session(db, family_id, session_id, scope, current_user)
     if account_scope == "own":
         owned_account = db.query(Account.id).filter(
@@ -277,7 +274,7 @@ def get_reconciliation_session(
     row_query = db.query(BankImportRow).filter(
         BankImportRow.family_id == family_id,
         BankImportRow.batch_id == session.source_batch_id,
-        BankImportRow.status == "imported",
+        BankImportRow.status.in_(["imported", "duplicate"]),
         BankImportRow.transaction_date >= start_utc,
         BankImportRow.transaction_date < end_utc,
     )
