@@ -85,7 +85,7 @@ jobs:
           ls -lh "$GITHUB_WORKSPACE/backups/$BACKUP_FILE"
 
           # Import the very same exported snapshot before counting rows.
-          docker run --rm \
+          docker run --rm -i \
             --env DATABASE_URL \
             --env SNAPSHOT_ID \
             postgres:18-bookworm \
