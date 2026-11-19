@@ -104,13 +104,15 @@
       host.append(card);
     }
   }
-  function renderKpis(session){
+  function renderKpis(session,rows){
     const host=el("reconciliation-kpis");
     host.replaceChildren();
+    const partial=(rows||[]).filter(item=>item.reconciliation_status==="partially_matched").length;
     const metrics=[
       ["銀行明細",session.statement_row_count||0],
       ["已核對",session.matched_row_count||0],
-      ["待處理",session.difference_row_count||0],
+      ["部分配對",partial],
+      ["待核對",Math.max(0,(session.difference_row_count||0)-partial)],
       ["已排除",session.excluded_row_count||0]
     ];
     for(const [label,value] of metrics){
@@ -197,11 +199,13 @@
         }else{
           card.append(makeText("p","tiny muted","目前沒有自動比對建議；可搜尋家庭帳務，或先保留待核對。"));
         }
-        const manualHost=document.createElement("div");
-        manualHost.className="reconciliation-manual-match";
-        const searchButton=makeButton("搜尋其他帳務","secondary small",()=>searchTransactionsForRow(row,manualHost));
-        manualHost.append(searchButton);
-        card.append(manualHost);
+        if(Number(row.remaining_amount)>0){
+          const manualHost=document.createElement("div");
+          manualHost.className="reconciliation-manual-match";
+          const searchButton=makeButton("搜尋其他帳務","secondary small",()=>searchTransactionsForRow(row,manualHost));
+          manualHost.append(searchButton);
+          card.append(manualHost);
+        }
         if(row.reconciliation_status==="unmatched"){
           card.append(makeButton("排除此明細","danger small",()=>excludeReconciliationRow(row.id)));
         }
@@ -227,7 +231,7 @@
       el("reconciliation-detail-panel").classList.remove("hidden");
       el("reconciliation-detail-title").textContent="對帳工作階段 #"+activeReconciliationSession.id;
       el("reconciliation-detail-subtitle").textContent="帳戶 #"+activeReconciliationSession.account_id+" · "+dateLabel(activeReconciliationSession.period_start)+" 至 "+dateLabel(activeReconciliationSession.period_end)+" · "+activeReconciliationSession.currency_code;
-      renderKpis(activeReconciliationSession);
+      renderKpis(activeReconciliationSession,activeReconciliationRows);
       renderSessionActions(activeReconciliationSession);
       renderReconciliationRows(activeReconciliationRows);
       el("reconciliation-detail-panel").scrollIntoView({behavior:"smooth",block:"start"});
