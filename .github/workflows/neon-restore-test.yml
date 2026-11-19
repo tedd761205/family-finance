@@ -81,6 +81,26 @@ jobs:
           test -s /tmp/restore-list.txt
           echo "Backup archive is readable."
 
+      - name: Locate and validate backup row-count manifest
+        id: manifest
+        run: |
+          set -euo pipefail
+          mapfile -t MANIFESTS < <(find restore-input -type f -name 'row-counts.tsv' -print)
+          if [ "${#MANIFESTS[@]}" -ne 1 ]; then
+            echo "Expected exactly one row-count manifest in the selected backup artifact; found ${#MANIFESTS[@]}."
+            find restore-input -maxdepth 3 -type f -printf '%p\\n'
+            exit 1
+          fi
+          MANIFEST_PATH="${MANIFESTS[0]}"
+          test -s "$MANIFEST_PATH"
+          awk -F '\\t' 'NF != 2 || $1 == "" || $2 !~ /^[0-9]+$/ { exit 1 }' "$MANIFEST_PATH"
+          if [ "$?" -ne 0 ]; then
+            echo "Backup row-count manifest has an invalid format."
+            exit 1
+          fi
+          echo "manifest_path=$MANIFEST_PATH" >> "$GITHUB_OUTPUT"
+          echo "Found one valid backup row-count manifest."
+
       - name: Validate test database connection and branch endpoint
         env:
           DATABASE_URL: ${{ secrets.NEON_RESTORE_TEST_DATABASE_URL }}
@@ -202,6 +222,7 @@ jobs:
       - name: Verify restored baseline revision and exact schema
         env:
           DATABASE_URL: ${{ secrets.NEON_RESTORE_TEST_DATABASE_URL }}
+          MANIFEST_PATH: ${{ steps.manifest.outputs.manifest_path }}
         run: |
           set -euo pipefail
           REVISION="$(docker run --rm --env DATABASE_URL postgres:18-bookworm psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atc "SELECT version_num FROM public.alembic_version")"
@@ -246,101 +267,46 @@ jobs:
           diff -u /tmp/expected-public-tables.txt /tmp/actual-public-tables.txt
           echo "Restored schema matches the 28-table Production baseline at a7c9e1f3b5d7."
 
+          if [ -z "${MANIFEST_PATH:-}" ] || [ ! -s "$MANIFEST_PATH" ]; then
+            echo "Missing backup row-count manifest."
+            exit 1
+          fi
           docker run --rm --env DATABASE_URL postgres:18-bookworm \
-            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -P pager=off -c "
-              WITH expected(table_name, expected_rows) AS (
-                VALUES
-                  ('accounts', 5::bigint),
-                  ('alembic_version', 1::bigint),
-                  ('audit_logs', 0::bigint),
-                  ('categories', 5::bigint),
-                  ('credit_card_payments', 2::bigint),
-                  ('families', 3::bigint),
-                  ('family_members', 4::bigint),
-                  ('member_roles', 4::bigint),
-                  ('password_reset_tokens', 0::bigint),
-                  ('permissions', 55::bigint),
-                  ('revoked_tokens', 1::bigint),
-                  ('role_data_scopes', 135::bigint),
-                  ('role_permissions', 486::bigint),
-                  ('roles', 15::bigint),
-                  ('transactions', 28::bigint),
-                  ('transfers', 4::bigint),
-                  ('user_identities', 0::bigint),
-                  ('users', 2::bigint)
-              ),
-              actual AS (
-                SELECT 'accounts'::text AS table_name, count(*) AS actual_rows FROM public.accounts
-                UNION ALL SELECT 'alembic_version', count(*) FROM public.alembic_version
-                UNION ALL SELECT 'audit_logs', count(*) FROM public.audit_logs
-                UNION ALL SELECT 'categories', count(*) FROM public.categories
-                UNION ALL SELECT 'credit_card_payments', count(*) FROM public.credit_card_payments
-                UNION ALL SELECT 'families', count(*) FROM public.families
-                UNION ALL SELECT 'family_members', count(*) FROM public.family_members
-                UNION ALL SELECT 'member_roles', count(*) FROM public.member_roles
-                UNION ALL SELECT 'password_reset_tokens', count(*) FROM public.password_reset_tokens
-                UNION ALL SELECT 'permissions', count(*) FROM public.permissions
-                UNION ALL SELECT 'revoked_tokens', count(*) FROM public.revoked_tokens
-                UNION ALL SELECT 'role_data_scopes', count(*) FROM public.role_data_scopes
-                UNION ALL SELECT 'role_permissions', count(*) FROM public.role_permissions
-                UNION ALL SELECT 'roles', count(*) FROM public.roles
-                UNION ALL SELECT 'transactions', count(*) FROM public.transactions
-                UNION ALL SELECT 'transfers', count(*) FROM public.transfers
-                UNION ALL SELECT 'user_identities', count(*) FROM public.user_identities
-                UNION ALL SELECT 'users', count(*) FROM public.users
-              )
-              SELECT e.table_name, e.expected_rows, a.actual_rows,
-                     (e.expected_rows = a.actual_rows) AS matches_backup_baseline
-              FROM expected e JOIN actual a USING (table_name)
-              ORDER BY e.table_name;
-            "
-          docker run --rm --env DATABASE_URL postgres:18-bookworm \
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -AtF $'\\t' -c "
+              SELECT format('SELECT %L AS table_name, count(*)::bigint AS row_count FROM %I.%I',
+                            tablename, schemaname, tablename)
+              FROM pg_catalog.pg_tables
+              WHERE schemaname = 'public'
+              ORDER BY tablename;
+            " | while IFS= read -r COUNT_QUERY; do
+              [ -n "$COUNT_QUERY" ] || continue
+              printf '%s UNION ALL ' "$COUNT_QUERY"
+            done > /tmp/row-count-query-fragments.txt
+
+          # Build one deterministic query from the restored public tables.
+          COUNT_QUERY="$(docker run --rm --env DATABASE_URL postgres:18-bookworm \
             psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atc "
-              DO \$\$ 
-              DECLARE mismatch_count integer;
-              BEGIN
-                WITH expected(table_name, expected_rows) AS (
-                  VALUES
-                    ('accounts', 5::bigint), ('alembic_version', 1::bigint),
-                    ('audit_logs', 0::bigint), ('categories', 5::bigint),
-                    ('credit_card_payments', 2::bigint), ('families', 3::bigint),
-                    ('family_members', 4::bigint), ('member_roles', 4::bigint),
-                    ('password_reset_tokens', 0::bigint), ('permissions', 55::bigint),
-                    ('revoked_tokens', 1::bigint), ('role_data_scopes', 135::bigint),
-                    ('role_permissions', 486::bigint), ('roles', 15::bigint),
-                    ('transactions', 28::bigint), ('transfers', 4::bigint),
-                    ('user_identities', 0::bigint), ('users', 2::bigint)
-                ),
-                actual AS (
-                  SELECT 'accounts'::text table_name, count(*) actual_rows FROM public.accounts
-                  UNION ALL SELECT 'alembic_version', count(*) FROM public.alembic_version
-                  UNION ALL SELECT 'audit_logs', count(*) FROM public.audit_logs
-                  UNION ALL SELECT 'categories', count(*) FROM public.categories
-                  UNION ALL SELECT 'credit_card_payments', count(*) FROM public.credit_card_payments
-                  UNION ALL SELECT 'families', count(*) FROM public.families
-                  UNION ALL SELECT 'family_members', count(*) FROM public.family_members
-                  UNION ALL SELECT 'member_roles', count(*) FROM public.member_roles
-                  UNION ALL SELECT 'password_reset_tokens', count(*) FROM public.password_reset_tokens
-                  UNION ALL SELECT 'permissions', count(*) FROM public.permissions
-                  UNION ALL SELECT 'revoked_tokens', count(*) FROM public.revoked_tokens
-                  UNION ALL SELECT 'role_data_scopes', count(*) FROM public.role_data_scopes
-                  UNION ALL SELECT 'role_permissions', count(*) FROM public.role_permissions
-                  UNION ALL SELECT 'roles', count(*) FROM public.roles
-                  UNION ALL SELECT 'transactions', count(*) FROM public.transactions
-                  UNION ALL SELECT 'transfers', count(*) FROM public.transfers
-                  UNION ALL SELECT 'user_identities', count(*) FROM public.user_identities
-                  UNION ALL SELECT 'users', count(*) FROM public.users
-                )
-                SELECT count(*) INTO mismatch_count
-                FROM expected e JOIN actual a USING (table_name)
-                WHERE e.expected_rows <> a.actual_rows;
-                IF mismatch_count <> 0 THEN
-                  RAISE EXCEPTION 'Restored table row counts differ from backup baseline: % table(s)', mismatch_count;
-                END IF;
-                RAISE NOTICE 'All 18 table row counts match the recorded backup baseline.';
-              END
-              \$\$;
-            "
+              SELECT string_agg(
+                format('SELECT %L AS table_name, count(*)::bigint AS row_count FROM %I.%I',
+                       tablename, schemaname, tablename),
+                ' UNION ALL ' ORDER BY tablename
+              )
+              FROM pg_catalog.pg_tables
+              WHERE schemaname = 'public';
+            ")"
+          if [ -z "$COUNT_QUERY" ]; then
+            echo "No public tables found after restore."
+            exit 1
+          fi
+          docker run --rm --env DATABASE_URL postgres:18-bookworm \
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -AtF $'\\t' \
+            -c "$COUNT_QUERY ORDER BY table_name" > /tmp/restored-row-counts.tsv
+
+          sort "$MANIFEST_PATH" > /tmp/expected-row-counts.tsv
+          sort /tmp/restored-row-counts.tsv > /tmp/actual-row-counts.tsv
+          echo "Comparing restored table counts with the manifest generated from this exact backup:"
+          diff -u /tmp/expected-row-counts.tsv /tmp/actual-row-counts.tsv
+          echo "All restored public table row counts match the selected backup manifest."
 
       - name: Upload restore provenance
         uses: actions/upload-artifact@v4
