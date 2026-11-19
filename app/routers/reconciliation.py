@@ -975,7 +975,13 @@ def void_reconciliation_exclusion(
     db: Session = Depends(get_db),
 ):
     scope, roles = _authorize(db, current_user, family_id, "reconciliation.exclude")
+    account_scope = _require_scope(db, roles, family_id, "accounts")
     session = _get_session(db, family_id, session_id, scope, current_user, lock=True)
+    if account_scope == "own" and not db.query(Account.id).filter(
+        Account.id == session.account_id, Account.family_id == family_id,
+        Account.created_by == current_user.id,
+    ).first():
+        raise HTTPException(status_code=404, detail="找不到此家庭對帳工作階段")
     if session.status != "in_progress":
         raise HTTPException(status_code=409, detail="只有進行中的對帳工作階段可以解除排除")
     exclusion = db.query(ReconciliationExclusion).filter(
@@ -1017,7 +1023,16 @@ def complete_reconciliation_session(
     db: Session = Depends(get_db),
 ):
     scope, roles = _authorize(db, current_user, family_id, "reconciliation.close")
+    account_scope = _require_scope(db, roles, family_id, "accounts")
+    transaction_scope = _require_scope(db, roles, family_id, "transactions")
     session = _get_session(db, family_id, session_id, scope, current_user, lock=True)
+    if account_scope == "own" and not db.query(Account.id).filter(
+        Account.id == session.account_id, Account.family_id == family_id,
+        Account.created_by == current_user.id,
+    ).first():
+        raise HTTPException(status_code=404, detail="找不到此家庭對帳工作階段")
+    if transaction_scope != "family":
+        raise HTTPException(status_code=403, detail="完成整個帳戶對帳需要家庭層級的交易資料範圍")
     if session.status != "in_progress":
         raise HTTPException(status_code=409, detail="只有進行中的對帳工作階段可以完成")
     _refresh_session_counts(db, session)
@@ -1060,7 +1075,13 @@ def reopen_reconciliation_session(
     db: Session = Depends(get_db),
 ):
     scope, roles = _authorize(db, current_user, family_id, "reconciliation.reopen")
+    account_scope = _require_scope(db, roles, family_id, "accounts")
     session = _get_session(db, family_id, session_id, scope, current_user, lock=True)
+    if account_scope == "own" and not db.query(Account.id).filter(
+        Account.id == session.account_id, Account.family_id == family_id,
+        Account.created_by == current_user.id,
+    ).first():
+        raise HTTPException(status_code=404, detail="找不到此家庭對帳工作階段")
     if session.status != "completed":
         raise HTTPException(status_code=409, detail="只有已完成的對帳工作階段可以重新開啟")
     old_values = {"status": session.status, "completed_by": session.completed_by,
