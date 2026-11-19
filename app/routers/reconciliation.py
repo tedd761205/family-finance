@@ -14,6 +14,7 @@ from app.dependencies.permissions import require_permission, require_data_scope
 from app.models.account import Account
 from app.models.bank_import import BankImportBatch, BankImportRow
 from app.models.reconciliation import ReconciliationExclusion, ReconciliationMatch, ReconciliationSession
+from app.models.reconciliation_issue import ReconciliationIssue
 from app.models.transaction import Transaction
 from app.models.user import User
 from app.schemas.reconciliation import (
@@ -23,6 +24,8 @@ from app.schemas.reconciliation import (
     ReconciliationExcludeCreate,
     ReconciliationExclusionVoid,
     ReconciliationLifecycleReason,
+    ReconciliationIssueCreate,
+    ReconciliationIssueResolve,
 )
 from app.services.audit_log import add_audit_log
 
@@ -1284,3 +1287,174 @@ def get_reconciliation_balance_check(
             "未提供對帳單期初或期末餘額時，該項差異會回傳 null。"
         ),
     }
+
+
+def _issue_summary(item: ReconciliationIssue) -> dict:
+    return {
+        "id": item.id,
+        "session_id": item.session_id,
+        "account_id": item.account_id,
+        "bank_import_row_id": item.bank_import_row_id,
+        "transaction_id": item.transaction_id,
+        "category": item.category,
+        "status": item.status,
+        "reason": item.reason,
+        "resolution_note": item.resolution_note,
+        "created_by": item.created_by,
+        "updated_by": item.updated_by,
+        "resolved_at": item.resolved_at,
+        "created_at": item.created_at,
+        "updated_at": item.updated_at,
+    }
+
+
+@router.get("/sessions/{session_id}/issues", summary="查詢對帳差異及處理歷史")
+def list_reconciliation_issues(
+    session_id: int,
+    family_id: int = Query(..., gt=0),
+    issue_status: str | None = Query(None, alias="status", pattern="^(open|resolved)$"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    scope, roles = _authorize(db, current_user, family_id, "reconciliation.view")
+    session = _get_session(db, family_id, session_id, scope, current_user)
+    account_scope = _require_scope(db, roles, family_id, "accounts")
+    if account_scope == "own" and not db.query(Account.id).filter(
+        Account.id == session.account_id, Account.family_id == family_id,
+        Account.created_by == current_user.id,
+    ).first():
+        raise HTTPException(status_code=404, detail="找不到此家庭對帳工作階段")
+    query = db.query(ReconciliationIssue).filter(
+        ReconciliationIssue.family_id == family_id,
+        ReconciliationIssue.session_id == session_id,
+    )
+    if issue_status:
+        query = query.filter(ReconciliationIssue.status == issue_status)
+    total = query.count()
+    items = query.order_by(ReconciliationIssue.created_at.desc(), ReconciliationIssue.id.desc()).offset(skip).limit(limit).all()
+    return {"success": True, "total": total, "issues": [_issue_summary(item) for item in items],
+            "pagination": {"skip": skip, "limit": limit}}
+
+
+@router.post(
+    "/sessions/{session_id}/issues",
+    status_code=status.HTTP_201_CREATED,
+    summary="建立人工分類的對帳差異",
+)
+def create_reconciliation_issue(
+    data: ReconciliationIssueCreate,
+    session_id: int,
+    family_id: int = Query(..., gt=0),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    scope, roles = _authorize(db, current_user, family_id, "reconciliation.create")
+    account_scope = _require_scope(db, roles, family_id, "accounts")
+    session = _get_session(db, family_id, session_id, scope, current_user, lock=True)
+    if session.status != "in_progress":
+        raise HTTPException(status_code=409, detail="只有進行中的對帳工作階段可以新增差異")
+    if account_scope == "own" and not db.query(Account.id).filter(
+        Account.id == session.account_id, Account.family_id == family_id,
+        Account.created_by == current_user.id,
+    ).first():
+        raise HTTPException(status_code=404, detail="找不到此家庭對帳工作階段")
+
+    start_utc, end_utc = _period_bounds(session.period_start, session.period_end)
+    bank_row = None
+    transaction = None
+    if data.bank_import_row_id is not None:
+        bank_row = db.query(BankImportRow).filter(
+            BankImportRow.id == data.bank_import_row_id,
+            BankImportRow.family_id == family_id,
+            BankImportRow.batch_id == session.source_batch_id,
+            BankImportRow.transaction_date >= start_utc,
+            BankImportRow.transaction_date < end_utc,
+            BankImportRow.currency_code == session.currency_code,
+        ).first()
+        if bank_row is None:
+            raise HTTPException(status_code=404, detail="銀行明細不屬於此對帳工作階段")
+    if data.transaction_id is not None:
+        transaction_scope = _require_scope(db, roles, family_id, "transactions")
+        if transaction_scope != "family":
+            raise HTTPException(status_code=403, detail="建立帳務差異需要家庭層級交易資料範圍")
+        transaction = db.query(Transaction).filter(
+            Transaction.id == data.transaction_id,
+            Transaction.family_id == family_id,
+            Transaction.account_id == session.account_id,
+            Transaction.currency_code == session.currency_code,
+            Transaction.is_voided.is_(False),
+            Transaction.transaction_type.in_(["income", "expense"]),
+            Transaction.transaction_date >= start_utc,
+            Transaction.transaction_date < end_utc,
+        ).first()
+        if transaction is None:
+            raise HTTPException(status_code=404, detail="正式交易不屬於此對帳帳戶及期間")
+    if data.category == "amount_mismatch" and (bank_row is None or transaction is None):
+        raise HTTPException(status_code=422, detail="金額差異必須同時關聯銀行明細與正式交易")
+    if data.category == "date_mismatch" and (bank_row is None or transaction is None):
+        raise HTTPException(status_code=422, detail="日期差異必須同時關聯銀行明細與正式交易")
+
+    item = ReconciliationIssue(
+        family_id=family_id, session_id=session.id, account_id=session.account_id,
+        batch_id=session.source_batch_id, bank_import_row_id=data.bank_import_row_id,
+        transaction_id=data.transaction_id, category=data.category, status="open",
+        reason=data.reason, created_by=current_user.id, updated_by=current_user.id,
+    )
+    db.add(item)
+    db.flush()
+    add_audit_log(
+        db, family_id=family_id, actor_user_id=current_user.id, action="create",
+        entity_type="reconciliation_issue", entity_id=item.id,
+        new_values={"category": item.category, "status": item.status,
+                    "bank_import_row_id": item.bank_import_row_id,
+                    "transaction_id": item.transaction_id, "reason": item.reason},
+        description="建立對帳差異分類",
+    )
+    db.commit()
+    db.refresh(item)
+    return {"success": True, "issue": _issue_summary(item)}
+
+
+@router.post(
+    "/sessions/{session_id}/issues/{issue_id}/resolve",
+    summary="結案對帳差異並保留處理說明",
+)
+def resolve_reconciliation_issue(
+    data: ReconciliationIssueResolve,
+    session_id: int,
+    issue_id: int,
+    family_id: int = Query(..., gt=0),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    scope, roles = _authorize(db, current_user, family_id, "reconciliation.update")
+    session = _get_session(db, family_id, session_id, scope, current_user, lock=True)
+    if session.status != "in_progress":
+        raise HTTPException(status_code=409, detail="只有進行中的對帳工作階段可以處理差異")
+    item = db.query(ReconciliationIssue).filter(
+        ReconciliationIssue.id == issue_id,
+        ReconciliationIssue.family_id == family_id,
+        ReconciliationIssue.session_id == session_id,
+    ).with_for_update().first()
+    if item is None:
+        raise HTTPException(status_code=404, detail="找不到此對帳差異")
+    if item.status == "resolved":
+        raise HTTPException(status_code=409, detail="此差異已結案")
+    old_values = {"status": item.status, "resolution_note": item.resolution_note}
+    item.status = "resolved"
+    item.resolution_note = data.resolution_note
+    item.updated_by = current_user.id
+    item.resolved_at = datetime.now(timezone.utc)
+    add_audit_log(
+        db, family_id=family_id, actor_user_id=current_user.id, action="resolve",
+        entity_type="reconciliation_issue", entity_id=item.id,
+        old_values=old_values,
+        new_values={"status": item.status, "resolution_note": item.resolution_note,
+                    "resolved_at": item.resolved_at.isoformat()},
+        description="結案對帳差異並記錄處理說明",
+    )
+    db.commit()
+    db.refresh(item)
+    return {"success": True, "issue": _issue_summary(item)}
