@@ -1182,3 +1182,105 @@ def list_ledger_only_transactions(
         "pagination": {"skip": skip, "limit": limit},
         "notice": "未配對不代表錯帳；請確認是否為入帳時間差、未兌現或尚未匯入的銀行明細。",
     }
+
+
+@router.get(
+    "/sessions/{session_id}/balance-check",
+    summary="核對對帳期間期初與期末餘額",
+)
+def get_reconciliation_balance_check(
+    session_id: int,
+    family_id: int = Query(..., gt=0),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Compare statement balances with ledger balances without changing financial records."""
+    from app.services.reconciliation_balance import calculate_reconciliation_balance_check
+
+    scope, roles = _authorize(db, current_user, family_id, "reconciliation.view")
+    account_scope = _require_scope(db, roles, family_id, "accounts")
+    transaction_scope = _require_scope(db, roles, family_id, "transactions")
+    session = _get_session(db, family_id, session_id, scope, current_user)
+
+    if account_scope == "own" and not db.query(Account.id).filter(
+        Account.id == session.account_id,
+        Account.family_id == family_id,
+        Account.created_by == current_user.id,
+    ).first():
+        raise HTTPException(status_code=404, detail="找不到此家庭對帳工作階段")
+    if transaction_scope != "family":
+        raise HTTPException(
+            status_code=403,
+            detail="期初／期末餘額核對需要家庭層級的交易資料範圍，避免以個人資料誤判整個帳戶差異",
+        )
+
+    account = db.query(Account).filter(
+        Account.id == session.account_id,
+        Account.family_id == family_id,
+    ).first()
+    if account is None:
+        raise HTTPException(status_code=404, detail="找不到此家庭帳戶")
+
+    start_utc, end_utc = _period_bounds(session.period_start, session.period_end)
+
+    def totals_for(query):
+        values = query.with_entities(
+            Transaction.transaction_type,
+            func.coalesce(func.sum(Transaction.amount), 0),
+        ).group_by(Transaction.transaction_type).all()
+        return {kind: Decimal(str(amount or 0)) for kind, amount in values}
+
+    base_query = db.query(Transaction).filter(
+        Transaction.family_id == family_id,
+        Transaction.account_id == session.account_id,
+        Transaction.currency_code == session.currency_code,
+        Transaction.is_voided.is_(False),
+    )
+    opening_balance = (
+        base_query.filter(Transaction.transaction_type == "opening_balance")
+        .with_entities(func.coalesce(func.sum(Transaction.amount), 0))
+        .scalar()
+    )
+    prior_totals = totals_for(base_query.filter(
+        Transaction.transaction_type.in_(["income", "expense"]),
+        Transaction.transaction_date < start_utc,
+    ))
+    period_totals = totals_for(base_query.filter(
+        Transaction.transaction_type.in_(["income", "expense"]),
+        Transaction.transaction_date >= start_utc,
+        Transaction.transaction_date < end_utc,
+    ))
+
+    result = calculate_reconciliation_balance_check(
+        account_type=account.account_type,
+        opening_balance=Decimal(str(opening_balance or 0)),
+        prior_income=prior_totals.get("income", Decimal("0")),
+        prior_expense=prior_totals.get("expense", Decimal("0")),
+        period_income=period_totals.get("income", Decimal("0")),
+        period_expense=period_totals.get("expense", Decimal("0")),
+        statement_opening_balance=session.opening_balance,
+        statement_closing_balance=session.closing_balance,
+    )
+
+    return {
+        "success": True,
+        "session_id": session.id,
+        "account_id": account.id,
+        "account_name": account.name,
+        "account_type": account.account_type,
+        "currency_code": session.currency_code,
+        "period_start": session.period_start,
+        "period_end": session.period_end,
+        "balance_convention": (
+            "positive_is_debt" if account.account_type == "credit_card"
+            else "positive_is_asset"
+        ),
+        "calculation_scope": "family",
+        "result": {key: str(value) if isinstance(value, Decimal) else value
+                   for key, value in result.items()},
+        "notice": (
+            "此結果為唯讀比較；差異不會自動修改交易。"
+            "信用卡餘額以正數代表欠款，資產帳戶以正數代表資產。"
+            "未提供對帳單期初或期末餘額時，該項差異會回傳 null。"
+        ),
+    }
