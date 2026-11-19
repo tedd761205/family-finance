@@ -1583,8 +1583,44 @@ def get_reconciliation_final_report(
             detail="完整驗收報告需要家庭層級交易資料範圍",
         )
 
-    _refresh_session_counts(db, session)
     start_utc, end_utc = _period_bounds(session.period_start, session.period_end)
+    bank_rows = db.query(BankImportRow).filter(
+        BankImportRow.family_id == family_id,
+        BankImportRow.batch_id == session.source_batch_id,
+        BankImportRow.status.in_(["imported", "duplicate"]),
+        BankImportRow.transaction_date >= start_utc,
+        BankImportRow.transaction_date < end_utc,
+    ).all()
+    bank_allocations = db.query(
+        ReconciliationMatch.bank_import_row_id,
+        func.coalesce(func.sum(ReconciliationMatch.allocated_amount), 0),
+    ).filter(
+        ReconciliationMatch.family_id == family_id,
+        ReconciliationMatch.session_id == session.id,
+        ReconciliationMatch.status == "active",
+    ).group_by(ReconciliationMatch.bank_import_row_id).all()
+    allocation_totals = {row_id: Decimal(str(amount or 0)) for row_id, amount in bank_allocations}
+    excluded_bank_ids = {
+        row_id for (row_id,) in db.query(ReconciliationExclusion.bank_import_row_id).filter(
+            ReconciliationExclusion.family_id == family_id,
+            ReconciliationExclusion.session_id == session.id,
+            ReconciliationExclusion.status == "active",
+        ).all()
+    }
+    matched_bank_count = sum(
+        1 for row in bank_rows
+        if row.id not in excluded_bank_ids
+        and allocation_totals.get(row.id, Decimal("0")) == (row.amount or Decimal("0"))
+    )
+    excluded_bank_count = len(excluded_bank_ids)
+    unresolved_bank_count = len(bank_rows) - matched_bank_count - excluded_bank_count
+    report_session = _session_summary(session)
+    report_session.update({
+        "statement_row_count": len(bank_rows),
+        "matched_row_count": matched_bank_count,
+        "excluded_row_count": excluded_bank_count,
+        "difference_row_count": unresolved_bank_count,
+    })
     active_match_transaction_ids = db.query(ReconciliationMatch.transaction_id).filter(
         ReconciliationMatch.family_id == family_id,
         ReconciliationMatch.status == "active",
@@ -1674,20 +1710,23 @@ def get_reconciliation_final_report(
     balance_mismatch = (
         balance["opening_matches"] is False or balance["closing_matches"] is False
     )
-    ready = (
-        session.difference_row_count == 0
-        and ledger_only_count == 0
-        and len(open_issues) == 0
-        and not balance_mismatch
+    from app.services.reconciliation_completion import evaluate_reconciliation_completion
+
+    completion = evaluate_reconciliation_completion(
+        unresolved_bank_rows=unresolved_bank_count,
+        unmatched_ledger_transactions=ledger_only_count,
+        open_issues=len(open_issues),
+        opening_balance_matches=balance["opening_matches"],
+        closing_balance_matches=balance["closing_matches"],
     )
     return {
         "success": True,
-        "session": _session_summary(session),
+        "session": report_session,
         "bank_side": {
-            "statement_rows": session.statement_row_count,
-            "matched_rows": session.matched_row_count,
-            "excluded_rows": session.excluded_row_count,
-            "unresolved_rows": session.difference_row_count,
+            "statement_rows": len(bank_rows),
+            "matched_rows": matched_bank_count,
+            "excluded_rows": excluded_bank_count,
+            "unresolved_rows": unresolved_bank_count,
         },
         "ledger_side": {
             "unmatched_transactions": ledger_only_count,
@@ -1703,12 +1742,7 @@ def get_reconciliation_final_report(
             key: str(value) if isinstance(value, Decimal) else value
             for key, value in balance.items()
         },
-        "ready_to_complete": ready,
-        "completion_blockers": {
-            "unresolved_bank_rows": session.difference_row_count,
-            "unmatched_ledger_transactions": ledger_only_count,
-            "open_issues": len(open_issues),
-            "balance_mismatch": balance_mismatch,
-        },
+        "ready_to_complete": completion["ready_to_complete"],
+        "completion_blockers": completion["completion_blockers"],
         "read_only": True,
     }
