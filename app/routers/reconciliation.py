@@ -22,7 +22,7 @@ router = APIRouter(prefix="/reconciliations", tags=["Reconciliations"])
 TAIPEI = ZoneInfo("Asia/Taipei")
 
 
-def _authorize(db: Session, user: User, family_id: int, permission: str) -> str:
+def _authorize(db: Session, user: User, family_id: int, permission: str) -> tuple[str, list]:
     try:
         _, roles = require_permission(db, user.id, family_id, permission)
         scope = require_data_scope(db, roles, family_id, "reconciliation")
@@ -122,7 +122,7 @@ def create_reconciliation_session(
 ):
     try:
         _, roles = require_permission(db, current_user.id, family_id, "reconciliation.create")
-        reconciliation_scope = require_data_scope(db, roles, family_id, "reconciliation")
+        require_data_scope(db, roles, family_id, "reconciliation")
         account_scope = _require_scope(db, roles, family_id, "accounts")
         import_scope = _require_scope(db, roles, family_id, "imports")
         transaction_scope = _require_scope(db, roles, family_id, "transactions")
@@ -278,6 +278,7 @@ def get_reconciliation_session(
         row_query = row_query.join(Transaction, Transaction.import_row_id == BankImportRow.id).filter(
             Transaction.family_id == family_id,
             Transaction.created_by == current_user.id,
+            Transaction.account_id == session.account_id,
         )
     row_query = row_query.filter(
         BankImportRow.family_id == family_id,
