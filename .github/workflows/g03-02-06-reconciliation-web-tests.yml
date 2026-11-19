@@ -1,0 +1,58 @@
+name: G-03-02-06 Reconciliation Web Workspace Tests
+
+on:
+  push:
+    branches:
+      - "feature/**"
+      - "fix/**"
+    paths:
+      - "static/index.html"
+      - "static/app.js"
+      - "static/reconciliation.js"
+      - "static/styles.css"
+      - "tests/test_g03_02_06_reconciliation_web.py"
+      - ".github/workflows/g03-02-06-reconciliation-web-tests.yml"
+      - "requirements.txt"
+      - "requirements-dev.txt"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "static/index.html"
+      - "static/app.js"
+      - "static/reconciliation.js"
+      - "static/styles.css"
+      - "tests/test_g03_02_06_reconciliation_web.py"
+      - ".github/workflows/g03-02-06-reconciliation-web-tests.yml"
+      - "requirements.txt"
+      - "requirements-dev.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reconciliation-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: Validate JavaScript syntax
+        run: |
+          node --check static/app.js
+          node --check static/reconciliation.js
+      - name: Run reconciliation workspace web tests
+        run: python -m pytest -q tests/test_g03_02_06_reconciliation_web.py tests/test_g03_01_bank_import_web.py
