@@ -71,6 +71,7 @@ class ReconciliationSession(Base):
     statement_row_count: Mapped[int] = mapped_column(nullable=False, default=0, server_default="0")
     matched_row_count: Mapped[int] = mapped_column(nullable=False, default=0, server_default="0")
     difference_row_count: Mapped[int] = mapped_column(nullable=False, default=0, server_default="0")
+    excluded_row_count: Mapped[int] = mapped_column(nullable=False, default=0, server_default="0")
     created_by: Mapped[int] = mapped_column(BigInteger, nullable=False)
     completed_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -139,6 +140,58 @@ class ReconciliationMatch(Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="active", server_default="active")
     matched_by: Mapped[int] = mapped_column(BigInteger, nullable=False)
     matched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    voided_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    voided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    void_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+
+
+class ReconciliationExclusion(Base):
+    """被人工排除的銀行明細；採軟作廢保留完整歷史。"""
+
+    __tablename__ = "reconciliation_exclusions"
+    __table_args__ = (
+        UniqueConstraint("family_id", "id", name="uq_reconciliation_exclusions_family_id_id"),
+        ForeignKeyConstraint(
+            ["family_id", "session_id", "account_id", "batch_id"],
+            ["reconciliation_sessions.family_id", "reconciliation_sessions.id", "reconciliation_sessions.account_id", "reconciliation_sessions.source_batch_id"],
+            ondelete="RESTRICT", name="fk_reconciliation_exclusions_session",
+        ),
+        ForeignKeyConstraint(
+            ["family_id", "batch_id", "bank_import_row_id"],
+            ["bank_import_rows.family_id", "bank_import_rows.batch_id", "bank_import_rows.id"],
+            ondelete="RESTRICT", name="fk_reconciliation_exclusions_import_row",
+        ),
+        ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="RESTRICT",
+                             name="fk_reconciliation_exclusions_created_by"),
+        ForeignKeyConstraint(["voided_by"], ["users.id"], ondelete="RESTRICT",
+                             name="fk_reconciliation_exclusions_voided_by"),
+        CheckConstraint("status IN ('active','voided')", name="ck_reconciliation_exclusions_status"),
+        CheckConstraint(
+            "(status = 'active' AND voided_at IS NULL AND voided_by IS NULL AND void_reason IS NULL) OR "
+            "(status = 'voided' AND voided_at IS NOT NULL AND voided_by IS NOT NULL AND void_reason IS NOT NULL)",
+            name="ck_reconciliation_exclusions_void_metadata",
+        ),
+        CheckConstraint("length(trim(reason)) > 0", name="ck_reconciliation_exclusions_reason"),
+        Index(
+            "uq_reconciliation_exclusions_active_row",
+            "family_id", "session_id", "bank_import_row_id",
+            unique=True, postgresql_where=text("status = 'active'"),
+        ),
+        Index("ix_reconciliation_exclusions_session_status",
+              "family_id", "session_id", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    family_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    session_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    account_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    bank_import_row_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="active", server_default="active")
+    created_by: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     voided_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     voided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     void_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
