@@ -78,10 +78,36 @@ jobs:
             postgres:18-bookworm \
             sh -c 'pg_restore --list "/backups/$BACKUP_FILE" > /tmp/restore-list.txt && test -s /tmp/restore-list.txt && head -n 20 /tmp/restore-list.txt'
 
+      - name: Create backup row-count manifest
+        env:
+          DATABASE_URL: ${{ secrets.NEON_BACKUP_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          COUNT_QUERY="$(docker run --rm --env DATABASE_URL postgres:18-bookworm \
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atc "
+              SELECT string_agg(
+                format('SELECT %L AS table_name, count(*)::bigint AS row_count FROM %I.%I',
+                       tablename, schemaname, tablename),
+                ' UNION ALL ' ORDER BY tablename
+              )
+              FROM pg_catalog.pg_tables
+              WHERE schemaname = 'public';
+            ")"
+          if [ -z "$COUNT_QUERY" ]; then
+            echo "Could not create row-count manifest: no public tables were found."
+            exit 1
+          fi
+          docker run --rm --env DATABASE_URL postgres:18-bookworm \
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -AtF \\t' \
+            -c "$COUNT_QUERY ORDER BY table_name" > backups/row-counts.tsv
+          test -s backups/row-counts.tsv
+          echo "Created backup row-count manifest:"
+          cat backups/row-counts.tsv
+
       - name: Upload backup artifact
         uses: actions/upload-artifact@v4
         with:
           name: family-finance-neon-backup-${{ github.run_number }}
-          path: backups/*.dump
+          path: backups/*
           if-no-files-found: error
           retention-days: 14
