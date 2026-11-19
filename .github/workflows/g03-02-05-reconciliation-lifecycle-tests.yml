@@ -70,6 +70,11 @@ jobs:
         run: python -m compileall -q app alembic/versions tests main.py
       - name: Validate Alembic graph
         run: alembic heads
+      - name: Exercise migration upgrade, downgrade and re-upgrade
+        run: |
+          alembic upgrade head
+          alembic downgrade -1
+          alembic upgrade head
       - name: Run lifecycle and reconciliation regression tests
         run: >-
           python -m pytest -q
