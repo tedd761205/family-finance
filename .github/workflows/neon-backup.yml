@@ -28,7 +28,7 @@ jobs:
           docker run --rm postgres:18-bookworm pg_dump --version
           docker run --rm postgres:18-bookworm pg_restore --version
 
-      - name: Create custom-format database dump
+      - name: Create snapshot-consistent database dump and row-count manifest
         id: dump
         env:
           DATABASE_URL: ${{ secrets.NEON_BACKUP_DATABASE_URL }}
@@ -41,30 +41,78 @@ jobs:
           fi
 
           case "$DATABASE_URL" in
-            postgres://*|postgresql://*)
-              ;;
+            postgres://*|postgresql://*) ;;
             *)
-              echo "Invalid backup URL format. Use the Neon PostgreSQL connection string beginning with postgres:// or postgresql://."
-              echo "Do not use SQLAlchemy format such as postgresql+psycopg://."
+              echo "Invalid backup URL format. Use the native Neon PostgreSQL connection string."
               exit 1
               ;;
           esac
 
           mkdir -p "$GITHUB_WORKSPACE/backups"
-
           BACKUP_FILE="family-finance-$(date -u +%Y%m%dT%H%M%SZ).dump"
           echo "backup_file=$BACKUP_FILE" >> "$GITHUB_OUTPUT"
 
-          echo "Starting database dump (connection string is configured)."
+          # Keep the exporting transaction open while pg_dump and the row-count
+          # query import the same PostgreSQL snapshot.
+          coproc SNAPSHOT_SESSION {
+            docker run --rm --env DATABASE_URL postgres:18-bookworm \
+              psql "$DATABASE_URL" -X -qAt -v ON_ERROR_STOP=1
+          }
+          SNAPSHOT_PID="$SNAPSHOT_SESSION_PID"
+          SNAPSHOT_READ_FD="${SNAPSHOT_SESSION[0]}"
+          SNAPSHOT_WRITE_FD="${SNAPSHOT_SESSION[1]}"
+
+          printf 'BEGIN ISOLATION LEVEL REPEATABLE READ;\\nSELECT pg_export_snapshot();\\n' >&"$SNAPSHOT_WRITE_FD"
+          if ! IFS= read -r SNAPSHOT_ID <&"$SNAPSHOT_READ_FD"; then
+            echo "Could not export a PostgreSQL snapshot for the backup."
+            exit 1
+          fi
+          if [ -z "$SNAPSHOT_ID" ]; then
+            echo "PostgreSQL returned an empty snapshot identifier."
+            exit 1
+          fi
+          echo "Exported a consistent PostgreSQL snapshot."
+
           docker run --rm \
             --env DATABASE_URL \
+            --env SNAPSHOT_ID \
             --env BACKUP_FILE="$BACKUP_FILE" \
             -v "$GITHUB_WORKSPACE/backups:/backups" \
             postgres:18-bookworm \
-            sh -ec 'test -n "$DATABASE_URL"; exec pg_dump --dbname="$DATABASE_URL" --format=custom --no-owner --no-acl --verbose --file="/backups/$BACKUP_FILE"'
+            sh -ec 'exec pg_dump --dbname="$DATABASE_URL" --snapshot="$SNAPSHOT_ID" --format=custom --no-owner --no-acl --verbose --file="/backups/$BACKUP_FILE"'
 
           test -s "$GITHUB_WORKSPACE/backups/$BACKUP_FILE"
           ls -lh "$GITHUB_WORKSPACE/backups/$BACKUP_FILE"
+
+          # Import the very same exported snapshot before counting rows.
+          docker run --rm \
+            --env DATABASE_URL \
+            --env SNAPSHOT_ID \
+            postgres:18-bookworm \
+            psql "$DATABASE_URL" -X -qAt -F '|' -v ON_ERROR_STOP=1 <<SQL \
+            > "$GITHUB_WORKSPACE/backups/row-counts.tsv"
+          BEGIN ISOLATION LEVEL REPEATABLE READ;
+          SET TRANSACTION SNAPSHOT '$SNAPSHOT_ID';
+          SELECT format(
+            'SELECT %L, count(*)::bigint FROM %I.%I',
+            tablename, schemaname, tablename
+          )
+          FROM pg_catalog.pg_tables
+          WHERE schemaname = 'public'
+          ORDER BY tablename
+          \\gexec
+          COMMIT;
+          SQL
+
+          test -s "$GITHUB_WORKSPACE/backups/row-counts.tsv"
+          echo "Created snapshot-consistent row-count manifest:"
+          cat "$GITHUB_WORKSPACE/backups/row-counts.tsv"
+
+          printf 'COMMIT;\\n' >&"$SNAPSHOT_WRITE_FD"
+          exec {SNAPSHOT_WRITE_FD}>&-
+          exec {SNAPSHOT_READ_FD}<&-
+          wait "$SNAPSHOT_PID"
+          echo "Snapshot transaction closed cleanly."
 
       - name: Verify dump archive
         env:
@@ -77,32 +125,6 @@ jobs:
             -v "$GITHUB_WORKSPACE/backups:/backups:ro" \
             postgres:18-bookworm \
             sh -c 'pg_restore --list "/backups/$BACKUP_FILE" > /tmp/restore-list.txt && test -s /tmp/restore-list.txt && head -n 20 /tmp/restore-list.txt'
-
-      - name: Create backup row-count manifest
-        env:
-          DATABASE_URL: ${{ secrets.NEON_BACKUP_DATABASE_URL }}
-        run: |
-          set -euo pipefail
-          COUNT_QUERY="$(docker run --rm --env DATABASE_URL postgres:18-bookworm \
-            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atc "
-              SELECT string_agg(
-                format('SELECT %L AS table_name, count(*)::bigint AS row_count FROM %I.%I',
-                       tablename, schemaname, tablename),
-                ' UNION ALL ' ORDER BY tablename
-              )
-              FROM pg_catalog.pg_tables
-              WHERE schemaname = 'public';
-            ")"
-          if [ -z "$COUNT_QUERY" ]; then
-            echo "Could not create row-count manifest: no public tables were found."
-            exit 1
-          fi
-          docker run --rm --env DATABASE_URL postgres:18-bookworm \
-            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -AtF '|' \
-            -c "$COUNT_QUERY ORDER BY table_name" > backups/row-counts.tsv
-          test -s backups/row-counts.tsv
-          echo "Created backup row-count manifest:"
-          cat backups/row-counts.tsv
 
       - name: Upload backup artifact
         uses: actions/upload-artifact@v4
