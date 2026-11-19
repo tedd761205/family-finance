@@ -13,13 +13,16 @@ from app.dependencies.auth import get_current_user
 from app.dependencies.permissions import require_permission, require_data_scope
 from app.models.account import Account
 from app.models.bank_import import BankImportBatch, BankImportRow
-from app.models.reconciliation import ReconciliationMatch, ReconciliationSession
+from app.models.reconciliation import ReconciliationExclusion, ReconciliationMatch, ReconciliationSession
 from app.models.transaction import Transaction
 from app.models.user import User
 from app.schemas.reconciliation import (
     ReconciliationMatchCreate,
     ReconciliationMatchVoid,
     ReconciliationSessionCreate,
+    ReconciliationExcludeCreate,
+    ReconciliationExclusionVoid,
+    ReconciliationLifecycleReason,
 )
 from app.services.audit_log import add_audit_log
 
@@ -66,6 +69,7 @@ def _session_summary(session: ReconciliationSession) -> dict:
         "statement_row_count": session.statement_row_count,
         "matched_row_count": session.matched_row_count,
         "difference_row_count": session.difference_row_count,
+        "excluded_row_count": session.excluded_row_count,
         "created_by": session.created_by,
         "completed_by": session.completed_by,
         "completed_at": session.completed_at,
@@ -108,24 +112,31 @@ def _refresh_session_counts(db: Session, session: ReconciliationSession) -> None
         BankImportRow.transaction_date >= start_utc,
         BankImportRow.transaction_date < end_utc,
     ).all()
-    totals = {}
-    if rows:
-        values = db.query(
-            ReconciliationMatch.bank_import_row_id,
-            func.coalesce(func.sum(ReconciliationMatch.allocated_amount), 0),
-        ).filter(
-            ReconciliationMatch.family_id == session.family_id,
-            ReconciliationMatch.session_id == session.id,
-            ReconciliationMatch.status == "active",
-        ).group_by(ReconciliationMatch.bank_import_row_id).all()
-        totals = {row_id: amount for row_id, amount in values}
+    values = db.query(
+        ReconciliationMatch.bank_import_row_id,
+        func.coalesce(func.sum(ReconciliationMatch.allocated_amount), 0),
+    ).filter(
+        ReconciliationMatch.family_id == session.family_id,
+        ReconciliationMatch.session_id == session.id,
+        ReconciliationMatch.status == "active",
+    ).group_by(ReconciliationMatch.bank_import_row_id).all()
+    totals = {row_id: amount for row_id, amount in values}
+    excluded_ids = {
+        item[0] for item in db.query(ReconciliationExclusion.bank_import_row_id).filter(
+            ReconciliationExclusion.family_id == session.family_id,
+            ReconciliationExclusion.session_id == session.id,
+            ReconciliationExclusion.status == "active",
+        ).all()
+    }
     matched = sum(
         1 for row in rows
-        if totals.get(row.id, Decimal("0")) == (row.amount or Decimal("0"))
+        if row.id not in excluded_ids
+        and totals.get(row.id, Decimal("0")) == (row.amount or Decimal("0"))
     )
     session.statement_row_count = len(rows)
     session.matched_row_count = matched
-    session.difference_row_count = len(rows) - matched
+    session.excluded_row_count = len(excluded_ids)
+    session.difference_row_count = len(rows) - matched - len(excluded_ids)
 
 
 def _normalize_description(value: str | None) -> str:
@@ -407,6 +418,18 @@ def get_reconciliation_session(
         ).group_by(ReconciliationMatch.bank_import_row_id).all()
         allocations = {row_id: amount for row_id, amount in values}
 
+    exclusions = {}
+    if row_ids:
+        exclusions = {
+            item.bank_import_row_id: item
+            for item in db.query(ReconciliationExclusion).filter(
+                ReconciliationExclusion.family_id == family_id,
+                ReconciliationExclusion.session_id == session.id,
+                ReconciliationExclusion.bank_import_row_id.in_(row_ids),
+                ReconciliationExclusion.status == "active",
+            ).all()
+        }
+
     match_query = db.query(ReconciliationMatch).filter(
         ReconciliationMatch.family_id == family_id,
         ReconciliationMatch.session_id == session.id,
@@ -431,6 +454,15 @@ def get_reconciliation_session(
     row_items = []
     for row in rows:
         item = _row_state(row, allocations.get(row.id, Decimal("0")))
+        exclusion = exclusions.get(row.id)
+        if exclusion is not None:
+            item["reconciliation_status"] = "excluded"
+            item["exclusion"] = {
+                "id": exclusion.id, "reason": exclusion.reason,
+                "created_by": exclusion.created_by, "created_at": exclusion.created_at,
+            }
+        else:
+            item["exclusion"] = None
         item["matches"] = matches_by_row.get(row.id, [])
         row_items.append(item)
     return {
@@ -481,6 +513,13 @@ def create_reconciliation_match(
     ).with_for_update().first()
     if row is None:
         raise HTTPException(status_code=404, detail="找不到此對帳期間的銀行明細")
+    if db.query(ReconciliationExclusion.id).filter(
+        ReconciliationExclusion.family_id == family_id,
+        ReconciliationExclusion.session_id == session.id,
+        ReconciliationExclusion.bank_import_row_id == row.id,
+        ReconciliationExclusion.status == "active",
+    ).first():
+        raise HTTPException(status_code=409, detail="此銀行明細已排除，請先解除排除再配對")
 
     transaction_query = db.query(Transaction).filter(
         Transaction.id == data.transaction_id,
@@ -752,6 +791,14 @@ def suggest_reconciliation_matches(
     if not rows:
         return {"success": True, "suggestions": [], "candidate_scan_limit": 2000}
 
+    excluded_ids = {
+        item[0] for item in db.query(ReconciliationExclusion.bank_import_row_id).filter(
+            ReconciliationExclusion.family_id == family_id,
+            ReconciliationExclusion.session_id == session.id,
+            ReconciliationExclusion.status == "active",
+        ).all()
+    }
+    rows = [row for row in rows if row.id not in excluded_ids]
     row_ids = [row.id for row in rows]
     allocations = db.query(
         ReconciliationMatch.bank_import_row_id,
@@ -834,3 +881,221 @@ def suggest_reconciliation_matches(
         "candidate_scan_limit": 2000,
         "automatic_matches_created": 0,
     }
+
+
+@router.post(
+    "/sessions/{session_id}/exclude",
+    status_code=status.HTTP_201_CREATED,
+    summary="排除一筆銀行明細並保留原因",
+)
+def exclude_reconciliation_row(
+    session_id: int,
+    data: ReconciliationExcludeCreate,
+    family_id: int = Query(..., gt=0),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    scope, roles = _authorize(db, current_user, family_id, "reconciliation.exclude")
+    account_scope = _require_scope(db, roles, family_id, "accounts")
+    session = _get_session(db, family_id, session_id, scope, current_user, lock=True)
+    if session.status != "in_progress":
+        raise HTTPException(status_code=409, detail="只有進行中的對帳工作階段可以排除明細")
+    if account_scope == "own" and not db.query(Account.id).filter(
+        Account.id == session.account_id, Account.family_id == family_id,
+        Account.created_by == current_user.id,
+    ).first():
+        raise HTTPException(status_code=404, detail="找不到此家庭對帳工作階段")
+    start_utc, end_utc = _period_bounds(session.period_start, session.period_end)
+    row = db.query(BankImportRow).filter(
+        BankImportRow.id == data.bank_import_row_id,
+        BankImportRow.family_id == family_id,
+        BankImportRow.batch_id == session.source_batch_id,
+        BankImportRow.status.in_(["imported", "duplicate"]),
+        BankImportRow.transaction_date >= start_utc,
+        BankImportRow.transaction_date < end_utc,
+    ).with_for_update().first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="找不到此對帳期間的銀行明細")
+    allocated = db.query(func.coalesce(func.sum(ReconciliationMatch.allocated_amount), 0)).filter(
+        ReconciliationMatch.family_id == family_id,
+        ReconciliationMatch.session_id == session.id,
+        ReconciliationMatch.bank_import_row_id == row.id,
+        ReconciliationMatch.status == "active",
+    ).scalar() or Decimal("0")
+    if allocated > 0:
+        raise HTTPException(status_code=409, detail="已有配對的明細不可直接排除，請先解除配對")
+    existing = db.query(ReconciliationExclusion.id).filter(
+        ReconciliationExclusion.family_id == family_id,
+        ReconciliationExclusion.session_id == session.id,
+        ReconciliationExclusion.bank_import_row_id == row.id,
+        ReconciliationExclusion.status == "active",
+    ).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="此銀行明細已排除")
+    exclusion = ReconciliationExclusion(
+        family_id=family_id, session_id=session.id, account_id=session.account_id,
+        batch_id=session.source_batch_id, bank_import_row_id=row.id,
+        reason=data.reason, status="active", created_by=current_user.id,
+    )
+    db.add(exclusion)
+    try:
+        db.flush()
+        _refresh_session_counts(db, session)
+        add_audit_log(
+            db, family_id=family_id, actor_user_id=current_user.id,
+            action="exclude", entity_type="reconciliation_exclusion", entity_id=exclusion.id,
+            new_values={"session_id": session.id, "bank_import_row_id": row.id, "reason": data.reason},
+            description="排除銀行對帳明細並保留原因",
+        )
+        db.commit()
+        db.refresh(exclusion)
+        db.refresh(session)
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="此明細已被其他操作排除，請重新整理") from exc
+    return {
+        "success": True,
+        "exclusion": {"id": exclusion.id, "bank_import_row_id": row.id,
+                      "reason": exclusion.reason, "status": exclusion.status,
+                      "created_by": exclusion.created_by, "created_at": exclusion.created_at},
+        "session": _session_summary(session),
+    }
+
+
+@router.post(
+    "/sessions/{session_id}/exclusions/{exclusion_id}/void",
+    summary="解除銀行明細排除並保留歷史",
+)
+def void_reconciliation_exclusion(
+    session_id: int,
+    exclusion_id: int,
+    data: ReconciliationExclusionVoid,
+    family_id: int = Query(..., gt=0),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    scope, roles = _authorize(db, current_user, family_id, "reconciliation.exclude")
+    account_scope = _require_scope(db, roles, family_id, "accounts")
+    session = _get_session(db, family_id, session_id, scope, current_user, lock=True)
+    if account_scope == "own" and not db.query(Account.id).filter(
+        Account.id == session.account_id, Account.family_id == family_id,
+        Account.created_by == current_user.id,
+    ).first():
+        raise HTTPException(status_code=404, detail="找不到此家庭對帳工作階段")
+    if session.status != "in_progress":
+        raise HTTPException(status_code=409, detail="只有進行中的對帳工作階段可以解除排除")
+    exclusion = db.query(ReconciliationExclusion).filter(
+        ReconciliationExclusion.id == exclusion_id,
+        ReconciliationExclusion.family_id == family_id,
+        ReconciliationExclusion.session_id == session.id,
+        ReconciliationExclusion.status == "active",
+    ).with_for_update().first()
+    if exclusion is None:
+        raise HTTPException(status_code=404, detail="找不到有效的排除紀錄")
+    old_values = {"status": exclusion.status, "reason": exclusion.reason}
+    exclusion.status = "voided"
+    exclusion.voided_by = current_user.id
+    exclusion.voided_at = datetime.now(timezone.utc)
+    exclusion.void_reason = data.reason
+    db.flush()
+    _refresh_session_counts(db, session)
+    add_audit_log(
+        db, family_id=family_id, actor_user_id=current_user.id,
+        action="void", entity_type="reconciliation_exclusion", entity_id=exclusion.id,
+        old_values=old_values,
+        new_values={"status": exclusion.status, "void_reason": exclusion.void_reason},
+        description="解除銀行明細排除；保留排除及解除歷史",
+    )
+    db.commit()
+    db.refresh(session)
+    return {"success": True, "message": "已解除排除，可重新配對", "session": _session_summary(session)}
+
+
+@router.post(
+    "/sessions/{session_id}/complete",
+    summary="檢查差異並完成對帳",
+)
+def complete_reconciliation_session(
+    session_id: int,
+    data: ReconciliationLifecycleReason,
+    family_id: int = Query(..., gt=0),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    scope, roles = _authorize(db, current_user, family_id, "reconciliation.close")
+    account_scope = _require_scope(db, roles, family_id, "accounts")
+    transaction_scope = _require_scope(db, roles, family_id, "transactions")
+    session = _get_session(db, family_id, session_id, scope, current_user, lock=True)
+    if account_scope == "own" and not db.query(Account.id).filter(
+        Account.id == session.account_id, Account.family_id == family_id,
+        Account.created_by == current_user.id,
+    ).first():
+        raise HTTPException(status_code=404, detail="找不到此家庭對帳工作階段")
+    if transaction_scope != "family":
+        raise HTTPException(status_code=403, detail="完成整個帳戶對帳需要家庭層級的交易資料範圍")
+    if session.status != "in_progress":
+        raise HTTPException(status_code=409, detail="只有進行中的對帳工作階段可以完成")
+    _refresh_session_counts(db, session)
+    if session.difference_row_count != 0:
+        raise HTTPException(
+            status_code=409,
+            detail={"message": "仍有未核對或部分核對的銀行明細，不能完成對帳",
+                    "statement_row_count": session.statement_row_count,
+                    "matched_row_count": session.matched_row_count,
+                    "excluded_row_count": session.excluded_row_count,
+                    "difference_row_count": session.difference_row_count},
+        )
+    old_values = {"status": session.status}
+    session.status = "completed"
+    session.completed_by = current_user.id
+    session.completed_at = datetime.now(timezone.utc)
+    add_audit_log(
+        db, family_id=family_id, actor_user_id=current_user.id,
+        action="complete", entity_type="reconciliation_session", entity_id=session.id,
+        old_values=old_values,
+        new_values={"status": session.status, "reason": data.reason,
+                    "matched_row_count": session.matched_row_count,
+                    "excluded_row_count": session.excluded_row_count},
+        description="完成銀行／信用卡對帳工作階段",
+    )
+    db.commit()
+    db.refresh(session)
+    return {"success": True, "message": "對帳已完成", "session": _session_summary(session)}
+
+
+@router.post(
+    "/sessions/{session_id}/reopen",
+    summary="重新開啟已完成的對帳",
+)
+def reopen_reconciliation_session(
+    session_id: int,
+    data: ReconciliationLifecycleReason,
+    family_id: int = Query(..., gt=0),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    scope, roles = _authorize(db, current_user, family_id, "reconciliation.reopen")
+    account_scope = _require_scope(db, roles, family_id, "accounts")
+    session = _get_session(db, family_id, session_id, scope, current_user, lock=True)
+    if account_scope == "own" and not db.query(Account.id).filter(
+        Account.id == session.account_id, Account.family_id == family_id,
+        Account.created_by == current_user.id,
+    ).first():
+        raise HTTPException(status_code=404, detail="找不到此家庭對帳工作階段")
+    if session.status != "completed":
+        raise HTTPException(status_code=409, detail="只有已完成的對帳工作階段可以重新開啟")
+    old_values = {"status": session.status, "completed_by": session.completed_by,
+                  "completed_at": session.completed_at}
+    session.status = "in_progress"
+    session.completed_by = None
+    session.completed_at = None
+    add_audit_log(
+        db, family_id=family_id, actor_user_id=current_user.id,
+        action="reopen", entity_type="reconciliation_session", entity_id=session.id,
+        old_values=old_values,
+        new_values={"status": session.status, "reason": data.reason},
+        description="重新開啟已完成的銀行／信用卡對帳",
+    )
+    db.commit()
+    db.refresh(session)
+    return {"success": True, "message": "對帳已重新開啟", "session": _session_summary(session)}
