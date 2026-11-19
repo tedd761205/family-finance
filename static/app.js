@@ -2553,14 +2553,14 @@ async function loadBankImportBatch(id){
   $("bank-import-detail-title").textContent="匯入批次 #"+id+" · "+batch.source_filename;
   $("bank-import-counts").textContent="狀態："+batch.status+" · 總計 "+batch.total_rows+" · 可入帳 "+batch.ready_rows+" · 重複 "+batch.duplicate_rows+" · 錯誤 "+batch.invalid_rows+" · 已入帳 "+batch.imported_rows;
   const body=$("bank-import-rows");body.replaceChildren();
-  const statusLabels={ready:"可入帳",duplicate:"重複略過",invalid:"格式錯誤",imported:"已入帳",skipped:"已略過"};
+  const statusLabels={ready:"待確認",duplicate:"疑似重複，仍保留對帳",invalid:"格式錯誤",imported:"已匯入對帳",skipped:"已略過"};
   for(const row of result.rows||[]){
    const tr=document.createElement("tr");
    for(const value of [row.row_number,row.transaction_date?new Date(row.transaction_date).toLocaleDateString("zh-TW"):"—",row.transaction_type==="income"?"收入":row.transaction_type==="expense"?"支出":"—",row.amount?(row.amount+" "+(row.currency_code||"")):"—",row.description||"—",(statusLabels[row.status]||row.status)+(row.error_message?" · "+row.error_message:"")]){
     const td=document.createElement("td");td.textContent=String(value);tr.append(td);
    }body.append(tr);
   }
-  $("bank-import-confirm").disabled=batch.status!=="previewed"||batch.ready_rows===0;
+  $("bank-import-confirm").disabled=batch.status!=="previewed"||(batch.ready_rows+batch.duplicate_rows)===0;
   $("bank-import-void").disabled=batch.status!=="previewed";
   $("bank-import-detail-panel").classList.remove("hidden");$("bank-import-detail-panel").scrollIntoView({behavior:"smooth",block:"start"});
  }catch(error){notice("bank-imports-notice","載入匯入明細失敗："+error.message,"error");}
@@ -2595,9 +2595,17 @@ $("bank-import-upload").addEventListener("click",async()=>{
  finally{$("bank-import-upload").disabled=false;}
 });
 $("bank-import-confirm").addEventListener("click",async()=>{
- if(!selectedImportBatchId||!window.confirm("確認將此批次所有「可入帳」資料新增為正式交易？重複與錯誤資料會略過。"))return;
- try{const result=await api("/imports/batches/"+selectedImportBatchId+"/confirm?family_id="+selectedFamilyId,{method:"POST"});notice("bank-imports-notice",result.message||"匯入完成。");await loadBankImportBatches();await loadBankImportBatch(selectedImportBatchId);}
- catch(error){notice("bank-imports-notice","確認入帳失敗："+error.message,"error");}
+ const createTransactions=$("bank-import-create-transactions").checked;
+ const prompt=createTransactions
+  ?"確認匯入銀行明細，並將所有有效且非重複的資料建立為正式交易？疑似重複資料仍會保留供對帳。"
+  :"確認只匯入銀行對帳明細，不自動新增正式交易？這是避免重複記帳的建議方式。";
+ if(!selectedImportBatchId||!window.confirm(prompt))return;
+ try{
+  const result=await api("/imports/batches/"+selectedImportBatchId+"/confirm?family_id="+selectedFamilyId+"&create_transactions="+(createTransactions?"true":"false"),{method:"POST"});
+  notice("bank-imports-notice",result.message||"銀行明細已確認。");
+  $("bank-import-create-transactions").checked=false;
+  await loadBankImportBatches();await loadBankImportBatch(selectedImportBatchId);
+ }catch(error){notice("bank-imports-notice","確認匯入失敗："+error.message,"error");}
 });
 $("bank-import-void").addEventListener("click",async()=>{
  if(!selectedImportBatchId||!window.confirm("取消此匯入批次？這只會取消暫存預覽，不會修改正式交易。"))return;
