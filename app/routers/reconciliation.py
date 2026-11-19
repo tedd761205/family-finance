@@ -1099,3 +1099,86 @@ def reopen_reconciliation_session(
     db.commit()
     db.refresh(session)
     return {"success": True, "message": "對帳已重新開啟", "session": _session_summary(session)}
+
+
+@router.get(
+    "/sessions/{session_id}/ledger-only",
+    summary="查詢對帳期間尚未配對的帳務交易",
+)
+def list_ledger_only_transactions(
+    session_id: int,
+    family_id: int = Query(..., gt=0),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """列出此帳戶及期間內尚未出現在任何有效對帳配對的正式交易。
+
+    此查詢不建立配對、不修改交易，也不將未配對直接判定為錯帳；
+    交易可能因入帳時間差、未兌現或銀行批次尚未匯入而暫時未配對。
+    """
+    scope, roles = _authorize(db, current_user, family_id, "reconciliation.view")
+    account_scope = _require_scope(db, roles, family_id, "accounts")
+    transaction_scope = _require_scope(db, roles, family_id, "transactions")
+    session = _get_session(db, family_id, session_id, scope, current_user)
+
+    if account_scope == "own" and not db.query(Account.id).filter(
+        Account.id == session.account_id,
+        Account.family_id == family_id,
+        Account.created_by == current_user.id,
+    ).first():
+        raise HTTPException(status_code=404, detail="找不到此家庭對帳工作階段")
+
+    start_utc, end_utc = _period_bounds(session.period_start, session.period_end)
+    active_match_transaction_ids = db.query(
+        ReconciliationMatch.transaction_id
+    ).filter(
+        ReconciliationMatch.family_id == family_id,
+        ReconciliationMatch.status == "active",
+    )
+
+    query = db.query(Transaction).filter(
+        Transaction.family_id == family_id,
+        Transaction.account_id == session.account_id,
+        Transaction.currency_code == session.currency_code,
+        Transaction.is_voided.is_(False),
+        Transaction.transaction_date >= start_utc,
+        Transaction.transaction_date < end_utc,
+        ~Transaction.id.in_(active_match_transaction_ids),
+    )
+    if transaction_scope == "own":
+        query = query.filter(Transaction.created_by == current_user.id)
+
+    total = query.count()
+    transactions = query.order_by(
+        Transaction.transaction_date.asc(),
+        Transaction.id.asc(),
+    ).offset(skip).limit(limit).all()
+
+    return {
+        "success": True,
+        "session_id": session.id,
+        "account_id": session.account_id,
+        "period_start": session.period_start,
+        "period_end": session.period_end,
+        "currency_code": session.currency_code,
+        "total": total,
+        "transactions": [
+            {
+                "id": item.id,
+                "transaction_date": item.transaction_date,
+                "transaction_type": item.transaction_type,
+                "amount": str(item.amount),
+                "currency_code": item.currency_code,
+                "description": item.description,
+                "external_reference": item.external_reference,
+                "created_by": item.created_by,
+                "import_row_id": item.import_row_id,
+                "status": "ledger_only",
+            }
+            for item in transactions
+        ],
+        "pagination": {"skip": skip, "limit": limit},
+        "notice": "未配對不代表錯帳；請確認是否為入帳時間差、未兌現或尚未匯入的銀行明細。",
+    }

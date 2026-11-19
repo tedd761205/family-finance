@@ -292,3 +292,83 @@ def test_one_statement_row_can_match_multiple_transactions_and_be_unmatched_with
         ).all()
     assert len(matches) == 2
     assert all(item.status == "voided" and item.void_reason for item in matches)
+
+
+
+def test_ledger_only_lists_unmatched_transactions_and_excludes_matched_voided_and_out_of_period(
+    reconciliation_match_client,
+):
+    client = reconciliation_match_client
+    headers, family_id, account_id, user_id = _create_family_account(client)
+    _, row_id, session_id = _create_confirmed_statement(
+        client, headers, family_id, account_id, user_id
+    )
+
+    with Session(engine) as db:
+        ledger_only_id = _create_transaction(
+            db, family_id, account_id, user_id, "1250.0000", "現金加值待核對"
+        )
+        matched_id = _create_transaction(
+            db, family_id, account_id, user_id, "3000.0000", "百貨公司消費"
+        )
+        voided_id = _create_transaction(
+            db, family_id, account_id, user_id, "700.0000", "已作廢交易"
+        )
+        out_of_period_id = _create_transaction(
+            db, family_id, account_id, user_id, "800.0000", "期間外交易"
+        )
+        voided = db.query(Transaction).filter(Transaction.id == voided_id).one()
+        voided.is_voided = True
+        outside = db.query(Transaction).filter(Transaction.id == out_of_period_id).one()
+        outside.transaction_date = datetime(2026, 12, 1, 2, 0, tzinfo=timezone.utc)
+        db.commit()
+
+    matched = client.post(
+        f"/reconciliations/sessions/{session_id}/matches?family_id={family_id}",
+        headers=headers,
+        json={
+            "bank_import_row_id": row_id,
+            "transaction_id": matched_id,
+            "allocated_amount": "3000.0000",
+        },
+    )
+    assert matched.status_code == 201, matched.text
+
+    response = client.get(
+        f"/reconciliations/sessions/{session_id}/ledger-only?family_id={family_id}",
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["total"] == 1
+    assert [item["id"] for item in payload["transactions"]] == [ledger_only_id]
+    assert payload["transactions"][0]["status"] == "ledger_only"
+    assert "不代表錯帳" in payload["notice"]
+
+
+def test_ledger_only_endpoint_supports_pagination(reconciliation_match_client):
+    client = reconciliation_match_client
+    headers, family_id, account_id, user_id = _create_family_account(client)
+    _, _, session_id = _create_confirmed_statement(
+        client, headers, family_id, account_id, user_id
+    )
+
+    with Session(engine) as db:
+        first_id = _create_transaction(
+            db, family_id, account_id, user_id, "100.0000", "未配對 A"
+        )
+        second_id = _create_transaction(
+            db, family_id, account_id, user_id, "200.0000", "未配對 B"
+        )
+        db.commit()
+
+    response = client.get(
+        f"/reconciliations/sessions/{session_id}/ledger-only?family_id={family_id}&skip=1&limit=1",
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["total"] == 2
+    assert len(payload["transactions"]) == 1
+    assert payload["transactions"][0]["id"] == second_id
+    assert payload["pagination"] == {"skip": 1, "limit": 1}
