@@ -73,3 +73,10 @@ def test_balance_check_rejects_unknown_account_type():
             statement_opening_balance=None,
             statement_closing_balance=None,
         )
+
+
+def test_balance_check_route_is_registered():
+    from main import app
+
+    route = app.openapi()["paths"]["/reconciliations/sessions/{session_id}/balance-check"]
+    assert "get" in route
