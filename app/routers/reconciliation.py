@@ -236,12 +236,19 @@ def list_reconciliation_sessions(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    scope, _ = _authorize(db, current_user, family_id, "reconciliation.view")
+    scope, roles = _authorize(db, current_user, family_id, "reconciliation.view")
+    account_scope = _require_scope(db, roles, family_id, "accounts")
     query = db.query(ReconciliationSession).filter(
         ReconciliationSession.family_id == family_id
     )
     if scope == "own":
         query = query.filter(ReconciliationSession.created_by == current_user.id)
+    if account_scope == "own":
+        query = query.join(
+            Account,
+            (Account.id == ReconciliationSession.account_id)
+            & (Account.family_id == ReconciliationSession.family_id),
+        ).filter(Account.created_by == current_user.id)
     if account_id is not None:
         query = query.filter(ReconciliationSession.account_id == account_id)
     if session_status is not None:
@@ -269,8 +276,17 @@ def get_reconciliation_session(
     db: Session = Depends(get_db),
 ):
     scope, roles = _authorize(db, current_user, family_id, "reconciliation.view")
+    account_scope = _require_scope(db, roles, family_id, "accounts")
     transaction_scope = _require_scope(db, roles, family_id, "transactions")
     session = _get_session(db, family_id, session_id, scope, current_user)
+    if account_scope == "own":
+        owned_account = db.query(Account.id).filter(
+            Account.id == session.account_id,
+            Account.family_id == family_id,
+            Account.created_by == current_user.id,
+        ).first()
+        if owned_account is None:
+            raise HTTPException(status_code=404, detail="找不到此家庭對帳工作階段")
     start_utc, end_utc = _period_bounds(session.period_start, session.period_end)
 
     row_query = db.query(BankImportRow)
