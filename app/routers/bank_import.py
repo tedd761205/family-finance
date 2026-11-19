@@ -389,7 +389,7 @@ def confirm_import_batch(
     batch = _get_batch(db, family_id, batch_id, lock=True)
     _check_batch_scope(batch, current_user, import_scope)
     if batch.status != "previewed":
-        raise HTTPException(status_code=409, detail="只有尚未確認的匯入批次可以入帳")
+        raise HTTPException(status_code=409, detail="只有待確認的匯入批次可以確認")
     if create_transactions and transaction_scope == "own" and batch.created_by != current_user.id:
         raise HTTPException(status_code=404, detail="找不到此家庭匯入批次")
     account = db.query(Account).filter(
