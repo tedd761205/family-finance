@@ -1,5 +1,6 @@
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
+import re
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -125,6 +126,80 @@ def _refresh_session_counts(db: Session, session: ReconciliationSession) -> None
     session.statement_row_count = len(rows)
     session.matched_row_count = matched
     session.difference_row_count = len(rows) - matched
+
+
+def _normalize_description(value: str | None) -> str:
+    return re.sub(r"[^\w]", "", (value or "").casefold(), flags=re.UNICODE)
+
+
+def _score_reconciliation_candidate(
+    row: BankImportRow, transaction: Transaction, remaining: Decimal
+) -> dict | None:
+    tx_date = transaction.transaction_date
+    row_date = row.transaction_date
+    if tx_date.tzinfo is None:
+        tx_date = tx_date.replace(tzinfo=timezone.utc)
+    if row_date.tzinfo is None:
+        row_date = row_date.replace(tzinfo=timezone.utc)
+    date_difference_days = abs(
+        (tx_date.astimezone(TAIPEI).date() - row_date.astimezone(TAIPEI).date()).days
+    )
+    if date_difference_days > 7 or transaction.amount > remaining:
+        return None
+
+    score = 0
+    reasons = []
+    if transaction.import_row_id == row.id:
+        score += 200
+        reasons.append("此交易由同一筆銀行明細直接建立")
+    if row.external_reference and transaction.external_reference:
+        if row.external_reference.strip().casefold() == transaction.external_reference.strip().casefold():
+            score += 100
+            reasons.append("銀行交易序號完全相同")
+    if transaction.amount == remaining:
+        score += 50
+        reasons.append("交易金額等於銀行明細剩餘金額")
+    else:
+        score += 20
+        reasons.append("交易金額可納入銀行明細剩餘金額")
+    if date_difference_days == 0:
+        score += 30
+        reasons.append("交易日期相同")
+    elif date_difference_days == 1:
+        score += 20
+        reasons.append("交易日期相差 1 天")
+    elif date_difference_days <= 3:
+        score += 10
+        reasons.append("交易日期相差不超過 3 天")
+    else:
+        score += 5
+        reasons.append("交易日期相差 4 至 7 天")
+
+    row_description = _normalize_description(row.description)
+    tx_description = _normalize_description(transaction.description)
+    if row_description and tx_description:
+        if row_description == tx_description:
+            score += 20
+            reasons.append("交易說明完全相同")
+        elif row_description in tx_description or tx_description in row_description:
+            score += 10
+            reasons.append("交易說明部分相符")
+
+    confidence = "high" if score >= 150 else ("medium" if score >= 90 else "low")
+    return {
+        "transaction_id": transaction.id,
+        "transaction_date": transaction.transaction_date,
+        "transaction_type": transaction.transaction_type,
+        "amount": str(transaction.amount),
+        "currency_code": transaction.currency_code,
+        "description": transaction.description,
+        "external_reference": transaction.external_reference,
+        "allocated_amount": str(transaction.amount),
+        "date_difference_days": date_difference_days,
+        "score": score,
+        "confidence": confidence,
+        "reasons": reasons,
+    }
 
 
 def _get_session(
@@ -637,4 +712,125 @@ def void_reconciliation_match(
         },
         "bank_row": _row_state(row, allocated_after),
         "session": _session_summary(session),
+    }
+
+
+@router.post(
+    "/sessions/{session_id}/suggestions",
+    summary="產生銀行明細與正式交易的候選配對建議",
+)
+def suggest_reconciliation_matches(
+    session_id: int,
+    family_id: int = Query(..., gt=0),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    scope, roles = _authorize(db, current_user, family_id, "reconciliation.match")
+    account_scope = _require_scope(db, roles, family_id, "accounts")
+    transaction_scope = _require_scope(db, roles, family_id, "transactions")
+    session = _get_session(db, family_id, session_id, scope, current_user)
+    if session.status != "in_progress":
+        raise HTTPException(status_code=409, detail="只有進行中的對帳工作階段可以產生配對建議")
+
+    if account_scope == "own":
+        owned_account = db.query(Account.id).filter(
+            Account.id == session.account_id,
+            Account.family_id == family_id,
+            Account.created_by == current_user.id,
+        ).first()
+        if owned_account is None:
+            raise HTTPException(status_code=404, detail="找不到此家庭對帳工作階段")
+
+    start_utc, end_utc = _period_bounds(session.period_start, session.period_end)
+    rows = db.query(BankImportRow).filter(
+        BankImportRow.family_id == family_id,
+        BankImportRow.batch_id == session.source_batch_id,
+        BankImportRow.status.in_(["imported", "duplicate"]),
+        BankImportRow.transaction_date >= start_utc,
+        BankImportRow.transaction_date < end_utc,
+    ).order_by(BankImportRow.row_number.asc()).limit(500).all()
+    if not rows:
+        return {"success": True, "suggestions": [], "candidate_scan_limit": 2000}
+
+    row_ids = [row.id for row in rows]
+    allocations = db.query(
+        ReconciliationMatch.bank_import_row_id,
+        func.coalesce(func.sum(ReconciliationMatch.allocated_amount), 0),
+    ).filter(
+        ReconciliationMatch.family_id == family_id,
+        ReconciliationMatch.session_id == session.id,
+        ReconciliationMatch.status == "active",
+    ).group_by(ReconciliationMatch.bank_import_row_id).all()
+    allocated_by_row = {row_id: amount for row_id, amount in allocations}
+
+    active_transaction_ids = {
+        item[0] for item in db.query(ReconciliationMatch.transaction_id).filter(
+            ReconciliationMatch.family_id == family_id,
+            ReconciliationMatch.status == "active",
+        ).all()
+    }
+    transaction_types = sorted({row.transaction_type for row in rows if row.transaction_type})
+    search_start = start_utc - timedelta(days=7)
+    search_end = end_utc + timedelta(days=7)
+    transaction_query = db.query(Transaction).filter(
+        Transaction.family_id == family_id,
+        Transaction.account_id == session.account_id,
+        Transaction.is_voided.is_(False),
+        Transaction.currency_code == session.currency_code,
+        Transaction.transaction_type.in_(transaction_types),
+        Transaction.transaction_date >= search_start,
+        Transaction.transaction_date < search_end,
+    )
+    if transaction_scope == "own":
+        transaction_query = transaction_query.filter(Transaction.created_by == current_user.id)
+    candidate_transactions = transaction_query.order_by(
+        Transaction.transaction_date.desc(), Transaction.id.desc()
+    ).limit(2000).all()
+
+    suggestion_rows = []
+    occurrences = {}
+    for row in rows:
+        allocated = allocated_by_row.get(row.id, Decimal("0"))
+        remaining = (row.amount or Decimal("0")) - allocated
+        candidates = []
+        if remaining > 0:
+            for transaction in candidate_transactions:
+                if transaction.id in active_transaction_ids:
+                    continue
+                if transaction.import_row_id not in (None, row.id):
+                    continue
+                if transaction.transaction_type != row.transaction_type:
+                    continue
+                if transaction.currency_code != row.currency_code:
+                    continue
+                candidate = _score_reconciliation_candidate(row, transaction, remaining)
+                if candidate is None:
+                    continue
+                candidates.append(candidate)
+                occurrences.setdefault(transaction.id, set()).add(row.id)
+        candidates.sort(
+            key=lambda item: (
+                -item["score"],
+                item["date_difference_days"],
+                -item["transaction_id"],
+            )
+        )
+        suggestion_rows.append({
+            "bank_import_row": _row_state(row, allocated),
+            "remaining_amount": str(remaining),
+            "candidates": candidates[:5],
+        })
+
+    for item in suggestion_rows:
+        for candidate in item["candidates"]:
+            competing_rows = sorted(occurrences.get(candidate["transaction_id"], set()))
+            candidate["ambiguous_across_rows"] = len(competing_rows) > 1
+            candidate["competing_bank_row_ids"] = competing_rows if len(competing_rows) > 1 else []
+
+    return {
+        "success": True,
+        "session_id": session.id,
+        "suggestions": suggestion_rows,
+        "candidate_scan_limit": 2000,
+        "automatic_matches_created": 0,
     }

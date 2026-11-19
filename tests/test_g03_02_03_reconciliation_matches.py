@@ -144,7 +144,7 @@ def _create_confirmed_statement(client, headers, family_id, account_id, user_id)
     return batch_id, row_id, session.json()["session"]["id"]
 
 
-def _create_transaction(db, family_id, account_id, user_id, amount, description, transaction_type="expense"):
+def _create_transaction(db, family_id, account_id, user_id, amount, description, transaction_type="expense", external_reference=None):
     item = Transaction(
         family_id=family_id,
         account_id=account_id,
@@ -153,6 +153,7 @@ def _create_transaction(db, family_id, account_id, user_id, amount, description,
         currency_code="TWD",
         transaction_date=datetime(2026, 11, 5, 2, 0, tzinfo=timezone.utc),
         description=description,
+        external_reference=external_reference,
         created_by=user_id,
     )
     db.add(item)
@@ -171,11 +172,29 @@ def test_one_statement_row_can_match_multiple_transactions_and_be_unmatched_with
 
     with Session(engine) as db:
         tx1 = _create_transaction(db, family_id, account_id, user_id, "1000.0000", "百貨商品 A")
-        tx2 = _create_transaction(db, family_id, account_id, user_id, "2000.0000", "百貨商品 B")
+        tx2 = _create_transaction(db, family_id, account_id, user_id, "2000.0000", "百貨商品 B", external_reference="BANK-MATCH-3000")
         wrong_direction_tx = _create_transaction(
             db, family_id, account_id, user_id, "500.0000", "退款", "income"
         )
         db.commit()
+
+    suggestions = client.post(
+        f"/reconciliations/sessions/{session_id}/suggestions?family_id={family_id}",
+        headers=headers,
+    )
+    assert suggestions.status_code == 200, suggestions.text
+    suggestion_payload = suggestions.json()
+    assert suggestion_payload["automatic_matches_created"] == 0
+    candidates = suggestion_payload["suggestions"][0]["candidates"]
+    candidate_ids = {item["transaction_id"] for item in candidates}
+    assert {tx1, tx2} <= candidate_ids
+    assert wrong_direction_tx not in candidate_ids
+    exact_reference_candidate = next(item for item in candidates if item["transaction_id"] == tx2)
+    assert exact_reference_candidate["confidence"] == "high"
+    with Session(engine) as db:
+        assert db.query(ReconciliationMatch).filter(
+            ReconciliationMatch.session_id == session_id
+        ).count() == 0
 
     wrong_amount = client.post(
         f"/reconciliations/sessions/{session_id}/matches?family_id={family_id}",
