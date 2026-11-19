@@ -425,8 +425,6 @@ def create_reconciliation_match(
         raise HTTPException(status_code=422, detail="銀行明細與正式交易的收支方向不同")
     if row.currency_code != session.currency_code or transaction.currency_code != session.currency_code:
         raise HTTPException(status_code=422, detail="銀行明細與正式交易的幣別必須與對帳帳戶一致")
-    if row.currency_code != transaction.currency_code:
-        raise HTTPException(status_code=422, detail="銀行明細與正式交易的幣別不同")
     if data.allocated_amount != transaction.amount:
         raise HTTPException(
             status_code=422,
