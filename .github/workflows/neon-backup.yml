@@ -55,7 +55,7 @@ jobs:
           # Keep the exporting transaction open while pg_dump and the row-count
           # query import the same PostgreSQL snapshot.
           coproc SNAPSHOT_SESSION {
-            docker run --rm --env DATABASE_URL postgres:18-bookworm \
+            docker run --rm -i --env DATABASE_URL postgres:18-bookworm \
               psql "$DATABASE_URL" -X -qAt -v ON_ERROR_STOP=1
           }
           SNAPSHOT_PID="$SNAPSHOT_SESSION_PID"
@@ -89,7 +89,7 @@ jobs:
             --env DATABASE_URL \
             --env SNAPSHOT_ID \
             postgres:18-bookworm \
-            psql "$DATABASE_URL" -X -qAt -F '|' -v ON_ERROR_STOP=1 <<SQL > "$GITHUB_WORKSPACE/backups/row-counts.tsv"
+            psql "$DATABASE_URL" -X -qAt -F "$(printf '\\t')" -v ON_ERROR_STOP=1 <<SQL > "$GITHUB_WORKSPACE/backups/row-counts.tsv"
           BEGIN ISOLATION LEVEL REPEATABLE READ;
           SET TRANSACTION SNAPSHOT '$SNAPSHOT_ID';
           SELECT format(
