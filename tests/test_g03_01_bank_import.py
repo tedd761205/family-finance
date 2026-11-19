@@ -74,3 +74,9 @@ def test_bank_import_routes_are_registered():
     assert "/imports/batches" in schema["paths"]
     assert "/imports/batches/{batch_id}/confirm" in schema["paths"]
     assert "/imports/batches/{batch_id}/void" in schema["paths"]
+    confirm_parameters = schema["paths"]["/imports/batches/{batch_id}/confirm"]["post"]["parameters"]
+    create_transactions = next(
+        item for item in confirm_parameters if item["name"] == "create_transactions"
+    )
+    assert create_transactions["required"] is False
+    assert create_transactions["schema"]["default"] is False
