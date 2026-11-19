@@ -13,14 +13,16 @@ def test_bank_import_workspace_is_served():
     assert 'id="bank-import-confirm"' in response.text
 
 
-def test_bank_import_ui_previews_before_confirming_official_transactions():
+def test_bank_import_ui_defaults_to_statement_only_confirmation():
     with TestClient(app) as client:
         javascript = client.get("/static/app.js").text
     assert '"/imports/inspect?family_id="+selectedFamilyId' in javascript
     assert '"/imports/batches?family_id="+selectedFamilyId+"&account_id="+$("bank-import-account").value' in javascript
     assert '"/imports/batches/"+selectedImportBatchId+"/confirm?family_id="+selectedFamilyId' in javascript
     assert "尚未新增正式交易" in javascript
-    assert "確認將此批次所有" in javascript
+    assert "確認只匯入銀行對帳明細" in javascript
+    assert "&create_transactions=" in javascript
+    assert 'id="bank-import-create-transactions"' in client.get("/").text
 
 
 def test_bank_import_ui_uses_text_content_and_responsive_preview():
