@@ -89,7 +89,7 @@ jobs:
             --env DATABASE_URL \
             --env SNAPSHOT_ID \
             postgres:18-bookworm \
-            psql "$DATABASE_URL" -X -qAt -F "$(printf '\\t')" -v ON_ERROR_STOP=1 <<SQL > "$GITHUB_WORKSPACE/backups/row-counts.tsv"
+            psql "$DATABASE_URL" -X -qAt -F "$(printf '\t')" -v ON_ERROR_STOP=1 <<SQL > "$GITHUB_WORKSPACE/backups/row-counts.tsv"
           BEGIN ISOLATION LEVEL REPEATABLE READ;
           SET TRANSACTION SNAPSHOT '$SNAPSHOT_ID';
           SELECT format(
