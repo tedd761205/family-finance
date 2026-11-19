@@ -93,7 +93,7 @@ jobs:
           fi
           MANIFEST_PATH="${MANIFESTS[0]}"
           test -s "$MANIFEST_PATH"
-          if ! awk -F '|' 'NF != 2 || $1 == "" || $2 !~ /^[0-9]+$/ { exit 1 }' "$MANIFEST_PATH"; then
+          if ! awk -F '\\t' 'NF != 2 || $1 == "" || $2 !~ /^[0-9]+$/ { exit 1 }' "$MANIFEST_PATH"; then
             echo "Backup row-count manifest has an invalid format."
             exit 1
           fi
@@ -286,7 +286,7 @@ jobs:
             exit 1
           fi
           docker run --rm --env DATABASE_URL postgres:18-bookworm \
-            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -AtF '|' \
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -AtF "$(printf '\\t')" \
             -c "$COUNT_QUERY ORDER BY table_name" > /tmp/restored-row-counts.tsv
 
           sort "$MANIFEST_PATH" > /tmp/expected-row-counts.tsv
