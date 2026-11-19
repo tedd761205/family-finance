@@ -1,7 +1,7 @@
 # G-03-02 銀行／信用卡對帳工作區設計
 
-狀態：設計基線（供後續 G-03-02 API、Migration、UI 與測試實作依據）  
-基準主線：`66204cbb0cecc2ba9ba315881a532ce3af723d76`（G-03-01）
+狀態：G-03-02-01 至 G-03-02-05 已合併；G-03-02-06 響應式工作區開發中  
+基準主線：`9e7ecf93ea757340ba446d7ee9f7c36a43ba0f0e`（G-03-02-05）
 
 ## 1. 目標與邊界
 
@@ -23,7 +23,7 @@ G-03-01 負責將 CSV 保存為銀行／信用卡原始對帳明細。人工確�
 - status：draft、in_progress、completed、cancelled
 - source_batch_id（可空；關聯 G-03-01 匯入批次）
 - opening_balance、closing_balance（可空；只有來源提供時才填）
-- statement_row_count、matched_row_count、difference_row_count
+- statement_row_count、matched_row_count、difference_row_count、excluded_row_count
 - created_by、created_at、completed_by、completed_at、updated_at
 
 同一家庭、同一帳戶、相同期間不得存在多筆未取消工作階段。已完成工作階段不可直接編輯；如需更正，建立明確的重新開啟／更正流程並留下稽核紀錄。
@@ -47,6 +47,12 @@ G-03-01 負責將 CSV 保存為銀行／信用卡原始對帳明細。人工確�
 - 已作廢交易不可配對；已匯入來源列必須屬於該對帳批次。
 
 資料庫負責可表達的唯一性、外鍵與正數約束；跨多筆合計及狀態轉移由交易鎖定與服務層在同一資料庫交易中驗證。
+
+
+
+### 2.3 reconciliation_exclusions（人工排除紀錄）
+
+排除資料採獨立資料表保存，不修改銀行匯入原始列。每筆有效排除必須有原因、操作者與時間；解除排除採軟作廢，保留解除者、時間與原因。資料庫以 family/session/batch/import-row 複合外鍵隔離家庭，並以部分唯一索引確保同一工作階段與銀行列最多只有一筆有效排除。已配對或部分配對的銀行列必須先解除配對，才可排除。
 
 ## 3. 核對狀態與差異
 
@@ -90,6 +96,7 @@ G-03-01 負責將 CSV 保存為銀行／信用卡原始對帳明細。人工確�
 - `POST /sessions/{session_id}/matches`：人工建立一筆配對；可多次呼叫完成拆分。
 - `DELETE /sessions/{session_id}/matches/{match_id}`：作廢配對，需理由，不刪除歷史。
 - `POST /sessions/{session_id}/exclude`：排除銀行列，需理由。
+- `POST /sessions/{session_id}/exclusions/{exclusion_id}/void`：解除排除，需理由並保留歷史。
 - `POST /sessions/{session_id}/complete`：檢查所有銀行列均已 matched 或 excluded，再完成對帳。
 - `POST /sessions/{session_id}/reopen`：受限更正流程；需權限、理由與完整稽核。
 
@@ -153,9 +160,8 @@ G-03-01 負責將 CSV 保存為銀行／信用卡原始對帳明細。人工確�
 - G-03-02-01：資料模型、Migration、權限目錄與模型測試。
 - G-03-02-02：對帳 Session API、資料範圍及稽核測試。
 - G-03-02-03：人工配對／解除 API、金額驗證、併發防重與稽核測試。
-- G-03-02-05：排除明細、完成對帳及重新開啟流程。
-- G-03-02-04：候選比對建議與可解釋分數。
-- G-03-02-05：完成／重新開啟流程及稽核。
-- G-03-02-06：響應式對帳工作區與端對端測試。
+- G-03-02-04：候選比對建議與可解釋分數（PR #46，已合併）。
+- G-03-02-05：排除明細、完成對帳及重新開啟流程（PR #47，已合併）。
+- G-03-02-06：響應式對帳工作區、人工候選確認、手動搜尋配對及 Web smoke tests（開發中）。
 
 第一版以人工核對與資料完整性為優先，自動比對僅提供建議，避免錯誤配對影響家庭帳務。
