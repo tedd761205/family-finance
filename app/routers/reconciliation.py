@@ -1048,6 +1048,99 @@ def complete_reconciliation_session(
                     "excluded_row_count": session.excluded_row_count,
                     "difference_row_count": session.difference_row_count},
         )
+    # Full two-way validation: bank rows, ledger-only transactions, unresolved issues,
+    # and statement opening/closing balances must all be accounted for.
+    start_utc, end_utc = _period_bounds(session.period_start, session.period_end)
+    explained_ledger_ids = db.query(ReconciliationIssue.transaction_id).filter(
+        ReconciliationIssue.family_id == family_id,
+        ReconciliationIssue.session_id == session.id,
+        ReconciliationIssue.category == "ledger_only",
+        ReconciliationIssue.status == "resolved",
+        ReconciliationIssue.transaction_id.isnot(None),
+    )
+    active_match_transaction_ids = db.query(ReconciliationMatch.transaction_id).filter(
+        ReconciliationMatch.family_id == family_id,
+        ReconciliationMatch.status == "active",
+    )
+    ledger_only_count = db.query(Transaction.id).filter(
+        Transaction.family_id == family_id,
+        Transaction.account_id == session.account_id,
+        Transaction.currency_code == session.currency_code,
+        Transaction.is_voided.is_(False),
+        Transaction.transaction_type.in_(["income", "expense"]),
+        Transaction.transaction_date >= start_utc,
+        Transaction.transaction_date < end_utc,
+        ~Transaction.id.in_(active_match_transaction_ids),
+        ~Transaction.id.in_(explained_ledger_ids),
+    ).count()
+    open_issue_count = db.query(ReconciliationIssue.id).filter(
+        ReconciliationIssue.family_id == family_id,
+        ReconciliationIssue.session_id == session.id,
+        ReconciliationIssue.status == "open",
+    ).count()
+
+    account = db.query(Account).filter(
+        Account.id == session.account_id, Account.family_id == family_id
+    ).first()
+    from app.services.reconciliation_balance import calculate_reconciliation_balance_check
+
+    balance_query = db.query(Transaction).filter(
+        Transaction.family_id == family_id,
+        Transaction.account_id == session.account_id,
+        Transaction.currency_code == session.currency_code,
+        Transaction.is_voided.is_(False),
+    )
+    opening_ledger = balance_query.filter(
+        Transaction.transaction_type == "opening_balance"
+    ).with_entities(func.coalesce(func.sum(Transaction.amount), 0)).scalar()
+    prior_values = balance_query.filter(
+        Transaction.transaction_type.in_(["income", "expense"]),
+        Transaction.transaction_date < start_utc,
+    ).with_entities(
+        Transaction.transaction_type, func.coalesce(func.sum(Transaction.amount), 0)
+    ).group_by(Transaction.transaction_type).all()
+    period_values = balance_query.filter(
+        Transaction.transaction_type.in_(["income", "expense"]),
+        Transaction.transaction_date >= start_utc,
+        Transaction.transaction_date < end_utc,
+    ).with_entities(
+        Transaction.transaction_type, func.coalesce(func.sum(Transaction.amount), 0)
+    ).group_by(Transaction.transaction_type).all()
+    prior_totals = {kind: Decimal(str(amount or 0)) for kind, amount in prior_values}
+    period_totals = {kind: Decimal(str(amount or 0)) for kind, amount in period_values}
+    balance_result = calculate_reconciliation_balance_check(
+        account_type=account.account_type,
+        opening_balance=Decimal(str(opening_ledger or 0)),
+        prior_income=prior_totals.get("income", Decimal("0")),
+        prior_expense=prior_totals.get("expense", Decimal("0")),
+        period_income=period_totals.get("income", Decimal("0")),
+        period_expense=period_totals.get("expense", Decimal("0")),
+        statement_opening_balance=session.opening_balance,
+        statement_closing_balance=session.closing_balance,
+    )
+    balance_mismatch = (
+        balance_result["opening_matches"] is False
+        or balance_result["closing_matches"] is False
+    )
+    if ledger_only_count or open_issue_count or balance_mismatch:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "雙向對帳仍有未處理項目，不能完成對帳",
+                "ledger_only_count": ledger_only_count,
+                "open_issue_count": open_issue_count,
+                "balance_mismatch": balance_mismatch,
+                "opening_difference": (
+                    str(balance_result["opening_difference"])
+                    if balance_result["opening_difference"] is not None else None
+                ),
+                "closing_difference": (
+                    str(balance_result["closing_difference"])
+                    if balance_result["closing_difference"] is not None else None
+                ),
+            },
+        )
+
     old_values = {"status": session.status}
     session.status = "completed"
     session.completed_by = current_user.id
@@ -1458,3 +1551,161 @@ def resolve_reconciliation_issue(
     db.commit()
     db.refresh(item)
     return {"success": True, "issue": _issue_summary(item)}
+
+
+@router.get(
+    "/sessions/{session_id}/final-report",
+    summary="取得雙向對帳驗收報告",
+)
+def get_reconciliation_final_report(
+    session_id: int,
+    family_id: int = Query(..., gt=0),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Read-only final report for bank rows, ledger-only entries, issues and balances."""
+    scope, roles = _authorize(db, current_user, family_id, "reconciliation.view")
+    account_scope = _require_scope(db, roles, family_id, "accounts")
+    transaction_scope = _require_scope(db, roles, family_id, "transactions")
+    session = _get_session(db, family_id, session_id, scope, current_user)
+    if account_scope == "own" and not db.query(Account.id).filter(
+        Account.id == session.account_id,
+        Account.family_id == family_id,
+        Account.created_by == current_user.id,
+    ).first():
+        raise HTTPException(status_code=404, detail="找不到此家庭對帳工作階段")
+    if transaction_scope != "family":
+        raise HTTPException(
+            status_code=403,
+            detail="完整驗收報告需要家庭層級交易資料範圍",
+        )
+
+    _refresh_session_counts(db, session)
+    start_utc, end_utc = _period_bounds(session.period_start, session.period_end)
+    active_match_transaction_ids = db.query(ReconciliationMatch.transaction_id).filter(
+        ReconciliationMatch.family_id == family_id,
+        ReconciliationMatch.status == "active",
+    )
+    explained_ledger_ids = db.query(ReconciliationIssue.transaction_id).filter(
+        ReconciliationIssue.family_id == family_id,
+        ReconciliationIssue.session_id == session.id,
+        ReconciliationIssue.category == "ledger_only",
+        ReconciliationIssue.status == "resolved",
+        ReconciliationIssue.transaction_id.isnot(None),
+    )
+    ledger_only_query = db.query(Transaction).filter(
+        Transaction.family_id == family_id,
+        Transaction.account_id == session.account_id,
+        Transaction.currency_code == session.currency_code,
+        Transaction.is_voided.is_(False),
+        Transaction.transaction_type.in_(["income", "expense"]),
+        Transaction.transaction_date >= start_utc,
+        Transaction.transaction_date < end_utc,
+        ~Transaction.id.in_(active_match_transaction_ids),
+        ~Transaction.id.in_(explained_ledger_ids),
+    )
+    ledger_only_count = ledger_only_query.count()
+    open_issues = db.query(ReconciliationIssue).filter(
+        ReconciliationIssue.family_id == family_id,
+        ReconciliationIssue.session_id == session.id,
+        ReconciliationIssue.status == "open",
+    ).order_by(ReconciliationIssue.created_at.asc(), ReconciliationIssue.id.asc()).all()
+    resolved_issue_count = db.query(ReconciliationIssue.id).filter(
+        ReconciliationIssue.family_id == family_id,
+        ReconciliationIssue.session_id == session.id,
+        ReconciliationIssue.status == "resolved",
+    ).count()
+    issue_counts = {
+        category: db.query(ReconciliationIssue.id).filter(
+            ReconciliationIssue.family_id == family_id,
+            ReconciliationIssue.session_id == session.id,
+            ReconciliationIssue.category == category,
+        ).count()
+        for category in (
+            "bank_only", "ledger_only", "amount_mismatch",
+            "date_mismatch", "pending", "explained",
+        )
+    }
+
+    account = db.query(Account).filter(
+        Account.id == session.account_id, Account.family_id == family_id
+    ).first()
+    from app.services.reconciliation_balance import calculate_reconciliation_balance_check
+
+    base_query = db.query(Transaction).filter(
+        Transaction.family_id == family_id,
+        Transaction.account_id == session.account_id,
+        Transaction.currency_code == session.currency_code,
+        Transaction.is_voided.is_(False),
+    )
+    opening_ledger = base_query.filter(
+        Transaction.transaction_type == "opening_balance"
+    ).with_entities(func.coalesce(func.sum(Transaction.amount), 0)).scalar()
+    def grouped_totals(query):
+        return {
+            kind: Decimal(str(amount or 0))
+            for kind, amount in query.with_entities(
+                Transaction.transaction_type,
+                func.coalesce(func.sum(Transaction.amount), 0),
+            ).group_by(Transaction.transaction_type).all()
+        }
+    prior = grouped_totals(base_query.filter(
+        Transaction.transaction_type.in_(["income", "expense"]),
+        Transaction.transaction_date < start_utc,
+    ))
+    period = grouped_totals(base_query.filter(
+        Transaction.transaction_type.in_(["income", "expense"]),
+        Transaction.transaction_date >= start_utc,
+        Transaction.transaction_date < end_utc,
+    ))
+    balance = calculate_reconciliation_balance_check(
+        account_type=account.account_type,
+        opening_balance=Decimal(str(opening_ledger or 0)),
+        prior_income=prior.get("income", Decimal("0")),
+        prior_expense=prior.get("expense", Decimal("0")),
+        period_income=period.get("income", Decimal("0")),
+        period_expense=period.get("expense", Decimal("0")),
+        statement_opening_balance=session.opening_balance,
+        statement_closing_balance=session.closing_balance,
+    )
+    balance_mismatch = (
+        balance["opening_matches"] is False or balance["closing_matches"] is False
+    )
+    ready = (
+        session.difference_row_count == 0
+        and ledger_only_count == 0
+        and len(open_issues) == 0
+        and not balance_mismatch
+    )
+    return {
+        "success": True,
+        "session": _session_summary(session),
+        "bank_side": {
+            "statement_rows": session.statement_row_count,
+            "matched_rows": session.matched_row_count,
+            "excluded_rows": session.excluded_row_count,
+            "unresolved_rows": session.difference_row_count,
+        },
+        "ledger_side": {
+            "unmatched_transactions": ledger_only_count,
+            "notice": "未配對帳務交易可能是入帳時間差；需人工說明並結案，不會自動補帳",
+        },
+        "issues": {
+            "open_count": len(open_issues),
+            "resolved_count": resolved_issue_count,
+            "category_counts": issue_counts,
+            "open_items": [_issue_summary(item) for item in open_issues],
+        },
+        "balance_check": {
+            key: str(value) if isinstance(value, Decimal) else value
+            for key, value in balance.items()
+        },
+        "ready_to_complete": ready,
+        "completion_blockers": {
+            "unresolved_bank_rows": session.difference_row_count,
+            "unmatched_ledger_transactions": ledger_only_count,
+            "open_issues": len(open_issues),
+            "balance_mismatch": balance_mismatch,
+        },
+        "read_only": True,
+    }
