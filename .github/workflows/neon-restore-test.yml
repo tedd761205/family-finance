@@ -289,13 +289,13 @@ jobs:
 
       - name: Download and verify private dump and row-count manifest from Neon Object Storage
         env:
-          BACKUP_OBJECT_KEY: \${{ steps.backup_source.outputs.backup_object_key }}
-          BACKUP_MANIFEST_KEY: \${{ steps.backup_source.outputs.backup_manifest_key }}
-          NEON_STORAGE_ENDPOINT: \${{ vars.NEON_STORAGE_ENDPOINT }}
-          NEON_STORAGE_REGION: \${{ vars.NEON_STORAGE_REGION }}
-          NEON_BACKUP_BUCKET: \${{ vars.NEON_BACKUP_BUCKET }}
-          NEON_RESTORE_S3_ACCESS_KEY_ID: \${{ secrets.NEON_RESTORE_S3_ACCESS_KEY_ID }}
-          NEON_RESTORE_S3_SECRET_ACCESS_KEY: \${{ secrets.NEON_RESTORE_S3_SECRET_ACCESS_KEY }}
+          BACKUP_OBJECT_KEY: ${{ steps.backup_source.outputs.backup_object_key }}
+          BACKUP_MANIFEST_KEY: ${{ steps.backup_source.outputs.backup_manifest_key }}
+          NEON_STORAGE_ENDPOINT: ${{ vars.NEON_STORAGE_ENDPOINT }}
+          NEON_STORAGE_REGION: ${{ vars.NEON_STORAGE_REGION }}
+          NEON_BACKUP_BUCKET: ${{ vars.NEON_BACKUP_BUCKET }}
+          NEON_RESTORE_S3_ACCESS_KEY_ID: ${{ secrets.NEON_RESTORE_S3_ACCESS_KEY_ID }}
+          NEON_RESTORE_S3_SECRET_ACCESS_KEY: ${{ secrets.NEON_RESTORE_S3_SECRET_ACCESS_KEY }}
         run: |
           set -euo pipefail
           mkdir -p restore-input
