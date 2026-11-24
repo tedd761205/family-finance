@@ -15,6 +15,7 @@ on:
 permissions:
   actions: read
   contents: read
+  pull-requests: read
 
 concurrency:
   group: neon-restore-test
@@ -107,10 +108,35 @@ jobs:
           run = github_get(f"/repos/{encoded_repo}/actions/runs/{run_id}")
           if run.get("status") != "completed" or run.get("conclusion") != "success":
               raise SystemExit("Refusing to restore: selected backup workflow run has not completed successfully.")
-          if run.get("head_branch") not in {"main", "fix/restore-backup-row-count-manifest"}:
-              raise SystemExit("Refusing to restore: selected backup run was not created from main or the explicitly allowed review branch.")
-          if run.get("event") not in {"schedule", "workflow_dispatch", "push"}:
-              raise SystemExit("Refusing to restore: selected run was not a scheduled, manually dispatched, or explicitly allowed PR-branch push backup.")
+          head_branch = run.get("head_branch")
+          head_sha = run.get("head_sha") or ""
+          if not head_sha:
+              raise SystemExit("Selected backup run has no source commit SHA.")
+          if head_branch == "main":
+              if run.get("event") not in {"schedule", "workflow_dispatch"}:
+                  raise SystemExit("Refusing to restore: main-branch backups must come from a scheduled or manual backup run.")
+              ref = github_get(f"/repos/{encoded_repo}/git/ref/heads/main")
+              current_sha = (ref.get("object") or {}).get("sha")
+              if not current_sha or head_sha != current_sha:
+                  raise SystemExit("Refusing to restore: the main-branch backup was created from a stale commit.")
+          elif head_branch == "fix/restore-backup-row-count-manifest":
+              if run.get("event") != "workflow_dispatch":
+                  raise SystemExit("Refusing to restore: pre-merge PR backups must be manually dispatched.")
+              pr = github_get(f"/repos/{encoded_repo}/pulls/59")
+              pr_head = pr.get("head") or {}
+              pr_base = pr.get("base") or {}
+              pr_head_repo = pr_head.get("repo") or {}
+              if (
+                  pr.get("state") != "open"
+                  or pr.get("draft") is not True
+                  or pr_head.get("ref") != head_branch
+                  or pr_head_repo.get("full_name") != repository
+                  or pr_base.get("ref") != "main"
+                  or pr_head.get("sha") != head_sha
+              ):
+                  raise SystemExit("Refusing to restore: PR #59 is not open as a draft at the exact commit used by this backup run.")
+          else:
+              raise SystemExit("Refusing to restore: backup run was not created from an approved branch.")
           head_repository = (run.get("head_repository") or {}).get("full_name")
           if head_repository != repository:
               raise SystemExit("Refusing to restore: selected backup run did not originate from this repository.")
@@ -133,10 +159,6 @@ jobs:
           ]
           if len(matches) != 1 or matches[0].get("size_in_bytes", 0) <= 0:
               raise SystemExit("Refusing to restore: expected exactly one non-empty, unexpired backup artifact from the selected run.")
-          head_sha = run.get("head_sha") or ""
-          if not head_sha:
-              raise SystemExit("Selected backup run has no source commit SHA.")
-
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
               output.write(f"artifact_name={artifact_name}\n")
               output.write(f"run_number={run_number}\n")
@@ -147,7 +169,7 @@ jobs:
               provenance_file.write(f"backup_head_sha={head_sha}\n")
               provenance_file.write(f"backup_workflow_id={workflow_id}\n")
               provenance_file.write(f"backup_artifact_name={artifact_name}\n")
-          print("GitHub confirmed a successful main-branch Neon Database Backup run and its exact artifact.")
+          print("GitHub confirmed a successful backup from the current main commit or the exact open PR #59 head, plus its exact artifact.")
           PY
 
       - name: Download backup artifact from selected run
