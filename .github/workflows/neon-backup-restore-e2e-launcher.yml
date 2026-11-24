@@ -79,7 +79,14 @@ jobs:
               _, result = api("GET", "/actions/workflows/" + urllib.parse.quote(filename, safe=""))
               if not result or not result.get("id") or result.get("path") != path:
                   raise SystemExit(f"Could not resolve the expected workflow file: {path}")
-              return result["id"]
+              wid = result["id"]
+              if result.get("state") != "active":
+                  print(f"Enabling the explicitly selected workflow: {path} (current state: {result.get('state')})", flush=True)
+                  api("PUT", f"/actions/workflows/{wid}/enable")
+                  _, refreshed = api("GET", "/actions/workflows/" + urllib.parse.quote(filename, safe=""))
+                  if not refreshed or refreshed.get("state") != "active":
+                      raise SystemExit(f"Could not enable the selected workflow: {path}")
+              return wid
 
           def dispatch_and_wait(workflow_path, inputs=None, timeout_minutes=45):
               wid = workflow_id(workflow_path)
