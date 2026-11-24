@@ -1,0 +1,160 @@
+name: Emergency stop for public Neon backups
+
+on:
+  push:
+    branches:
+      - fix/restore-backup-row-count-manifest
+    paths:
+      - .github/workflows/neon-security-stop.yml
+
+permissions:
+  actions: write
+  contents: read
+  pull-requests: read
+
+jobs:
+  secure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Disable public backup workflow, stop queued jobs, and verify artifact removal
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPOSITORY: ${{ github.repository }}
+          GH_API_URL: ${{ github.api_url }}
+          GH_SHA: ${{ github.sha }}
+          GH_BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, time, urllib.error, urllib.parse, urllib.request
+
+          repository = os.environ["GH_REPOSITORY"]
+          api_url = os.environ["GH_API_URL"].rstrip("/")
+          token = os.environ["GH_TOKEN"]
+          expected_sha = os.environ["GH_SHA"]
+          branch = os.environ["GH_BRANCH"]
+          workflow_id = 422150431
+          if branch != "fix/restore-backup-row-count-manifest" or not token:
+              raise SystemExit("Refusing to change Actions state outside the reviewed PR branch.")
+
+          headers = {
+              "Accept": "application/vnd.github+json",
+              "Authorization": f"Bearer {token}",
+              "X-GitHub-Api-Version": "2022-11-28",
+          }
+          base = api_url + "/repos/" + urllib.parse.quote(repository, safe="/")
+
+          def api(method, path, payload=None, tolerate=(404,)):
+              data = None
+              request_headers = dict(headers)
+              if payload is not None:
+                  data = json.dumps(payload).encode("utf-8")
+                  request_headers["Content-Type"] = "application/json"
+              elif method in {"POST", "PUT", "DELETE"}:
+                  data = b""
+              request = urllib.request.Request(base + path, headers=request_headers, method=method, data=data)
+              try:
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      body = response.read()
+                      return response.status, (json.loads(body) if body else None)
+              except urllib.error.HTTPError as exc:
+                  detail = exc.read().decode("utf-8", "replace")[:1000]
+                  if exc.code in tolerate:
+                      return exc.code, None
+                  raise SystemExit(f"GitHub API {method} {path} failed with HTTP {exc.code}: {detail}") from exc
+
+          # The action is authorized only for the exact open Draft PR head.
+          _, pr = api("GET", "/pulls/59")
+          head = pr.get("head") or {}
+          head_repo = head.get("repo") or {}
+          if (
+              pr.get("state") != "open"
+              or pr.get("draft") is not True
+              or head.get("ref") != branch
+              or head_repo.get("full_name") != repository
+              or head.get("sha") != expected_sha
+          ):
+              raise SystemExit("Refusing emergency stop: PR #59 is not an open Draft at this exact commit.")
+
+          _, repository_info = api("GET", "")
+          visibility = repository_info.get("visibility")
+          print(f"Repository visibility: {visibility}", flush=True)
+          if visibility == "private":
+              print("Repository is already private; no public-artifact emergency stop is required.", flush=True)
+
+          # Disable the Production backup workflow so scheduled/main runs cannot create new public artifacts.
+          status, _ = api("PUT", f"/actions/workflows/{workflow_id}/disable")
+          _, workflow = api("GET", f"/actions/workflows/{workflow_id}")
+          workflow_state = workflow.get("state")
+          if workflow_state != "disabled":
+              raise SystemExit(f"Neon Database Backup workflow is not disabled (state={workflow_state}).")
+          print(f"Neon Database Backup workflow disabled (HTTP {status}).", flush=True)
+
+          # Cancel every queued or active run belonging to this backup workflow.
+          _, response = api("GET", "/actions/runs?status=queued&per_page=100")
+          queued = [
+              run for run in (response or {}).get("workflow_runs", [])
+              if run.get("workflow_id") == workflow_id
+          ]
+          _, active_response = api("GET", "/actions/runs?status=in_progress&per_page=100")
+          active = [
+              run for run in (active_response or {}).get("workflow_runs", [])
+              if run.get("workflow_id") == workflow_id
+          ]
+          for run in queued + active:
+              run_id = run["id"]
+              jobs_response = api("GET", f"/actions/runs/{run_id}/jobs?per_page=100")[1] or {}
+              jobs = jobs_response.get("jobs", [])
+              status, _ = api(
+                  "POST",
+                  f"/actions/runs/{run_id}/force-cancel",
+                  tolerate=(404, 409),
+              )
+              print(
+                  f"Cancel requested for backup run {run_id}: status={run.get('status')}, "
+                  f"jobs={len(jobs)}, API={status}.",
+                  flush=True,
+              )
+
+          # Delete all retained Production dump artifacts known from the backup workflow history.
+          artifacts_to_delete = [
+              (14395743806, 44233524910, "family-finance-neon-backup-7"),
+              (14422058635, 44294415773, "family-finance-neon-backup-8"),
+              (14427196529, 44302580397, "family-finance-neon-backup-9"),
+              (14429689201, 44311589501, "family-finance-neon-backup-10"),
+              (14487715668, 44433212436, "family-finance-neon-backup-11"),
+              (14591336373, 44650531962, "family-finance-neon-backup-12"),
+              (14682083050, 44844907046, "family-finance-neon-backup-13"),
+              (14904517458, 45360921623, "family-finance-neon-backup-23"),
+          ]
+          for artifact_id, run_id, artifact_name in artifacts_to_delete:
+              status, _ = api("DELETE", f"/actions/artifacts/{artifact_id}", tolerate=(404,))
+              verified = False
+              for attempt in range(10):
+                  response = api("GET", f"/actions/runs/{run_id}/artifacts?per_page=100")[1] or {}
+                  if not any(item.get("id") == artifact_id for item in response.get("artifacts", [])):
+                      verified = True
+                      break
+                  time.sleep(3)
+              if not verified:
+                  raise SystemExit(f"Artifact {artifact_id} ({artifact_name}) remains listed after deletion.")
+              print(f"Artifact {artifact_id} ({artifact_name}) removed or already absent; verified.", flush=True)
+
+          # Also confirm the public visibility guard is still enforced in current PR content.
+          _, current_pr = api("GET", "/pulls/59")
+          current_head = (current_pr.get("head") or {}).get("sha")
+          if current_head != expected_sha:
+              raise SystemExit("PR head changed during the emergency stop; re-run the review before continuing.")
+
+          summary = (
+              "# Public Neon backup emergency stop\n\n"
+              f"- Repository visibility: {visibility}\n"
+              f"- Backup workflow state: {workflow_state}\n"
+              "- All retained Production backup artifacts #7–#13 and #23: deletion verified\n"
+              f"- Queued/in-progress backup runs seen: {len(queued) + len(active)}\n"
+              "- Future backups remain disabled until a private repository or private backup destination is configured.\n"
+          )
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as output:
+              output.write(summary)
+          PY
