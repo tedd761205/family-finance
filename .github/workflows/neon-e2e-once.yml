@@ -1,4 +1,4 @@
-name: One-time Neon backup and restore rehearsal
+name: Emergency purge of public database backup artifact
 
 on:
   push:
@@ -8,20 +8,15 @@ on:
       - .github/workflows/neon-e2e-once.yml
 
 permissions:
-  actions: read
+  actions: write
   contents: read
   pull-requests: read
 
-concurrency:
-  group: neon-e2e-one-time-rehearsal
-  cancel-in-progress: true
-
 jobs:
-  e2e:
+  purge:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
     steps:
-      - name: Verify the push-triggered backup and isolated restore test
+      - name: Delete and verify removal of the public backup artifact
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPOSITORY: ${{ github.repository }}
@@ -31,34 +26,35 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, os, time, urllib.error, urllib.parse, urllib.request
+          import json, os, urllib.error, urllib.request
 
           repository = os.environ["GH_REPOSITORY"]
-          token = os.environ["GH_TOKEN"]
           api_url = os.environ["GH_API_URL"].rstrip("/")
+          token = os.environ["GH_TOKEN"]
           expected_sha = os.environ["GH_SHA"]
           branch = os.environ["GH_BRANCH"]
           if branch != "fix/restore-backup-row-count-manifest":
-              raise SystemExit("Refusing E2E outside the reviewed PR branch.")
-          if not token or not expected_sha:
-              raise SystemExit("Missing GitHub token or source commit SHA.")
-
+              raise SystemExit("Refusing to modify artifacts outside the reviewed PR branch.")
           headers = {
               "Accept": "application/vnd.github+json",
-              "Authorization": "Bearer " + token,
+              "Authorization": f"Bearer {token}",
               "X-GitHub-Api-Version": "2022-11-28",
           }
-          base = api_url + "/repos/" + urllib.parse.quote(repository, safe="/")
 
-          def api_get(path):
-              request = urllib.request.Request(base + path, headers=headers)
+          def request(method, path):
+              req = urllib.request.Request(api_url + path, headers=headers, method=method, data=b"" if method == "DELETE" else None)
               try:
-                  with urllib.request.urlopen(request, timeout=30) as response:
-                      return json.load(response)
-              except (urllib.error.HTTPError, urllib.error.URLError) as exc:
-                  raise SystemExit(f"GitHub API GET {path} failed.") from exc
+                  with urllib.request.urlopen(req, timeout=30) as response:
+                      payload = response.read()
+                      return response.status, json.loads(payload) if payload else None
+              except urllib.error.HTTPError as exc:
+                  detail = exc.read().decode("utf-8", "replace")[:1000]
+                  if method == "DELETE" and exc.code == 404:
+                      return 404, None
+                  raise SystemExit(f"GitHub API {method} failed with HTTP {exc.code}: {detail}") from exc
 
-          pr = api_get("/pulls/59")
+          repo_path = "/repos/" + repository
+          _, pr = request("GET", repo_path + "/pulls/59")
           head = pr.get("head") or {}
           head_repo = head.get("repo") or {}
           if (
@@ -68,65 +64,27 @@ jobs:
               or head_repo.get("full_name") != repository
               or head.get("sha") != expected_sha
           ):
-              raise SystemExit("Refusing E2E: PR #59 is not an open Draft at this exact commit.")
-          print(f"Verified PR #59 exact head: {expected_sha}", flush=True)
+              raise SystemExit("Refusing artifact deletion: PR #59 is not open as Draft at this exact commit.")
 
-          def wait_for_success(workflow_path, timeout_minutes):
-              filename = workflow_path.rsplit("/", 1)[-1]
-              workflow = api_get("/actions/workflows/" + urllib.parse.quote(filename, safe=""))
-              if workflow.get("path") != workflow_path or not workflow.get("id"):
-                  raise SystemExit(f"Could not resolve workflow {workflow_path}.")
-              workflow_id = workflow["id"]
-              deadline = time.monotonic() + timeout_minutes * 60
-              print(f"Waiting for {workflow_path} push run on {expected_sha}.", flush=True)
-              while time.monotonic() < deadline:
-                  runs = api_get(
-                      f"/actions/workflows/{workflow_id}/runs"
-                      f"?branch={urllib.parse.quote(branch)}&event=push&per_page=100"
-                  ).get("workflow_runs", [])
-                  matches = [
-                      item for item in runs
-                      if item.get("path") == workflow_path and item.get("head_sha") == expected_sha
-                  ]
-                  if matches:
-                      candidate = max(matches, key=lambda item: item.get("run_number", 0))
-                      print(
-                          f"{workflow_path}: run_id={candidate.get('id')} "
-                          f"status={candidate.get('status')} conclusion={candidate.get('conclusion')}",
-                          flush=True,
-                      )
-                      if candidate.get("status") == "completed":
-                          if candidate.get("conclusion") != "success":
-                              raise SystemExit(
-                                  f"{workflow_path} failed with conclusion={candidate.get('conclusion')}."
-                              )
-                          return candidate
-                  time.sleep(15)
-              raise SystemExit(f"Timed out waiting for {workflow_path} to complete.")
+          artifact_id = 14904517458
+          status, _ = request("DELETE", repo_path + f"/actions/artifacts/{artifact_id}")
+          print(f"Artifact deletion endpoint returned HTTP {status}.", flush=True)
 
-          backup = wait_for_success(".github/workflows/neon-backup.yml", 40)
-          restore = wait_for_success(".github/workflows/neon-restore-test.yml", 45)
+          _, remaining = request("GET", repo_path + "/actions/runs/45360921623/artifacts?per_page=100")
+          matches = [item for item in (remaining or {}).get("artifacts", []) if item.get("id") == artifact_id]
+          if matches:
+              raise SystemExit("The public backup artifact is still present after the deletion request.")
+          print("Verified that artifact 14904517458 is no longer listed for backup run 45360921623.", flush=True)
 
-          artifacts = api_get(f"/actions/runs/{restore['id']}/artifacts?per_page=100").get("artifacts", [])
-          provenance = [
-              item for item in artifacts
-              if item.get("name") == "neon-restore-test-provenance"
-              and item.get("expired") is False
-              and item.get("size_in_bytes", 0) > 0
-          ]
-          if len(provenance) != 1:
-              raise SystemExit("Restore succeeded, but its provenance artifact is missing or duplicated.")
-
+          _, repository_info = request("GET", repo_path)
           summary = (
-              "# Neon backup and restore E2E result\n\n"
-              f"- Backup run: {backup['id']} (success)\n"
-              f"- Restore run: {restore['id']} (success)\n"
-              f"- Source commit: {expected_sha}\n"
-              "- Trigger: guarded push event on the reviewed PR branch\n"
-              "- Restore target: g01-restore-test\n"
-              "- Restore provenance artifact: verified\n"
+              "# Public backup artifact purge\n\n"
+              "- Artifact ID: 14904517458\n"
+              "- Backup run: 45360921623\n"
+              "- Deletion verified: yes\n"
+              f"- Repository visibility: {repository_info.get('visibility')}\n"
+              "- Future Production backups are blocked unless repository visibility is private.\n"
           )
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as output:
               output.write(summary)
-          print(summary, flush=True)
           PY
