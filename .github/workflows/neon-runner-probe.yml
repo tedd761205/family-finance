@@ -1,5 +1,6 @@
 name: Neon Backup and Restore E2E Launcher
 # One-time validation orchestration; remove after the rehearsal.
+# Fresh retry after removing the stale backup concurrency gate.
 
 on:
   push:
