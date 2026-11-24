@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: neon-backup-restore-e2e-launcher
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   run-backup-and-restore:
@@ -129,6 +129,14 @@ jobs:
                           return run
                   time.sleep(15)
               raise SystemExit(f"Timed out waiting for {workflow_path}; no follow-on destructive step was started.")
+
+          # Cancel only the earlier queued backup run created by this same E2E attempt.
+          # It used the previous shared concurrency key and must not outlive the latest run.
+          stale_backup_run_id = 45351959777
+          _, stale_backup = api("GET", f"/actions/runs/{stale_backup_run_id}")
+          if stale_backup and stale_backup.get("head_branch") == branch and stale_backup.get("status") in {"queued", "in_progress"}:
+              api("POST", f"/actions/runs/{stale_backup_run_id}/cancel")
+              print(f"Cancelled superseded queued backup run {stale_backup_run_id}.", flush=True)
 
           backup = dispatch_and_wait(" .github/workflows/neon-backup.yml".strip(), timeout_minutes=35)
           backup_run_id = str(backup["id"])
