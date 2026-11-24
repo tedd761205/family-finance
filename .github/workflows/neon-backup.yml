@@ -22,12 +22,25 @@ jobs:
   backup:
     # Manual pre-merge validation is limited to this reviewed PR branch and main.
     # Event-scoped concurrency keeps stale dispatch runs from blocking the push rehearsal.
-    if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/restore-backup-row-count-manifest' }}
     name: Create and verify Neon backup
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
+      - name: Validate allowed backup workflow ref
+        env:
+          WORKFLOW_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          case "$WORKFLOW_REF" in
+            refs/heads/main|refs/heads/fix/restore-backup-row-count-manifest)
+              echo "Approved backup workflow ref: $WORKFLOW_REF"
+              ;;
+            *)
+              echo "Refusing to run backup from unapproved ref: $WORKFLOW_REF"
+              exit 1
+              ;;
+          esac
       - name: Checkout repository
         uses: actions/checkout@v4
 
