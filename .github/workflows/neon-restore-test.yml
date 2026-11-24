@@ -121,6 +121,10 @@ jobs:
           if actual_size != expected_size or actual_digest != expected_digest:
               raise SystemExit("Downloaded backup size or SHA-256 does not match private object metadata.")
 
+          with open("restore-provenance/restore.txt", "a", encoding="utf-8") as provenance_file:
+              provenance_file.write(f"backup_size_bytes={actual_size}\\n")
+              provenance_file.write(f"backup_sha256={actual_digest}\\n")
+
           print(f"Downloaded and verified private backup object: {key}")
           print(f"Size: {actual_size} bytes")
           print(f"SHA-256: {actual_digest}")
