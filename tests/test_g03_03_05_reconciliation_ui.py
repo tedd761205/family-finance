@@ -82,3 +82,12 @@ def test_completion_button_requires_successful_final_report():
     assert 'const ready=report?.ready_to_complete===true' in javascript
     assert 'button.disabled=!ready' in javascript
     assert "無法載入時不會允許完成對帳" in javascript
+
+
+def test_ledger_only_refresh_uses_fresh_resolved_issue_state():
+    with TestClient(__import__("main").app) as client:
+        javascript = client.get("/static/reconciliation.js").text
+
+    assert javascript.index("renderReconciliationIssues(issues);") < javascript.index(
+        "renderLedgerOnlyPanel(ledger);"
+    )
