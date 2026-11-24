@@ -1,4 +1,5 @@
 name: Neon Backup and Restore E2E Launcher
+# One-time validation orchestration; remove after the rehearsal.
 
 on:
   push:
