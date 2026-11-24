@@ -8,7 +8,7 @@ on:
       - .github/workflows/neon-e2e-once.yml
 
 permissions:
-  actions: write
+  actions: read
   contents: read
   pull-requests: read
 
@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - name: Cancel stale launchers and queued backup runs, then run one verified rehearsal
+      - name: Verify the push-triggered backup and isolated restore test
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPOSITORY: ${{ github.repository }}
@@ -31,13 +31,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import datetime
-          import json
-          import os
-          import time
-          import urllib.error
-          import urllib.parse
-          import urllib.request
+          import json, os, time, urllib.error, urllib.parse, urllib.request
 
           repository = os.environ["GH_REPOSITORY"]
           token = os.environ["GH_TOKEN"]
@@ -45,47 +39,26 @@ jobs:
           expected_sha = os.environ["GH_SHA"]
           branch = os.environ["GH_BRANCH"]
           if branch != "fix/restore-backup-row-count-manifest":
-              raise SystemExit("Refusing to run outside the reviewed PR branch.")
+              raise SystemExit("Refusing E2E outside the reviewed PR branch.")
           if not token or not expected_sha:
-              raise SystemExit("Missing GitHub token or expected commit SHA.")
+              raise SystemExit("Missing GitHub token or source commit SHA.")
 
-          base = api_url + "/repos/" + urllib.parse.quote(repository, safe="/")
           headers = {
               "Accept": "application/vnd.github+json",
               "Authorization": "Bearer " + token,
               "X-GitHub-Api-Version": "2022-11-28",
           }
+          base = api_url + "/repos/" + urllib.parse.quote(repository, safe="/")
 
-          def api(method, path, payload=None):
-              data = None if payload is None else json.dumps(payload).encode("utf-8")
-              request = urllib.request.Request(
-                  base + path,
-                  data=data,
-                  headers={**headers, **({"Content-Type": "application/json"} if data is not None else {})},
-                  method=method,
-              )
+          def api_get(path):
+              request = urllib.request.Request(base + path, headers=headers)
               try:
                   with urllib.request.urlopen(request, timeout=30) as response:
-                      body = response.read()
-                      return response.status, (json.loads(body) if body else None)
-              except urllib.error.HTTPError as exc:
-                  detail = exc.read().decode("utf-8", "replace")[:1000]
-                  if method == "POST" and exc.code in (404, 409):
-                      print(f"Skipping already-finished run for {path}: HTTP {exc.code}", flush=True)
-                      return exc.code, None
-                  raise SystemExit(f"GitHub API {method} {path} failed with HTTP {exc.code}: {detail}") from exc
-              except urllib.error.URLError as exc:
-                  raise SystemExit(f"GitHub API {method} {path} could not be reached: {exc}") from exc
+                      return json.load(response)
+              except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+                  raise SystemExit(f"GitHub API GET {path} failed.") from exc
 
-          def list_runs(status):
-              _, response = api(
-                  "GET",
-                  f"/actions/runs?branch={urllib.parse.quote(branch)}&status={status}&per_page=100",
-              )
-              return (response or {}).get("workflow_runs", [])
-
-          # Verify this workflow is running at the exact current open Draft PR head.
-          _, pr = api("GET", "/pulls/59")
+          pr = api_get("/pulls/59")
           head = pr.get("head") or {}
           head_repo = head.get("repo") or {}
           if (
@@ -96,129 +69,60 @@ jobs:
               or head.get("sha") != expected_sha
           ):
               raise SystemExit("Refusing E2E: PR #59 is not an open Draft at this exact commit.")
-          print(f"Verified current PR #59 head: {expected_sha}", flush=True)
+          print(f"Verified PR #59 exact head: {expected_sha}", flush=True)
 
-          # Cancel all still-running one-time launchers from earlier stale commits.
-          for run in list_runs("in_progress"):
-              if run.get("path") == ".github/workflows/neon-runner-probe.yml" and run.get("head_sha") != expected_sha:
-                  print(f"Cancelling stale launcher run {run['id']} ({run.get('head_sha')}).", flush=True)
-                  api("POST", f"/actions/runs/{run['id']}/force-cancel")
-
-          # Cancel queued backup attempts whose workflow commit is stale.
-          for run in list_runs("queued"):
-              if run.get("path") == ".github/workflows/neon-backup.yml" and run.get("head_sha") != expected_sha:
-                  print(f"Cancelling stale backup run {run['id']} ({run.get('head_sha')}).", flush=True)
-                  api("POST", f"/actions/runs/{run['id']}/cancel")
-
-          # Old queued run records can be orphaned by GitHub's Actions scheduler.
-          # They are safe to ignore only when the Jobs API confirms zero jobs.
-          stale_launchers = [
-              run for run in list_runs("in_progress")
-              if run.get("path") == ".github/workflows/neon-runner-probe.yml"
-              and run.get("head_sha") != expected_sha
-          ]
-          if stale_launchers:
-              raise SystemExit("An old E2E launcher is still running; refusing to start another rehearsal.")
-
-          orphaned_backups = [
-              run for run in list_runs("queued")
-              if run.get("path") == ".github/workflows/neon-backup.yml"
-              and run.get("head_sha") != expected_sha
-          ]
-          for run in orphaned_backups:
-              _, jobs_response = api("GET", f"/actions/runs/{run['id']}/jobs?per_page=100")
-              jobs = (jobs_response or {}).get("jobs", [])
-              if jobs:
-                  raise SystemExit(
-                      f"Old queued backup run {run['id']} has {len(jobs)} job(s); "
-                      "refusing to overlap a real backup execution."
-                  )
-              print(
-                  f"Ignoring stale GitHub orphan run {run['id']}: queued status but zero jobs; "
-                  "it does not occupy a runner.",
-                  flush=True,
-              )
-          print("No old launcher is active; zero-job orphan records will not block the fresh rehearsal.", flush=True)
-
-          def workflow_id(path):
-              filename = path.rsplit("/", 1)[-1]
-              _, workflow = api("GET", "/actions/workflows/" + urllib.parse.quote(filename, safe=""))
-              if not workflow or not workflow.get("id") or workflow.get("path") != path:
-                  raise SystemExit(f"Could not resolve expected workflow: {path}")
-              if workflow.get("state") != "active":
-                  raise SystemExit(f"Required workflow is not active: {path}")
-              return workflow["id"]
-
-          def dispatch_and_wait(path, inputs=None, timeout_minutes=40):
-              wid = workflow_id(path)
-              started = datetime.datetime.now(datetime.timezone.utc)
-              payload = {"ref": branch}
-              if inputs:
-                  payload["inputs"] = inputs
-              api("POST", f"/actions/workflows/{wid}/dispatches", payload)
-              print(f"Dispatched {path}; waiting for run on {expected_sha}.", flush=True)
+          def wait_for_success(workflow_path, timeout_minutes):
+              filename = workflow_path.rsplit("/", 1)[-1]
+              workflow = api_get("/actions/workflows/" + urllib.parse.quote(filename, safe=""))
+              if workflow.get("path") != workflow_path or not workflow.get("id"):
+                  raise SystemExit(f"Could not resolve workflow {workflow_path}.")
+              workflow_id = workflow["id"]
               deadline = time.monotonic() + timeout_minutes * 60
+              print(f"Waiting for {workflow_path} push run on {expected_sha}.", flush=True)
               while time.monotonic() < deadline:
-                  _, response = api(
-                      "GET",
-                      f"/actions/workflows/{wid}/runs?branch={urllib.parse.quote(branch)}&event=workflow_dispatch&per_page=100",
-                  )
-                  candidates = []
-                  for run in (response or {}).get("workflow_runs", []):
-                      if run.get("head_sha") != expected_sha:
-                          continue
-                      created = run.get("created_at")
-                      if not created:
-                          continue
-                      created_at = datetime.datetime.fromisoformat(created.replace("Z", "+00:00"))
-                      if created_at >= started - datetime.timedelta(seconds=30):
-                          candidates.append(run)
-                  if candidates:
-                      run = max(candidates, key=lambda item: item.get("run_number", 0))
+                  runs = api_get(
+                      f"/actions/workflows/{workflow_id}/runs"
+                      f"?branch={urllib.parse.quote(branch)}&event=push&per_page=100"
+                  ).get("workflow_runs", [])
+                  matches = [
+                      item for item in runs
+                      if item.get("path") == workflow_path and item.get("head_sha") == expected_sha
+                  ]
+                  if matches:
+                      candidate = max(matches, key=lambda item: item.get("run_number", 0))
                       print(
-                          f"{path}: run_id={run.get('id')} status={run.get('status')} "
-                          f"conclusion={run.get('conclusion')}",
+                          f"{workflow_path}: run_id={candidate.get('id')} "
+                          f"status={candidate.get('status')} conclusion={candidate.get('conclusion')}",
                           flush=True,
                       )
-                      if run.get("status") == "completed":
-                          if run.get("conclusion") != "success":
+                      if candidate.get("status") == "completed":
+                          if candidate.get("conclusion") != "success":
                               raise SystemExit(
-                                  f"{path} failed with conclusion={run.get('conclusion')}; "
-                                  "the next stage will not run."
+                                  f"{workflow_path} failed with conclusion={candidate.get('conclusion')}."
                               )
-                          return run
+                          return candidate
                   time.sleep(15)
-              raise SystemExit(f"Timed out waiting for {path}; no subsequent destructive step was started.")
+              raise SystemExit(f"Timed out waiting for {workflow_path} to complete.")
 
-          backup = dispatch_and_wait(".github/workflows/neon-backup.yml", timeout_minutes=40)
-          backup_run_id = str(backup["id"])
-          print(f"Verified backup run success: {backup_run_id}", flush=True)
+          backup = wait_for_success(".github/workflows/neon-backup.yml", 40)
+          restore = wait_for_success(".github/workflows/neon-restore-test.yml", 45)
 
-          restore = dispatch_and_wait(
-              ".github/workflows/neon-restore-test.yml",
-              inputs={
-                  "backup_run_id": backup_run_id,
-                  "target_confirmation": "g01-restore-test",
-              },
-              timeout_minutes=45,
-          )
-          restore_run_id = str(restore["id"])
-
-          _, response = api("GET", f"/actions/runs/{restore_run_id}/artifacts?per_page=100")
+          artifacts = api_get(f"/actions/runs/{restore['id']}/artifacts?per_page=100").get("artifacts", [])
           provenance = [
-              item for item in (response or {}).get("artifacts", [])
+              item for item in artifacts
               if item.get("name") == "neon-restore-test-provenance"
               and item.get("expired") is False
               and item.get("size_in_bytes", 0) > 0
           ]
           if len(provenance) != 1:
-              raise SystemExit("Restore completed, but exactly one provenance artifact was not found.")
+              raise SystemExit("Restore succeeded, but its provenance artifact is missing or duplicated.")
 
           summary = (
               "# Neon backup and restore E2E result\n\n"
-              f"- Backup run: {backup_run_id} (success)\n"
-              f"- Restore run: {restore_run_id} (success)\n"
+              f"- Backup run: {backup['id']} (success)\n"
+              f"- Restore run: {restore['id']} (success)\n"
               f"- Source commit: {expected_sha}\n"
+              "- Trigger: guarded push event on the reviewed PR branch\n"
               "- Restore target: g01-restore-test\n"
               "- Restore provenance artifact: verified\n"
           )
