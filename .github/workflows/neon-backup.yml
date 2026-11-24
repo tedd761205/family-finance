@@ -15,6 +15,7 @@ concurrency:
 
 jobs:
   backup:
+    if: github.ref == 'refs/heads/main'
     name: Create and verify Neon backup
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -27,6 +28,87 @@ jobs:
         run: |
           docker run --rm postgres:18-bookworm pg_dump --version
           docker run --rm postgres:18-bookworm pg_restore --version
+
+      - name: Validate production database connection and branch endpoint
+        env:
+          DATABASE_URL: ${{ secrets.NEON_BACKUP_DATABASE_URL }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          EXPECTED_PROJECT_ID: wild-credit-40100572
+          EXPECTED_BRANCH_ID: br-jolly-breeze-b3mereg2
+        run: |
+          set -euo pipefail
+          case "${DATABASE_URL:-}" in
+            postgres://*|postgresql://*) ;;
+            *)
+              echo "Missing or invalid NEON_BACKUP_DATABASE_URL. Use a native PostgreSQL URI."
+              exit 1
+              ;;
+          esac
+          if [ -z "${NEON_API_KEY:-}" ]; then
+            echo "Missing NEON_API_KEY secret."
+            exit 1
+          fi
+          ACTUAL_HOST="$(python3 -c 'import os, urllib.parse; print((urllib.parse.urlparse(os.environ["DATABASE_URL"]).hostname or "").lower())')"
+          if [ -z "$ACTUAL_HOST" ]; then
+            echo "Could not read the backup database endpoint hostname."
+            exit 1
+          fi
+          export ACTUAL_HOST
+          python3 - <<'PY'
+          import json, os, urllib.error, urllib.parse, urllib.request
+
+          project_id = os.environ["EXPECTED_PROJECT_ID"]
+          branch_id = os.environ["EXPECTED_BRANCH_ID"]
+          actual_host = os.environ["ACTUAL_HOST"].strip().lower()
+          api_base = f"https://console.neon.tech/api/v2/projects/{project_id}"
+
+          def neon_get(path):
+              request = urllib.request.Request(
+                  api_base + path,
+                  headers={
+                      "Accept": "application/json",
+                      "Authorization": f"Bearer {os.environ['NEON_API_KEY']}",
+                  },
+              )
+              try:
+                  with urllib.request.urlopen(request, timeout=20) as response:
+                      return json.load(response)
+              except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+                  raise SystemExit("Could not verify the Production database through the Neon API.") from exc
+
+          branches = neon_get("/branches?limit=100").get("branches", [])
+          matches = [
+              item for item in branches
+              if item.get("id") == branch_id and item.get("project_id") == project_id
+          ]
+          if len(matches) != 1:
+              raise SystemExit("Refusing to back up: Neon did not return the exact configured Production branch.")
+          production = matches[0]
+          if (
+              production.get("name") != "production"
+              or production.get("default") is not True
+              or production.get("primary") is not True
+          ):
+              raise SystemExit("Refusing to back up: the configured Neon branch is not the project's primary default Production branch.")
+
+          endpoints = neon_get(f"/branches/{branch_id}/endpoints").get("endpoints", [])
+          rw_endpoints = [
+              item for item in endpoints
+              if item.get("type") == "read_write" and not item.get("disabled")
+          ]
+          if (
+              len(rw_endpoints) != 1
+              or rw_endpoints[0].get("branch_id") != branch_id
+              or rw_endpoints[0].get("project_id") != project_id
+          ):
+              raise SystemExit("Refusing to back up: expected exactly one active read-write endpoint on Production.")
+          endpoint_host = (rw_endpoints[0].get("host") or "").lower()
+          allowed_hosts = {endpoint_host, endpoint_host.replace(".", "-pooler.", 1)}
+          if not endpoint_host or actual_host not in allowed_hosts:
+              raise SystemExit("Refusing to back up: NEON_BACKUP_DATABASE_URL does not point to the API-confirmed Production endpoint.")
+          print("Neon API confirmed the exact Production branch, project, and connected endpoint.")
+          PY
+          echo "Production backup source guard passed."
 
       - name: Create snapshot-consistent database dump and row-count manifest
         id: dump
