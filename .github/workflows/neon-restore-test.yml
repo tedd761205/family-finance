@@ -7,6 +7,10 @@ on:
         description: "Successful Neon Database Backup workflow run ID"
         required: true
         type: string
+      backup_object_key:
+        description: "Exact private Neon dump key, e.g. production/family-finance-20261124T030000Z.dump"
+        required: true
+        type: string
       target_confirmation:
         description: "Type exactly g01-restore-test to authorize replacing objects in that test branch"
         required: true
@@ -39,7 +43,7 @@ jobs:
         run: |
           set -euo pipefail
           case "$WORKFLOW_REF:$WORKFLOW_EVENT" in
-            refs/heads/main:workflow_dispatch|refs/heads/fix/restore-backup-row-count-manifest:workflow_dispatch)
+            refs/heads/main:workflow_dispatch|refs/heads/security/neon-private-backup-storage:workflow_dispatch)
               ;;
             *)
               echo "Refusing restore from an unapproved branch or event: $WORKFLOW_REF / $WORKFLOW_EVENT"
@@ -66,12 +70,12 @@ jobs:
               if current_sha != workflow_sha:
                   raise SystemExit("Refusing restore: workflow is not running the current main commit.")
           else:
-              url = f"{api_url}/repos/{repository}/pulls/59"
+              url = f"{api_url}/repos/{repository}/pulls/61"
               try:
                   with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=20) as response:
                       pr = json.load(response)
               except (urllib.error.HTTPError, urllib.error.URLError) as exc:
-                  raise SystemExit("Could not verify PR #59 before starting restore.") from exc
+                  raise SystemExit("Could not verify PR #61 before starting restore.") from exc
               head = pr.get("head") or {}
               base = pr.get("base") or {}
               head_repo = head.get("repo") or {}
@@ -83,8 +87,8 @@ jobs:
                   or base.get("ref") != "main"
                   or head.get("sha") != workflow_sha
               ):
-                  raise SystemExit("Refusing restore: PR #59 is not open as a draft at the exact workflow commit.")
-          print("Restore workflow ref is the current main commit or the exact open draft PR #59 head.")
+                  raise SystemExit("Refusing restore: PR #61 is not open as a draft at the exact workflow commit.")
+          print("Restore workflow ref is the current main commit or the exact open draft PR #61 head.")
           PY
       - name: Resolve backup run and authorize restore target
         id: source
@@ -145,11 +149,13 @@ jobs:
       - name: Record restore provenance
         env:
           BACKUP_RUN_ID: ${{ steps.source.outputs.backup_run_id }}
+          BACKUP_OBJECT_KEY: ${{ inputs.backup_object_key }}
           TARGET_CONFIRMATION: ${{ steps.source.outputs.target_confirmation }}
         run: |
           set -euo pipefail
           mkdir -p restore-provenance
           printf 'backup_run_id=%s\n' "$BACKUP_RUN_ID" > restore-provenance/restore.txt
+          printf 'backup_object_key=%s\n' "$BACKUP_OBJECT_KEY" >> restore-provenance/restore.txt
           printf 'target_confirmation=%s\n' "$TARGET_CONFIRMATION" >> restore-provenance/restore.txt
 
       - name: Validate explicit target confirmation
@@ -174,13 +180,15 @@ jobs:
         id: backup_source
         env:
           BACKUP_RUN_ID: ${{ steps.source.outputs.backup_run_id }}
+          BACKUP_OBJECT_KEY: ${{ inputs.backup_object_key }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_API_URL: ${{ github.api_url }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, os, urllib.error, urllib.parse, urllib.request
+          import json, os, re, urllib.error, urllib.parse, urllib.request
+          from datetime import datetime, timezone, timedelta
 
           repository = os.environ["GITHUB_REPOSITORY"]
           run_id = os.environ["BACKUP_RUN_ID"]
@@ -219,10 +227,10 @@ jobs:
               current_sha = (ref.get("object") or {}).get("sha")
               if not current_sha or head_sha != current_sha:
                   raise SystemExit("Refusing to restore: the main-branch backup was created from a stale commit.")
-          elif head_branch == "fix/restore-backup-row-count-manifest":
+          elif head_branch == "security/neon-private-backup-storage":
               if run.get("event") != "workflow_dispatch":
                   raise SystemExit("Refusing to restore: pre-merge PR backups must come from an explicit manual dispatch.")
-              pr = github_get(f"/repos/{encoded_repo}/pulls/59")
+              pr = github_get(f"/repos/{encoded_repo}/pulls/61")
               pr_head = pr.get("head") or {}
               pr_base = pr.get("base") or {}
               pr_head_repo = pr_head.get("repo") or {}
@@ -234,7 +242,7 @@ jobs:
                   or pr_base.get("ref") != "main"
                   or pr_head.get("sha") != head_sha
               ):
-                  raise SystemExit("Refusing to restore: PR #59 is not open as a draft at the exact commit used by this backup run.")
+                  raise SystemExit("Refusing to restore: PR #61 is not open as a draft at the exact commit used by this backup run.")
           else:
               raise SystemExit("Refusing to restore: backup run was not created from an approved branch.")
           head_repository = (run.get("head_repository") or {}).get("full_name")
@@ -249,18 +257,21 @@ jobs:
           run_number = run.get("run_number")
           if not isinstance(run_number, int) or run_number < 1:
               raise SystemExit("Selected backup run has an invalid run number.")
-          artifact_name = f"family-finance-neon-backup-{run_number}"
-          artifacts = github_get(
-              f"/repos/{encoded_repo}/actions/runs/{run_id}/artifacts?per_page=100"
-          ).get("artifacts", [])
-          matches = [
-              item for item in artifacts
-              if item.get("name") == artifact_name and item.get("expired") is False
-          ]
-          if len(matches) != 1 or matches[0].get("size_in_bytes", 0) <= 0:
-              raise SystemExit("Refusing to restore: expected exactly one non-empty, unexpired backup artifact from the selected run.")
+          object_key = os.environ.get("BACKUP_OBJECT_KEY", "").strip()
+          if not re.fullmatch(r"production/family-finance-[0-9]{8}T[0-9]{6}Z\.dump", object_key):
+              raise SystemExit("BACKUP_OBJECT_KEY must be an exact private Production backup object key.")
+          object_stamp = object_key.rsplit("-", 1)[1].removesuffix(".dump")
+          object_time = datetime.strptime(object_stamp, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+          run_time = datetime.fromisoformat(run["created_at"].replace("Z", "+00:00"))
+          now = datetime.now(timezone.utc)
+          if object_time > now or now - object_time > timedelta(hours=24):
+              raise SystemExit("Selected private backup object must be no older than 24 hours.")
+          if abs((object_time - run_time).total_seconds()) > 3600:
+              raise SystemExit("Private backup object timestamp does not match the selected backup workflow run.")
+          manifest_key = object_key[:-5] + ".row-counts.tsv"
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              output.write(f"artifact_name={artifact_name}\n")
+              output.write(f"backup_object_key={object_key}\n")
+              output.write(f"backup_manifest_key={manifest_key}\n")
               output.write(f"run_number={run_number}\n")
               output.write(f"head_sha={head_sha}\n")
               output.write(f"workflow_id={workflow_id}\n")
@@ -268,18 +279,108 @@ jobs:
               provenance_file.write(f"backup_run_number={run_number}\n")
               provenance_file.write(f"backup_head_sha={head_sha}\n")
               provenance_file.write(f"backup_workflow_id={workflow_id}\n")
-              provenance_file.write(f"backup_artifact_name={artifact_name}\n")
-          print("GitHub confirmed a successful backup from the current main commit or the exact open PR #59 head, plus its exact artifact.")
+              provenance_file.write(f"backup_manifest_key={manifest_key}\n")
+          print("GitHub confirmed the successful backup run; its private dump and snapshot manifest will be verified directly in Neon Object Storage.")
           PY
 
-      - name: Download backup artifact from selected run
-        uses: actions/download-artifact@v4
-        with:
-          repository: ${{ github.repository }}
-          run-id: ${{ steps.source.outputs.backup_run_id }}
-          name: ${{ steps.backup_source.outputs.artifact_name }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: restore-input
+      - name: Install S3 client
+        run: |
+          python -m pip install --disable-pip-version-check "boto3>=1.35,<2.0"
+
+      - name: Download and verify private dump and row-count manifest from Neon Object Storage
+        env:
+          BACKUP_OBJECT_KEY: ${{ steps.backup_source.outputs.backup_object_key }}
+          BACKUP_MANIFEST_KEY: ${{ steps.backup_source.outputs.backup_manifest_key }}
+          NEON_STORAGE_ENDPOINT: ${{ vars.NEON_STORAGE_ENDPOINT }}
+          NEON_STORAGE_REGION: ${{ vars.NEON_STORAGE_REGION }}
+          NEON_BACKUP_BUCKET: ${{ vars.NEON_BACKUP_BUCKET }}
+          NEON_RESTORE_S3_ACCESS_KEY_ID: ${{ secrets.NEON_RESTORE_S3_ACCESS_KEY_ID }}
+          NEON_RESTORE_S3_SECRET_ACCESS_KEY: ${{ secrets.NEON_RESTORE_S3_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p restore-input
+          python - <<'PY'
+          import csv
+          import hashlib
+          import os
+          import re
+          from pathlib import Path
+
+          import boto3
+          from botocore.config import Config
+
+          dump_key = os.environ["BACKUP_OBJECT_KEY"].strip()
+          manifest_key = os.environ["BACKUP_MANIFEST_KEY"].strip()
+          expected_manifest_key = dump_key[:-5] + ".row-counts.tsv"
+          if not re.fullmatch(r"production/family-finance-[0-9]{8}T[0-9]{6}Z\.dump", dump_key):
+              raise SystemExit("Refusing to download a key outside the approved Production backup format.")
+          if manifest_key != expected_manifest_key:
+              raise SystemExit("Selected row-count manifest key does not correspond to the selected dump key.")
+
+          endpoint = os.environ["NEON_STORAGE_ENDPOINT"].strip()
+          region = os.environ["NEON_STORAGE_REGION"].strip()
+          bucket = os.environ["NEON_BACKUP_BUCKET"].strip()
+          access_key = os.environ["NEON_RESTORE_S3_ACCESS_KEY_ID"].strip()
+          secret_key = os.environ["NEON_RESTORE_S3_SECRET_ACCESS_KEY"]
+          if not endpoint.startswith("https://") or not region or not bucket or not access_key or not secret_key:
+              raise SystemExit("Missing private Neon Object Storage read-only credentials or configuration.")
+
+          client = boto3.client(
+              "s3",
+              endpoint_url=endpoint,
+              region_name=region,
+              aws_access_key_id=access_key,
+              aws_secret_access_key=secret_key,
+              config=Config(
+                  signature_version="s3v4",
+                  s3={"addressing_style": "path"},
+                  retries={"max_attempts": 3, "mode": "standard"},
+              ),
+          )
+
+          def sha256_file(path):
+              digest = hashlib.sha256()
+              with path.open("rb") as stream:
+                  for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                      digest.update(chunk)
+              return digest.hexdigest()
+
+          dump_head = client.head_object(Bucket=bucket, Key=dump_key)
+          manifest_head = client.head_object(Bucket=bucket, Key=manifest_key)
+          expected_objects = [
+              (dump_key, Path("restore-input") / Path(dump_key).name, dump_head, "dump"),
+              (manifest_key, Path("restore-input") / "row-counts.tsv", manifest_head, "manifest"),
+          ]
+          verified = {}
+          for key, destination, head, label in expected_objects:
+              size = head.get("ContentLength", 0)
+              digest = head.get("Metadata", {}).get("sha256", "")
+              if size <= 0 or not re.fullmatch(r"[0-9a-f]{64}", digest):
+                  raise SystemExit(f"Private backup {label} object is empty or missing SHA-256 metadata.")
+              client.download_file(bucket, key, str(destination))
+              actual_size = destination.stat().st_size
+              actual_digest = sha256_file(destination)
+              if actual_size != size or actual_digest != digest:
+                  raise SystemExit(f"Downloaded backup {label} does not match private object metadata.")
+              verified[label] = {"size": actual_size, "sha256": actual_digest}
+              print(f"Verified private backup {label}: {key}")
+
+          with (Path("restore-input") / "row-counts.tsv").open(encoding="utf-8", newline="") as manifest_file:
+              rows = list(csv.reader(manifest_file, delimiter="\t"))
+          if not rows or any(len(row) != 2 or not row[0] or not row[1].isdigit() for row in rows):
+              raise SystemExit("Downloaded row-count manifest has an invalid format.")
+          if len({row[0] for row in rows}) != len(rows):
+              raise SystemExit("Downloaded row-count manifest contains duplicate table names.")
+
+          with open("restore-provenance/restore.txt", "a", encoding="utf-8") as provenance_file:
+              provenance_file.write(f"backup_size_bytes={verified['dump']['size']}\n")
+              provenance_file.write(f"backup_sha256={verified['dump']['sha256']}\n")
+              provenance_file.write(f"backup_manifest_key={manifest_key}\n")
+              provenance_file.write(f"backup_manifest_size_bytes={verified['manifest']['size']}\n")
+              provenance_file.write(f"backup_manifest_sha256={verified['manifest']['sha256']}\n")
+          print(f"Dump size: {verified['dump']['size']} bytes; SHA-256: {verified['dump']['sha256']}")
+          print(f"Manifest size: {verified['manifest']['size']} bytes; SHA-256: {verified['manifest']['sha256']}")
+          PY
 
       - name: Locate and validate dump file
         id: dump
