@@ -218,3 +218,26 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local environment files and secrets
+.env.*
+!.env.example
+!.env.template
+
+# Local databases and database backups
+*.db
+*.sqlite
+*.sqlite3
+*.dump
+*.backup
+*.bak
+*.sql.gz
+/backups/
+/backup/
+/db_backups/
+/database_backups/
+
+# Private keys and local certificates
+*.key
+*.p12
+*.pfx
