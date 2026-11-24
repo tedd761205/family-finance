@@ -46,12 +46,32 @@ jobs:
           fi
 
           ARCHIVE="$RUNNER_TEMP/family-finance-neon-backup-11.zip"
-          curl --fail --silent --show-error --location \
+          HEADERS="$RUNNER_TEMP/artifact-response-headers.txt"
+          curl --fail --silent --show-error --dump-header "$HEADERS" --output /dev/null \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
-            --output "$ARCHIVE"
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"
+
+          DOWNLOAD_URL="$(python - "$HEADERS" <<'PY'
+          import sys
+          from pathlib import Path
+
+          headers = Path(sys.argv[1]).read_text(encoding="iso-8859-1").splitlines()
+          locations = [line.split(":", 1)[1].strip() for line in headers if line.lower().startswith("location:")]
+          if len(locations) != 1 or not locations[0].startswith("https://"):
+              raise SystemExit("GitHub did not return one secure artifact download redirect.")
+          print(locations[0])
+          PY
+          )"
+          if [ -z "$DOWNLOAD_URL" ]; then
+            echo "GitHub artifact download URL was empty."
+            exit 1
+          fi
+
+          # Do not forward the GitHub token to the signed artifact URL.
+          curl --fail --silent --show-error --location "$DOWNLOAD_URL" --output "$ARCHIVE"
+          unset DOWNLOAD_URL
 
           printf '%s  %s\n' "$EXPECTED_ZIP_SHA256" "$ARCHIVE" | sha256sum --check
           mkdir -p transfer-input
