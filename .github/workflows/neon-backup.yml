@@ -118,7 +118,14 @@ jobs:
           if not source.is_file() or source.stat().st_size <= 0:
               raise SystemExit("Backup dump is missing or empty.")
 
-          digest = hashlib.sha256(source.read_bytes()).hexdigest()
+          def sha256_file(path):
+              digest = hashlib.sha256()
+              with path.open("rb") as stream:
+                  for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                      digest.update(chunk)
+              return digest.hexdigest()
+
+          digest = sha256_file(source)
           size = source.stat().st_size
           key = f"production/{filename}"
           client = boto3.client(
@@ -150,7 +157,7 @@ jobs:
           with tempfile.TemporaryDirectory() as temp_dir:
               downloaded = Path(temp_dir) / filename
               client.download_file(bucket, key, str(downloaded))
-              downloaded_digest = hashlib.sha256(downloaded.read_bytes()).hexdigest()
+              downloaded_digest = sha256_file(downloaded)
               if downloaded.stat().st_size != size or downloaded_digest != digest:
                   raise SystemExit("Private object storage round-trip verification failed.")
 
