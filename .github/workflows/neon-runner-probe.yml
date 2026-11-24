@@ -12,8 +12,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: neon-backup-restore-e2e-launcher
-  cancel-in-progress: true
+  group: neon-backup-restore-e2e-launcher-${{ github.run_id }}
+  cancel-in-progress: false
 
 jobs:
   run-backup-and-restore:
