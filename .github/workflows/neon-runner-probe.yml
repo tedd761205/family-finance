@@ -1,0 +1,23 @@
+name: Temporary GitHub Runner Probe
+
+on:
+  push:
+    branches:
+      - fix/restore-backup-row-count-manifest
+    paths:
+      - ".github/workflows/neon-runner-probe.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  runner-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Confirm GitHub-hosted runner allocation
+        run: |
+          set -euo pipefail
+          echo "Runner allocation succeeded."
+          echo "Branch: $GITHUB_REF"
+          echo "Commit: $GITHUB_SHA"
