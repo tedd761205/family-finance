@@ -1,7 +1,16 @@
 from sqlalchemy.orm import Session
 from fastapi.testclient import TestClient
+import pytest
 
-from app.database import engine
+from app.database import Base, engine
+
+
+@pytest.fixture(scope="session", autouse=True)
+def ensure_g03_03_05_schema():
+    from app import models  # noqa: F401
+
+    Base.metadata.create_all(bind=engine)
+
 from test_g03_02_03_reconciliation_matches import (
     _create_confirmed_statement,
     _create_family_account,
