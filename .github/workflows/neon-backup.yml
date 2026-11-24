@@ -1,6 +1,11 @@
 name: Neon Database Backup
 
 on:
+  push:
+    branches:
+      - fix/restore-backup-row-count-manifest
+    paths:
+      - ".github/workflows/neon-backup.yml"
   workflow_dispatch:
   schedule:
     # 每日台灣時間 03:00（UTC 19:00）
@@ -10,7 +15,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: neon-database-backup-${{ github.ref }}
+  group: neon-database-backup-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
