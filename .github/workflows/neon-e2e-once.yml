@@ -110,25 +110,35 @@ jobs:
                   print(f"Cancelling stale backup run {run['id']} ({run.get('head_sha')}).", flush=True)
                   api("POST", f"/actions/runs/{run['id']}/cancel")
 
-          # Wait until old queued backup and launcher runs have left the active queue.
-          cleanup_deadline = time.monotonic() + 180
-          while time.monotonic() < cleanup_deadline:
-              stale_launchers = [
-                  run for run in list_runs("in_progress")
-                  if run.get("path") == ".github/workflows/neon-runner-probe.yml"
-                  and run.get("head_sha") != expected_sha
-              ]
-              stale_backups = [
-                  run for run in list_runs("queued")
-                  if run.get("path") == ".github/workflows/neon-backup.yml"
-                  and run.get("head_sha") != expected_sha
-              ]
-              if not stale_launchers and not stale_backups:
-                  break
-              time.sleep(10)
-          else:
-              raise SystemExit("Stale backup runs did not leave the queue; refusing to add another backup dispatch.")
-          print("Stale launchers and backup queue entries cleared.", flush=True)
+          # Old queued run records can be orphaned by GitHub's Actions scheduler.
+          # They are safe to ignore only when the Jobs API confirms zero jobs.
+          stale_launchers = [
+              run for run in list_runs("in_progress")
+              if run.get("path") == ".github/workflows/neon-runner-probe.yml"
+              and run.get("head_sha") != expected_sha
+          ]
+          if stale_launchers:
+              raise SystemExit("An old E2E launcher is still running; refusing to start another rehearsal.")
+
+          orphaned_backups = [
+              run for run in list_runs("queued")
+              if run.get("path") == ".github/workflows/neon-backup.yml"
+              and run.get("head_sha") != expected_sha
+          ]
+          for run in orphaned_backups:
+              _, jobs_response = api("GET", f"/actions/runs/{run['id']}/jobs?per_page=100")
+              jobs = (jobs_response or {}).get("jobs", [])
+              if jobs:
+                  raise SystemExit(
+                      f"Old queued backup run {run['id']} has {len(jobs)} job(s); "
+                      "refusing to overlap a real backup execution."
+                  )
+              print(
+                  f"Ignoring stale GitHub orphan run {run['id']}: queued status but zero jobs; "
+                  "it does not occupy a runner.",
+                  flush=True,
+              )
+          print("No old launcher is active; zero-job orphan records will not block the fresh rehearsal.", flush=True)
 
           def workflow_id(path):
               filename = path.rsplit("/", 1)[-1]
