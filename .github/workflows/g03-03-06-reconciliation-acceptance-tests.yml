@@ -23,6 +23,8 @@ on:
       - "tests/test_g03_03_03_reconciliation_issues.py"
       - "tests/test_g03_03_04_reconciliation_final_report.py"
       - ".github/workflows/g03-03-06-reconciliation-acceptance-tests.yml"
+      - ".github/workflows/alembic-upgrade.yml"
+      - ".github/workflows/g01-08-restored-db-migration-rehearsal.yml"
       - "requirements.txt"
       - "requirements-dev.txt"
   workflow_dispatch:
