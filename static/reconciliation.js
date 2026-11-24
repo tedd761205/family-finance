@@ -360,11 +360,11 @@
 
   async function loadReconciliationAdvanced(sessionId){
     const base="/reconciliations/sessions/"+sessionId;
-    const get=path=>api(path+"?family_id="+selectedFamilyId).then(data=>({data})).catch(error=>({error}));
+    const get=path=>api(path+(path.includes("?")?"&":"?")+"family_id="+selectedFamilyId).then(data=>({data})).catch(error=>({error}));
     const [ledger,balance,issues,report]=await Promise.all([
-      get(base+"/ledger-only&limit=500"),
+      get(base+"/ledger-only?limit=500"),
       get(base+"/balance-check"),
-      get(base+"/issues&limit=200"),
+      get(base+"/issues?limit=200"),
       get(base+"/final-report")
     ]);
     renderLedgerOnlyPanel(ledger);
