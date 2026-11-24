@@ -8,8 +8,13 @@ on:
       - "app/routers/reconciliation.py"
       - "app/models/reconciliation.py"
       - "app/models/reconciliation_issue.py"
+      - "app/models/role.py"
+      - "app/models/role_permission.py"
+      - "app/permission_catalog.py"
+      - "app/role_catalog.py"
       - "app/services/reconciliation_balance.py"
       - "app/services/reconciliation_completion.py"
+      - "alembic/versions/c7d9e1f3a5b7_add_reconciliation_issue_update_permission.py"
       - "tests/test_g03_03_06_reconciliation_acceptance.py"
       - "tests/test_g03_03_05_reconciliation_ui.py"
       - "tests/test_g03_02_03_reconciliation_matches.py"
@@ -60,6 +65,126 @@ jobs:
           pip install -r requirements.txt -r requirements-dev.txt
       - name: Validate application and acceptance-test compilation
         run: python -m compileall -q app tests main.py
+      - name: Verify reconciliation issue permission migration against existing and custom roles
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          createdb --host=localhost --port=5432 --username=postgres family_finance_role_migration
+          cleanup() {
+            dropdb --if-exists --host=localhost --port=5432 --username=postgres family_finance_role_migration
+          }
+          trap cleanup EXIT
+
+          export DATABASE_URL="postgresql+psycopg://postgres:postgres@localhost:5432/family_finance_role_migration"
+          python -m alembic upgrade a6b8c0d2e4f6
+
+          python - <<'PY'
+          from sqlalchemy.orm import Session
+          from app.database import engine
+          from app.models.family import Family
+          from app.models.role import Role
+
+          with Session(engine) as db:
+              family = Family(name="G03-03-06 Migration Fixture", currency="TWD")
+              db.add(family)
+              db.flush()
+              for name, is_system in (
+                  ("家庭管理員", True),
+                  ("財務管理員", True),
+                  ("記帳人員", True),
+                  ("一般成員", True),
+                  ("檢視人員", True),
+                  ("自訂對帳角色", False),
+              ):
+                  db.add(Role(
+                      family_id=family.id,
+                      name=name,
+                      description="migration test fixture",
+                      is_system=is_system,
+                      is_active=True,
+                  ))
+              db.commit()
+          print("Seeded existing default and custom roles before the new permission migration.")
+          PY
+
+          python -m alembic upgrade head
+
+          python - <<'PY'
+          from sqlalchemy.orm import Session
+          from app.database import engine
+          from app.models.permission import Permission
+          from app.models.role import Role
+          from app.models.role_permission import RolePermission
+          from app.models.family import Family
+
+          with Session(engine) as db:
+              family = db.query(Family).filter(
+                  Family.name == "G03-03-06 Migration Fixture"
+              ).one()
+              roles = {
+                  role.name: role
+                  for role in db.query(Role).filter(Role.family_id == family.id).all()
+              }
+              permission = db.query(Permission).filter(
+                  Permission.code == "reconciliation.update"
+              ).one()
+              granted = {
+                  name: db.query(RolePermission).filter(
+                      RolePermission.role_id == role.id,
+                      RolePermission.permission_id == permission.id,
+                  ).count() == 1
+                  for name, role in roles.items()
+              }
+              assert granted["家庭管理員"] is True
+              assert granted["財務管理員"] is True
+              assert granted["記帳人員"] is True
+              assert granted["一般成員"] is False
+              assert granted["檢視人員"] is False
+              assert granted["自訂對帳角色"] is False
+
+              db.add(RolePermission(
+                  role_id=roles["自訂對帳角色"].id,
+                  permission_id=permission.id,
+              ))
+              db.commit()
+          print("Verified only the three designated system roles received the new permission.")
+          PY
+
+          python -m alembic downgrade a6b8c0d2e4f6
+
+          python - <<'PY'
+          from sqlalchemy.orm import Session
+          from app.database import engine
+          from app.models.permission import Permission
+          from app.models.role import Role
+          from app.models.role_permission import RolePermission
+          from app.models.family import Family
+
+          with Session(engine) as db:
+              family = db.query(Family).filter(
+                  Family.name == "G03-03-06 Migration Fixture"
+              ).one()
+              roles = {
+                  role.name: role
+                  for role in db.query(Role).filter(Role.family_id == family.id).all()
+              }
+              permission = db.query(Permission).filter(
+                  Permission.code == "reconciliation.update"
+              ).one()
+              assert db.query(RolePermission).filter(
+                  RolePermission.role_id == roles["自訂對帳角色"].id,
+                  RolePermission.permission_id == permission.id,
+              ).count() == 1
+              for name in ("家庭管理員", "財務管理員", "記帳人員"):
+                  assert db.query(RolePermission).filter(
+                      RolePermission.role_id == roles[name].id,
+                      RolePermission.permission_id == permission.id,
+                  ).count() == 0
+          print("Verified downgrade preserves a custom-role grant and removes only targeted default-role grants.")
+          PY
+
+          python -m alembic upgrade head
       - name: Run full reconciliation acceptance and regression tests
         run: |
           python -m pytest -q \
