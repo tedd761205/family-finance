@@ -68,7 +68,13 @@ jobs:
 
           import time
           artifacts_to_delete = [
+              (14395743806, 44233524910, "family-finance-neon-backup-7"),
               (14422058635, 44294415773, "family-finance-neon-backup-8"),
+              (14427196529, 44302580397, "family-finance-neon-backup-9"),
+              (14429689201, 44311589501, "family-finance-neon-backup-10"),
+              (14487715668, 44433212436, "family-finance-neon-backup-11"),
+              (14591336373, 44650531962, "family-finance-neon-backup-12"),
+              (14682083050, 44844907046, "family-finance-neon-backup-13"),
           ]
           for artifact_id, run_id, artifact_name in artifacts_to_delete:
               status, _ = request("DELETE", repo_path + f"/actions/artifacts/{artifact_id}")
@@ -92,9 +98,8 @@ jobs:
           _, repository_info = request("GET", repo_path)
           summary = (
               "# Public backup artifact purge\n\n"
-              "- Artifact ID: 14904517458\n"
-              "- Backup run: 45360921623\n"
-              "- Deletion verified: yes\n"
+              "- Historical Production backup artifacts #7–#13: deletion individually verified\n"
+              "- Latest exposed backup artifact #23: previously deleted and independently verified\n"
               f"- Repository visibility: {repository_info.get('visibility')}\n"
               "- Future Production backups are blocked unless repository visibility is private.\n"
           )
