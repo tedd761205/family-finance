@@ -500,3 +500,21 @@ def test_balance_mismatch_blocks_backend_completion_even_after_bank_row_is_match
     )
     assert detail.status_code == 200
     assert detail.json()["session"]["status"] == "in_progress"
+
+
+def test_reconciliation_issue_update_is_available_to_only_financial_default_roles():
+    from app.permission_catalog import PERMISSION_CATALOG
+    from app.role_catalog import DEFAULT_ROLES
+
+    permission_codes = {item["code"] for item in PERMISSION_CATALOG}
+    role_permissions = {
+        role["name"]: set(role["permissions"])
+        for role in DEFAULT_ROLES
+    }
+
+    assert "reconciliation.update" in permission_codes
+    assert "reconciliation.update" in role_permissions["家庭管理員"]
+    assert "reconciliation.update" in role_permissions["財務管理員"]
+    assert "reconciliation.update" in role_permissions["記帳人員"]
+    assert "reconciliation.update" not in role_permissions["一般成員"]
+    assert "reconciliation.update" not in role_permissions["檢視人員"]
