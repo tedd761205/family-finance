@@ -73,7 +73,10 @@ jobs:
                   raise SystemExit(f"GitHub API {method} {path} could not be reached: {exc}") from exc
 
           def workflow_id(path):
-              _, result = api("GET", "/actions/workflows/" + urllib.parse.quote(path, safe="/"))
+              # The Actions API accepts a workflow filename or numeric ID,
+              # not the full .github/workflows/... repository path.
+              filename = path.rsplit("/", 1)[-1]
+              _, result = api("GET", "/actions/workflows/" + urllib.parse.quote(filename, safe=""))
               if not result or not result.get("id") or result.get("path") != path:
                   raise SystemExit(f"Could not resolve the expected workflow file: {path}")
               return result["id"]
