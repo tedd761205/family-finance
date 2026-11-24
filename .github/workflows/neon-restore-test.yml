@@ -96,8 +96,8 @@ jobs:
               raise SystemExit("Refusing to restore: selected backup workflow run has not completed successfully.")
           if run.get("head_branch") not in {"main", "fix/restore-backup-row-count-manifest"}:
               raise SystemExit("Refusing to restore: selected backup run was not created from main or the explicitly allowed review branch.")
-          if run.get("event") not in {"schedule", "workflow_dispatch"}:
-              raise SystemExit("Refusing to restore: selected run was not a scheduled or manually dispatched backup.")
+          if run.get("event") not in {"schedule", "workflow_dispatch", "push"}:
+              raise SystemExit("Refusing to restore: selected run was not a scheduled, manually dispatched, or explicitly allowed PR-branch push backup.")
           head_repository = (run.get("head_repository") or {}).get("full_name")
           if head_repository != repository:
               raise SystemExit("Refusing to restore: selected backup run did not originate from this repository.")
