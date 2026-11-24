@@ -367,9 +367,9 @@
       get(base+"/issues?limit=200"),
       get(base+"/final-report")
     ]);
+    renderReconciliationIssues(issues);
     renderLedgerOnlyPanel(ledger);
     renderBalanceCheck(balance);
-    renderReconciliationIssues(issues);
     renderFinalReport(report);
     renderSessionActions(activeReconciliationSession,report.data);
   }
