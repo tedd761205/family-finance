@@ -19,7 +19,7 @@ concurrency:
 jobs:
   storage-smoke-test:
     name: Attachment storage upload/download/delete
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
