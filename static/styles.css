@@ -284,7 +284,7 @@
 .reconciliation-ledger-card,.reconciliation-issue-card{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px;border:1px solid var(--line,#dce5e1);border-radius:11px;background:var(--surface,#fff);min-width:0}
 .reconciliation-ledger-card>div,.reconciliation-issue-card{min-width:0}
 .reconciliation-ledger-card strong,.reconciliation-issue-card strong{overflow-wrap:anywhere}
-.reconciliation-ledger-card p,.reconciliation-issue-card p{margin:5px 0 0;overflow-wrap:anywhere}
+.reconciliation-ledger-card p,.reconciliation-issue-card p{margin:5px 0 0;overflow-wrap:anywhere}.reconciliation-issue-card{align-items:flex-start;flex-direction:column}
 .reconciliation-balance-line{display:grid;grid-template-columns:100px repeat(3,minmax(0,1fr)) auto;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line,#e3ebe5);min-width:0}
 .reconciliation-balance-line>span{overflow-wrap:anywhere}
 .reconciliation-resolution{padding:9px 10px;border-radius:8px;background:#f2f7f3;color:#365d48;font-size:12px}
