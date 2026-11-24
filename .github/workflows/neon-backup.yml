@@ -75,7 +75,7 @@ jobs:
 
           docker run --rm \
             --env DATABASE_URL \
-            --env SNAPSHOT_ID \
+            --env SNAPSHOT_ID="$SNAPSHOT_ID" \
             --env BACKUP_FILE="$BACKUP_FILE" \
             -v "$GITHUB_WORKSPACE/backups:/backups" \
             postgres:18-bookworm \
@@ -87,7 +87,7 @@ jobs:
           # Import the very same exported snapshot before counting rows.
           docker run --rm -i \
             --env DATABASE_URL \
-            --env SNAPSHOT_ID \
+            --env SNAPSHOT_ID="$SNAPSHOT_ID" \
             postgres:18-bookworm \
             psql "$DATABASE_URL" -X -qAt -F "$(printf '\t')" -v ON_ERROR_STOP=1 <<SQL > "$GITHUB_WORKSPACE/backups/row-counts.tsv"
           BEGIN ISOLATION LEVEL REPEATABLE READ;
