@@ -22,7 +22,8 @@ concurrency:
 
 jobs:
   restore:
-    if: github.ref == 'refs/heads/main'
+    # Manual pre-merge validation is limited to this reviewed PR branch and main.
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/restore-backup-row-count-manifest'
     name: Restore backup into isolated test branch
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -93,8 +94,8 @@ jobs:
           run = github_get(f"/repos/{encoded_repo}/actions/runs/{run_id}")
           if run.get("status") != "completed" or run.get("conclusion") != "success":
               raise SystemExit("Refusing to restore: selected backup workflow run has not completed successfully.")
-          if run.get("head_branch") != "main":
-              raise SystemExit("Refusing to restore: selected backup run was not created from main.")
+          if run.get("head_branch") not in {"main", "fix/restore-backup-row-count-manifest"}:
+              raise SystemExit("Refusing to restore: selected backup run was not created from main or the explicitly allowed review branch.")
           if run.get("event") not in {"schedule", "workflow_dispatch"}:
               raise SystemExit("Refusing to restore: selected run was not a scheduled or manually dispatched backup.")
           head_repository = (run.get("head_repository") or {}).get("full_name")
