@@ -271,14 +271,14 @@ jobs:
 
       - name: Upload and verify snapshot dump and row-count manifest in private Neon Object Storage
         env:
-          BACKUP_FILE: \${{ steps.dump.outputs.backup_file }}
-          NEON_STORAGE_ENDPOINT: \${{ vars.NEON_STORAGE_ENDPOINT }}
-          NEON_STORAGE_REGION: \${{ vars.NEON_STORAGE_REGION }}
-          NEON_BACKUP_BUCKET: \${{ vars.NEON_BACKUP_BUCKET }}
-          NEON_BACKUP_S3_ACCESS_KEY_ID: \${{ secrets.NEON_BACKUP_S3_ACCESS_KEY_ID }}
-          NEON_BACKUP_S3_SECRET_ACCESS_KEY: \${{ secrets.NEON_BACKUP_S3_SECRET_ACCESS_KEY }}
-          NEON_RESTORE_S3_ACCESS_KEY_ID: \${{ secrets.NEON_RESTORE_S3_ACCESS_KEY_ID }}
-          NEON_RESTORE_S3_SECRET_ACCESS_KEY: \${{ secrets.NEON_RESTORE_S3_SECRET_ACCESS_KEY }}
+          BACKUP_FILE: ${{ steps.dump.outputs.backup_file }}
+          NEON_STORAGE_ENDPOINT: ${{ vars.NEON_STORAGE_ENDPOINT }}
+          NEON_STORAGE_REGION: ${{ vars.NEON_STORAGE_REGION }}
+          NEON_BACKUP_BUCKET: ${{ vars.NEON_BACKUP_BUCKET }}
+          NEON_BACKUP_S3_ACCESS_KEY_ID: ${{ secrets.NEON_BACKUP_S3_ACCESS_KEY_ID }}
+          NEON_BACKUP_S3_SECRET_ACCESS_KEY: ${{ secrets.NEON_BACKUP_S3_SECRET_ACCESS_KEY }}
+          NEON_RESTORE_S3_ACCESS_KEY_ID: ${{ secrets.NEON_RESTORE_S3_ACCESS_KEY_ID }}
+          NEON_RESTORE_S3_SECRET_ACCESS_KEY: ${{ secrets.NEON_RESTORE_S3_SECRET_ACCESS_KEY }}
         run: |
           set -euo pipefail
           python - <<'PY'
