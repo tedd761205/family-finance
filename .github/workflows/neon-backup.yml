@@ -9,10 +9,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: neon-database-backup-${{ github.run_id }}
-  cancel-in-progress: false
-
 jobs:
   backup:
     # Manual pre-merge validation is limited to this reviewed PR branch and main.
