@@ -199,6 +199,16 @@ jobs:
           ):
               raise SystemExit("The selected private Neon backup object is empty or missing SHA-256 metadata.")
 
+          manifest_key = object_key[:-5] + ".row-counts.tsv"
+          try:
+              manifest_head = storage.head_object(Bucket=bucket, Key=manifest_key)
+          except Exception as exc:
+              raise SystemExit("The selected private Neon row-count manifest could not be verified.") from exc
+          if manifest_head.get("ContentLength", 0) <= 0 or not re.fullmatch(
+              r"[0-9a-f]{64}", manifest_head.get("Metadata", {}).get("sha256", "")
+          ):
+              raise SystemExit("The selected private Neon row-count manifest is empty or missing SHA-256 metadata.")
+
           provenance_path = "restore-evidence/restore.txt"
           try:
               with open(provenance_path, encoding="utf-8") as provenance_file:
@@ -215,6 +225,12 @@ jobs:
               raise SystemExit("Restore-test provenance size does not match the private backup object.")
           if provenance.get("backup_sha256") != backup_head.get("Metadata", {}).get("sha256", ""):
               raise SystemExit("Restore-test provenance SHA-256 does not match the private backup object.")
+          if provenance.get("backup_manifest_key") != manifest_key:
+              raise SystemExit("Restore-test provenance does not match the selected private row-count manifest key.")
+          if provenance.get("backup_manifest_size_bytes") != str(manifest_head.get("ContentLength", "")):
+              raise SystemExit("Restore-test provenance manifest size does not match the private object.")
+          if provenance.get("backup_manifest_sha256") != manifest_head.get("Metadata", {}).get("sha256", ""):
+              raise SystemExit("Restore-test provenance manifest SHA-256 does not match the private object.")
           if provenance.get("target_confirmation") != "g01-restore-test":
               raise SystemExit("Restore-test provenance does not confirm the isolated g01-restore-test target.")
           if provenance.get("project_id") != "wild-credit-40100572":
@@ -234,7 +250,7 @@ jobs:
 
           print("Authorization phrase accepted.")
           print("Backup, restore-test, and migration-rehearsal runs completed successfully.")
-          print(f"Private Neon backup object is present and has SHA-256 metadata: {object_key}")
+          print(f"Private Neon dump and row-count manifest objects are present and verified: {object_key}, {manifest_key}")
           print("Restore provenance and migration rehearsal report are available.")
           print("Migration rehearsal evidence is available; migration-source equality will be checked against current main.")
           print("Production migration evidence gate passed.")
