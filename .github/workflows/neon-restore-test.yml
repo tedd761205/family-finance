@@ -23,11 +23,24 @@ concurrency:
 jobs:
   restore:
     # Manual pre-merge validation is limited to this reviewed PR branch and main.
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/restore-backup-row-count-manifest'
     name: Restore backup into isolated test branch
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
+      - name: Validate allowed restore workflow ref
+        env:
+          WORKFLOW_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          case "$WORKFLOW_REF" in
+            refs/heads/main|refs/heads/fix/restore-backup-row-count-manifest)
+              echo "Approved restore workflow ref: $WORKFLOW_REF"
+              ;;
+            *)
+              echo "Refusing to run restore from unapproved ref: $WORKFLOW_REF"
+              exit 1
+              ;;
+          esac
       - name: Record restore provenance
         env:
           BACKUP_RUN_ID: ${{ inputs.backup_run_id }}
