@@ -66,15 +66,28 @@ jobs:
           ):
               raise SystemExit("Refusing artifact deletion: PR #59 is not open as Draft at this exact commit.")
 
-          artifact_id = 14904517458
-          status, _ = request("DELETE", repo_path + f"/actions/artifacts/{artifact_id}")
-          print(f"Artifact deletion endpoint returned HTTP {status}.", flush=True)
+          import time
+          artifacts_to_delete = [
+              (14422058635, 44294415773, "family-finance-neon-backup-8"),
+          ]
+          for artifact_id, run_id, artifact_name in artifacts_to_delete:
+              status, _ = request("DELETE", repo_path + f"/actions/artifacts/{artifact_id}")
+              print(f"Artifact {artifact_id} ({artifact_name}) deletion endpoint returned HTTP {status}.", flush=True)
 
-          _, remaining = request("GET", repo_path + "/actions/runs/45360921623/artifacts?per_page=100")
-          matches = [item for item in (remaining or {}).get("artifacts", []) if item.get("id") == artifact_id]
-          if matches:
-              raise SystemExit("The public backup artifact is still present after the deletion request.")
-          print("Verified that artifact 14904517458 is no longer listed for backup run 45360921623.", flush=True)
+              remaining = None
+              for attempt in range(10):
+                  _, response = request("GET", repo_path + f"/actions/runs/{run_id}/artifacts?per_page=100")
+                  matches = [
+                      item for item in (response or {}).get("artifacts", [])
+                      if item.get("id") == artifact_id
+                  ]
+                  if not matches:
+                      remaining = response
+                      break
+                  time.sleep(3)
+              if remaining is None:
+                  raise SystemExit(f"Artifact {artifact_id} is still listed after repeated deletion verification.")
+              print(f"Verified that artifact {artifact_id} is no longer listed for backup run {run_id}.", flush=True)
 
           _, repository_info = request("GET", repo_path)
           summary = (
