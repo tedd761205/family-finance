@@ -211,6 +211,10 @@ jobs:
               raise SystemExit("Restore-test provenance artifact is missing or unreadable.") from exc
           if provenance.get("backup_object_key") != object_key:
               raise SystemExit("Restore-test provenance does not match the selected private backup object key.")
+          if provenance.get("backup_size_bytes") != str(backup_head.get("ContentLength", "")):
+              raise SystemExit("Restore-test provenance size does not match the private backup object.")
+          if provenance.get("backup_sha256") != backup_head.get("Metadata", {}).get("sha256", ""):
+              raise SystemExit("Restore-test provenance SHA-256 does not match the private backup object.")
           if provenance.get("target_confirmation") != "g01-restore-test":
               raise SystemExit("Restore-test provenance does not confirm the isolated g01-restore-test target.")
           if provenance.get("project_id") != "wild-credit-40100572":
