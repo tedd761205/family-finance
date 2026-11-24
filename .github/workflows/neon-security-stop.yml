@@ -84,12 +84,17 @@ jobs:
               print("Repository is already private; no public-artifact emergency stop is required.", flush=True)
 
           # Disable the Production backup workflow so scheduled/main runs cannot create new public artifacts.
-          status, _ = api("PUT", f"/actions/workflows/{workflow_id}/disable")
           _, workflow = api("GET", f"/actions/workflows/{workflow_id}")
           workflow_state = workflow.get("state")
+          if workflow_state == "active":
+              status, _ = api("PUT", f"/actions/workflows/{workflow_id}/disable")
+              _, workflow = api("GET", f"/actions/workflows/{workflow_id}")
+              workflow_state = workflow.get("state")
+          else:
+              status = 200
           if workflow_state not in {"disabled", "disabled_manually"}:
               raise SystemExit(f"Neon Database Backup workflow is not disabled (state={workflow_state}).")
-          print(f"Neon Database Backup workflow disabled (HTTP {status}).", flush=True)
+          print(f"Neon Database Backup workflow is disabled (state={workflow_state}, HTTP {status}).", flush=True)
 
           # Cancel every queued or active run belonging to this backup workflow.
           _, response = api("GET", "/actions/runs?status=queued&per_page=100")
