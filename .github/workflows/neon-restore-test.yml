@@ -27,8 +27,8 @@ jobs:
     steps:
       - name: Record restore provenance
         env:
-          BACKUP_OBJECT_KEY: \${{ inputs.backup_object_key }}
-          TARGET_CONFIRMATION: \${{ inputs.target_confirmation }}
+          BACKUP_OBJECT_KEY: ${{ inputs.backup_object_key }}
+          TARGET_CONFIRMATION: ${{ inputs.target_confirmation }}
         run: |
           set -euo pipefail
           mkdir -p restore-provenance
@@ -37,8 +37,8 @@ jobs:
 
       - name: Validate explicit target confirmation and backup object key
         env:
-          BACKUP_OBJECT_KEY: \${{ inputs.backup_object_key }}
-          TARGET_CONFIRMATION: \${{ inputs.target_confirmation }}
+          BACKUP_OBJECT_KEY: ${{ inputs.backup_object_key }}
+          TARGET_CONFIRMATION: ${{ inputs.target_confirmation }}
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -59,12 +59,12 @@ jobs:
 
       - name: Download and verify backup from private Neon Object Storage
         env:
-          BACKUP_OBJECT_KEY: \${{ inputs.backup_object_key }}
-          NEON_STORAGE_ENDPOINT: \${{ vars.NEON_STORAGE_ENDPOINT }}
-          NEON_STORAGE_REGION: \${{ vars.NEON_STORAGE_REGION }}
-          NEON_BACKUP_BUCKET: \${{ vars.NEON_BACKUP_BUCKET }}
-          NEON_RESTORE_S3_ACCESS_KEY_ID: \${{ secrets.NEON_RESTORE_S3_ACCESS_KEY_ID }}
-          NEON_RESTORE_S3_SECRET_ACCESS_KEY: \${{ secrets.NEON_RESTORE_S3_SECRET_ACCESS_KEY }}
+          BACKUP_OBJECT_KEY: ${{ inputs.backup_object_key }}
+          NEON_STORAGE_ENDPOINT: ${{ vars.NEON_STORAGE_ENDPOINT }}
+          NEON_STORAGE_REGION: ${{ vars.NEON_STORAGE_REGION }}
+          NEON_BACKUP_BUCKET: ${{ vars.NEON_BACKUP_BUCKET }}
+          NEON_RESTORE_S3_ACCESS_KEY_ID: ${{ secrets.NEON_RESTORE_S3_ACCESS_KEY_ID }}
+          NEON_RESTORE_S3_SECRET_ACCESS_KEY: ${{ secrets.NEON_RESTORE_S3_SECRET_ACCESS_KEY }}
         run: |
           set -euo pipefail
           mkdir -p restore-input
