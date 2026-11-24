@@ -67,6 +67,24 @@ jobs:
           pip install -r requirements.txt -r requirements-dev.txt
       - name: Validate application and acceptance-test compilation
         run: python -m compileall -q app tests main.py
+      - name: Validate modified GitHub Actions workflow YAML
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import yaml
+
+          paths = [
+              ".github/workflows/g03-03-06-reconciliation-acceptance-tests.yml",
+              ".github/workflows/g01-08-restored-db-migration-rehearsal.yml",
+              ".github/workflows/alembic-upgrade.yml",
+          ]
+          for filename in paths:
+              with Path(filename).open(encoding="utf-8") as stream:
+                  document = yaml.safe_load(stream)
+              if not isinstance(document, dict) or not isinstance(document.get("jobs"), dict):
+                  raise SystemExit(f"Invalid GitHub Actions workflow structure: {filename}")
+              print(f"Validated workflow YAML: {filename}")
+          PY
       - name: Verify reconciliation issue permission migration against existing and custom roles
         env:
           PGPASSWORD: postgres
