@@ -1,0 +1,72 @@
+name: G-03-03-06 Reconciliation Acceptance Tests
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "app/routers/reconciliation.py"
+      - "app/models/reconciliation.py"
+      - "app/models/reconciliation_issue.py"
+      - "app/services/reconciliation_balance.py"
+      - "app/services/reconciliation_completion.py"
+      - "tests/test_g03_03_06_reconciliation_acceptance.py"
+      - "tests/test_g03_03_05_reconciliation_ui.py"
+      - "tests/test_g03_02_03_reconciliation_matches.py"
+      - "tests/test_g03_02_05_reconciliation_lifecycle.py"
+      - "tests/test_g03_03_02_reconciliation_balance.py"
+      - "tests/test_g03_03_03_reconciliation_issues.py"
+      - "tests/test_g03_03_04_reconciliation_final_report.py"
+      - ".github/workflows/g03-03-06-reconciliation-acceptance-tests.yml"
+      - "requirements.txt"
+      - "requirements-dev.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reconciliation-acceptance:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: family_finance_acceptance
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d family_finance_acceptance"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/family_finance_acceptance
+      JWT_SECRET_KEY: g03-03-06-reconciliation-acceptance-secret-at-least-32-bytes
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: Validate application and acceptance-test compilation
+        run: python -m compileall -q app tests main.py
+      - name: Run full reconciliation acceptance and regression tests
+        run: |
+          python -m pytest -q \
+            tests/test_g03_03_06_reconciliation_acceptance.py \
+            tests/test_g03_03_05_reconciliation_ui.py \
+            tests/test_g03_02_03_reconciliation_matches.py \
+            tests/test_g03_02_05_reconciliation_lifecycle.py \
+            tests/test_g03_03_02_reconciliation_balance.py \
+            tests/test_g03_03_03_reconciliation_issues.py \
+            tests/test_g03_03_04_reconciliation_final_report.py
