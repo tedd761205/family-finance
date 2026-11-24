@@ -275,3 +275,26 @@
  .reconciliation-manual-match{align-items:stretch;flex-direction:column}
  .reconciliation-manual-match button,.reconciliation-manual-select{width:100%;max-width:none}
 }
+
+
+/* G-03-03-05 two-way reconciliation review */
+.reconciliation-advanced-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:16px}
+.reconciliation-advanced-card{min-width:0;margin:0}
+.reconciliation-ledger-list,.reconciliation-issues-list,.reconciliation-balance-check,.reconciliation-final-report{display:grid;gap:10px;min-width:0}
+.reconciliation-ledger-card,.reconciliation-issue-card{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px;border:1px solid var(--line,#dce5e1);border-radius:11px;background:var(--surface,#fff);min-width:0}
+.reconciliation-ledger-card>div,.reconciliation-issue-card{min-width:0}
+.reconciliation-ledger-card strong,.reconciliation-issue-card strong{overflow-wrap:anywhere}
+.reconciliation-ledger-card p,.reconciliation-issue-card p{margin:5px 0 0;overflow-wrap:anywhere}
+.reconciliation-balance-line{display:grid;grid-template-columns:100px repeat(3,minmax(0,1fr)) auto;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line,#e3ebe5);min-width:0}
+.reconciliation-balance-line>span{overflow-wrap:anywhere}
+.reconciliation-resolution{padding:9px 10px;border-radius:8px;background:#f2f7f3;color:#365d48;font-size:12px}
+.reconciliation-report-ready,.reconciliation-report-blocked{font-weight:700;margin:0}
+.reconciliation-report-ready{color:#276a49}
+.reconciliation-report-blocked{color:#8a5b1d}
+@media(max-width:760px){
+ .reconciliation-advanced-grid{grid-template-columns:minmax(0,1fr)}
+ .reconciliation-ledger-card,.reconciliation-issue-card{align-items:flex-start;flex-direction:column}
+ .reconciliation-ledger-card button,.reconciliation-issue-card button{width:100%}
+ .reconciliation-balance-line{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px}
+ .reconciliation-balance-line strong{grid-column:1/-1}
+}
