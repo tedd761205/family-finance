@@ -8,18 +8,77 @@ on:
 
 permissions:
   contents: read
-
-concurrency:
-  group: neon-database-backup
-  cancel-in-progress: false
+  pull-requests: read
 
 jobs:
   backup:
+    # Manual pre-merge validation is limited to this reviewed PR branch and main.
+    # Event-scoped concurrency keeps stale dispatch runs from blocking the push rehearsal.
     name: Create and verify Neon backup
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
+      - name: Validate current approved backup workflow ref
+        env:
+          WORKFLOW_REF: ${{ github.ref }}
+          WORKFLOW_SHA: ${{ github.sha }}
+          WORKFLOW_EVENT: ${{ github.event_name }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_API_URL: ${{ github.api_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          case "$WORKFLOW_REF:$WORKFLOW_EVENT" in
+            refs/heads/main:schedule|refs/heads/main:workflow_dispatch)
+              ;;
+            refs/heads/security/neon-private-backup-storage:workflow_dispatch)
+              ;;
+            *)
+              echo "Refusing backup from an unapproved branch or event: $WORKFLOW_REF / $WORKFLOW_EVENT"
+              exit 1
+              ;;
+          esac
+          python3 - <<'PY'
+          import json, os, urllib.error, urllib.request
+          repository = os.environ["GITHUB_REPOSITORY"]
+          api_url = os.environ["GITHUB_API_URL"].rstrip("/")
+          branch = os.environ["WORKFLOW_REF"].removeprefix("refs/heads/")
+          workflow_sha = os.environ["WORKFLOW_SHA"]
+          token = os.environ["GH_TOKEN"]
+          if not token or not workflow_sha:
+              raise SystemExit("Missing GitHub token or workflow commit SHA.")
+          headers = {"Accept": "application/vnd.github+json", "Authorization": f"Bearer {token}", "X-GitHub-Api-Version": "2022-11-28"}
+          if branch == "main":
+              url = f"{api_url}/repos/{repository}/git/ref/heads/main"
+              try:
+                  with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=20) as response:
+                      current_sha = (json.load(response).get("object") or {}).get("sha")
+              except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+                  raise SystemExit("Could not verify the current main branch commit.") from exc
+              if current_sha != workflow_sha:
+                  raise SystemExit("Refusing backup: queued main workflow is not running the current main commit.")
+          else:
+              url = f"{api_url}/repos/{repository}/pulls/61"
+              try:
+                  with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=20) as response:
+                      pr = json.load(response)
+              except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+                  raise SystemExit("Could not verify PR #61 before accessing Production backup credentials.") from exc
+              head = pr.get("head") or {}
+              base = pr.get("base") or {}
+              head_repo = head.get("repo") or {}
+              if (
+                  pr.get("state") != "open"
+                  or pr.get("draft") is not True
+                  or head.get("ref") != branch
+                  or head_repo.get("full_name") != repository
+                  or base.get("ref") != "main"
+                  or head.get("sha") != workflow_sha
+              ):
+                  raise SystemExit("Refusing backup: PR #61 is not open as a draft at the exact workflow commit.")
+          print("Workflow ref is the current main commit or the exact open draft PR #61 head.")
+          PY
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -28,7 +87,88 @@ jobs:
           docker run --rm postgres:18-bookworm pg_dump --version
           docker run --rm postgres:18-bookworm pg_restore --version
 
-      - name: Create custom-format database dump
+      - name: Validate production database connection and branch endpoint
+        env:
+          DATABASE_URL: ${{ secrets.NEON_BACKUP_DATABASE_URL }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          EXPECTED_PROJECT_ID: wild-credit-40100572
+          EXPECTED_BRANCH_ID: br-jolly-breeze-b3mereg2
+        run: |
+          set -euo pipefail
+          case "${DATABASE_URL:-}" in
+            postgres://*|postgresql://*) ;;
+            *)
+              echo "Missing or invalid NEON_BACKUP_DATABASE_URL. Use a native PostgreSQL URI."
+              exit 1
+              ;;
+          esac
+          if [ -z "${NEON_API_KEY:-}" ]; then
+            echo "Missing NEON_API_KEY secret."
+            exit 1
+          fi
+          ACTUAL_HOST="$(python3 -c 'import os, urllib.parse; print((urllib.parse.urlparse(os.environ["DATABASE_URL"]).hostname or "").lower())')"
+          if [ -z "$ACTUAL_HOST" ]; then
+            echo "Could not read the backup database endpoint hostname."
+            exit 1
+          fi
+          export ACTUAL_HOST
+          python3 - <<'PY'
+          import json, os, urllib.error, urllib.parse, urllib.request
+
+          project_id = os.environ["EXPECTED_PROJECT_ID"]
+          branch_id = os.environ["EXPECTED_BRANCH_ID"]
+          actual_host = os.environ["ACTUAL_HOST"].strip().lower()
+          api_base = f"https://console.neon.tech/api/v2/projects/{project_id}"
+
+          def neon_get(path):
+              request = urllib.request.Request(
+                  api_base + path,
+                  headers={
+                      "Accept": "application/json",
+                      "Authorization": f"Bearer {os.environ['NEON_API_KEY']}",
+                  },
+              )
+              try:
+                  with urllib.request.urlopen(request, timeout=20) as response:
+                      return json.load(response)
+              except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+                  raise SystemExit("Could not verify the Production database through the Neon API.") from exc
+
+          branches = neon_get("/branches?limit=100").get("branches", [])
+          matches = [
+              item for item in branches
+              if item.get("id") == branch_id and item.get("project_id") == project_id
+          ]
+          if len(matches) != 1:
+              raise SystemExit("Refusing to back up: Neon did not return the exact configured Production branch.")
+          production = matches[0]
+          if (
+              production.get("name") != "production"
+              or production.get("default") is not True
+              or production.get("primary") is not True
+          ):
+              raise SystemExit("Refusing to back up: the configured Neon branch is not the project's primary default Production branch.")
+
+          endpoints = neon_get(f"/branches/{branch_id}/endpoints").get("endpoints", [])
+          rw_endpoints = [
+              item for item in endpoints
+              if item.get("type") == "read_write" and not item.get("disabled")
+          ]
+          if (
+              len(rw_endpoints) != 1
+              or rw_endpoints[0].get("branch_id") != branch_id
+              or rw_endpoints[0].get("project_id") != project_id
+          ):
+              raise SystemExit("Refusing to back up: expected exactly one active read-write endpoint on Production.")
+          endpoint_host = (rw_endpoints[0].get("host") or "").lower()
+          allowed_hosts = {endpoint_host, endpoint_host.replace(".", "-pooler.", 1)}
+          if not endpoint_host or actual_host not in allowed_hosts:
+              raise SystemExit("Refusing to back up: NEON_BACKUP_DATABASE_URL does not point to the API-confirmed Production endpoint.")
+          print("Neon API confirmed the exact Production branch, project, and connected endpoint.")
+          PY
+          echo "Production backup source guard passed."
+
+      - name: Create snapshot-consistent database dump and row-count manifest
         id: dump
         env:
           DATABASE_URL: ${{ secrets.NEON_BACKUP_DATABASE_URL }}
@@ -41,30 +181,77 @@ jobs:
           fi
 
           case "$DATABASE_URL" in
-            postgres://*|postgresql://*)
-              ;;
+            postgres://*|postgresql://*) ;;
             *)
-              echo "Invalid backup URL format. Use the Neon PostgreSQL connection string beginning with postgres:// or postgresql://."
-              echo "Do not use SQLAlchemy format such as postgresql+psycopg://."
+              echo "Invalid backup URL format. Use the native Neon PostgreSQL connection string."
               exit 1
               ;;
           esac
 
           mkdir -p "$GITHUB_WORKSPACE/backups"
-
           BACKUP_FILE="family-finance-$(date -u +%Y%m%dT%H%M%SZ).dump"
           echo "backup_file=$BACKUP_FILE" >> "$GITHUB_OUTPUT"
 
-          echo "Starting database dump (connection string is configured)."
+          # Keep the exporting transaction open while pg_dump and the row-count
+          # query import the same PostgreSQL snapshot.
+          coproc SNAPSHOT_SESSION {
+            docker run --rm -i --env DATABASE_URL postgres:18-bookworm \
+              psql "$DATABASE_URL" -X -qAt -v ON_ERROR_STOP=1
+          }
+          SNAPSHOT_PID="$SNAPSHOT_SESSION_PID"
+          SNAPSHOT_READ_FD="${SNAPSHOT_SESSION[0]}"
+          SNAPSHOT_WRITE_FD="${SNAPSHOT_SESSION[1]}"
+
+          printf 'BEGIN ISOLATION LEVEL REPEATABLE READ;\nSELECT pg_export_snapshot();\n' >&"$SNAPSHOT_WRITE_FD"
+          if ! IFS= read -r SNAPSHOT_ID <&"$SNAPSHOT_READ_FD"; then
+            echo "Could not export a PostgreSQL snapshot for the backup."
+            exit 1
+          fi
+          if [ -z "$SNAPSHOT_ID" ]; then
+            echo "PostgreSQL returned an empty snapshot identifier."
+            exit 1
+          fi
+          echo "Exported a consistent PostgreSQL snapshot."
+
           docker run --rm \
             --env DATABASE_URL \
+            --env SNAPSHOT_ID="$SNAPSHOT_ID" \
             --env BACKUP_FILE="$BACKUP_FILE" \
             -v "$GITHUB_WORKSPACE/backups:/backups" \
             postgres:18-bookworm \
-            sh -ec 'test -n "$DATABASE_URL"; exec pg_dump --dbname="$DATABASE_URL" --format=custom --no-owner --no-acl --verbose --file="/backups/$BACKUP_FILE"'
+            sh -ec 'exec pg_dump --dbname="$DATABASE_URL" --snapshot="$SNAPSHOT_ID" --format=custom --no-owner --no-acl --verbose --file="/backups/$BACKUP_FILE"'
 
           test -s "$GITHUB_WORKSPACE/backups/$BACKUP_FILE"
           ls -lh "$GITHUB_WORKSPACE/backups/$BACKUP_FILE"
+
+          # Import the very same exported snapshot before counting rows.
+          docker run --rm -i \
+            --env DATABASE_URL \
+            --env SNAPSHOT_ID="$SNAPSHOT_ID" \
+            postgres:18-bookworm \
+            psql "$DATABASE_URL" -X -qAt -F "$(printf '\t')" -v ON_ERROR_STOP=1 <<SQL > "$GITHUB_WORKSPACE/backups/row-counts.tsv"
+          BEGIN ISOLATION LEVEL REPEATABLE READ;
+          SET TRANSACTION SNAPSHOT '$SNAPSHOT_ID';
+          SELECT format(
+            'SELECT %L, count(*)::bigint FROM %I.%I',
+            tablename, schemaname, tablename
+          )
+          FROM pg_catalog.pg_tables
+          WHERE schemaname = 'public'
+          ORDER BY tablename
+          \gexec
+          COMMIT;
+          SQL
+
+          test -s "$GITHUB_WORKSPACE/backups/row-counts.tsv"
+          echo "Created snapshot-consistent row-count manifest:"
+          cat "$GITHUB_WORKSPACE/backups/row-counts.tsv"
+
+          printf 'COMMIT;\n' >&"$SNAPSHOT_WRITE_FD"
+          exec {SNAPSHOT_WRITE_FD}>&-
+          exec {SNAPSHOT_READ_FD}<&-
+          wait "$SNAPSHOT_PID"
+          echo "Snapshot transaction closed cleanly."
 
       - name: Verify dump archive
         env:
@@ -82,20 +269,20 @@ jobs:
         run: |
           python -m pip install --disable-pip-version-check "boto3>=1.35,<2.0"
 
-      - name: Upload and verify backup in private Neon Object Storage
+      - name: Upload and verify snapshot dump and row-count manifest in private Neon Object Storage
         env:
-          BACKUP_FILE: ${{ steps.dump.outputs.backup_file }}
-          NEON_STORAGE_ENDPOINT: ${{ vars.NEON_STORAGE_ENDPOINT }}
-          NEON_STORAGE_REGION: ${{ vars.NEON_STORAGE_REGION }}
-          NEON_BACKUP_BUCKET: ${{ vars.NEON_BACKUP_BUCKET }}
-          NEON_BACKUP_S3_ACCESS_KEY_ID: ${{ secrets.NEON_BACKUP_S3_ACCESS_KEY_ID }}
-          NEON_BACKUP_S3_SECRET_ACCESS_KEY: ${{ secrets.NEON_BACKUP_S3_SECRET_ACCESS_KEY }}
-          NEON_RESTORE_S3_ACCESS_KEY_ID: ${{ secrets.NEON_RESTORE_S3_ACCESS_KEY_ID }}
-          NEON_RESTORE_S3_SECRET_ACCESS_KEY: ${{ secrets.NEON_RESTORE_S3_SECRET_ACCESS_KEY }}
+          BACKUP_FILE: \${{ steps.dump.outputs.backup_file }}
+          NEON_STORAGE_ENDPOINT: \${{ vars.NEON_STORAGE_ENDPOINT }}
+          NEON_STORAGE_REGION: \${{ vars.NEON_STORAGE_REGION }}
+          NEON_BACKUP_BUCKET: \${{ vars.NEON_BACKUP_BUCKET }}
+          NEON_BACKUP_S3_ACCESS_KEY_ID: \${{ secrets.NEON_BACKUP_S3_ACCESS_KEY_ID }}
+          NEON_BACKUP_S3_SECRET_ACCESS_KEY: \${{ secrets.NEON_BACKUP_S3_SECRET_ACCESS_KEY }}
+          NEON_RESTORE_S3_ACCESS_KEY_ID: \${{ secrets.NEON_RESTORE_S3_ACCESS_KEY_ID }}
+          NEON_RESTORE_S3_SECRET_ACCESS_KEY: \${{ secrets.NEON_RESTORE_S3_SECRET_ACCESS_KEY }}
         run: |
           set -euo pipefail
-
           python - <<'PY'
+          import csv
           import hashlib
           import os
           import re
@@ -114,13 +301,25 @@ jobs:
           read_secret_key = os.environ["NEON_RESTORE_S3_SECRET_ACCESS_KEY"]
           filename = os.environ["BACKUP_FILE"].strip()
 
-          if not endpoint.startswith("https://") or not region or not bucket or not write_access_key or not write_secret_key or not read_access_key or not read_secret_key:
-              raise SystemExit("Missing or invalid private Neon Object Storage configuration.")
+          if not endpoint.startswith("https://") or not region or not bucket:
+              raise SystemExit("Missing private Neon Object Storage endpoint, region, or bucket.")
+          if not write_access_key or not write_secret_key or not read_access_key or not read_secret_key:
+              raise SystemExit("Missing scoped Neon Object Storage write/read credentials.")
           if not re.fullmatch(r"family-finance-[0-9]{8}T[0-9]{6}Z\.dump", filename):
               raise SystemExit("Unexpected backup filename; refusing to upload.")
-          source = Path("backups") / filename
-          if not source.is_file() or source.stat().st_size <= 0:
-              raise SystemExit("Backup dump is missing or empty.")
+
+          dump_path = Path("backups") / filename
+          manifest_path = Path("backups") / "row-counts.tsv"
+          for path in (dump_path, manifest_path):
+              if not path.is_file() or path.stat().st_size <= 0:
+                  raise SystemExit(f"Required backup file is missing or empty: {path}")
+
+          with manifest_path.open(encoding="utf-8", newline="") as manifest_file:
+              rows = list(csv.reader(manifest_file, delimiter="\t"))
+          if not rows or any(len(row) != 2 or not row[0] or not row[1].isdigit() for row in rows):
+              raise SystemExit("Snapshot row-count manifest has an invalid format.")
+          if len({row[0] for row in rows}) != len(rows):
+              raise SystemExit("Snapshot row-count manifest contains duplicate table names.")
 
           def sha256_file(path):
               digest = hashlib.sha256()
@@ -129,10 +328,7 @@ jobs:
                       digest.update(chunk)
               return digest.hexdigest()
 
-          digest = sha256_file(source)
-          size = source.stat().st_size
-          key = f"production/{filename}"
-          client_config = Config(
+          config = Config(
               signature_version="s3v4",
               s3={"addressing_style": "path"},
               retries={"max_attempts": 3, "mode": "standard"},
@@ -143,7 +339,7 @@ jobs:
               region_name=region,
               aws_access_key_id=write_access_key,
               aws_secret_access_key=write_secret_key,
-              config=client_config,
+              config=config,
           )
           reader = boto3.client(
               "s3",
@@ -151,30 +347,36 @@ jobs:
               region_name=region,
               aws_access_key_id=read_access_key,
               aws_secret_access_key=read_secret_key,
-              config=client_config,
+              config=config,
           )
 
-          writer.upload_file(
-              str(source),
-              bucket,
-              key,
-              ExtraArgs={
-                  "ContentType": "application/octet-stream",
-                  "Metadata": {"sha256": digest},
-              },
-          )
-          head = reader.head_object(Bucket=bucket, Key=key)
-          if head.get("ContentLength") != size or head.get("Metadata", {}).get("sha256") != digest:
-              raise SystemExit("Uploaded object metadata does not match the source backup.")
-
+          objects = [
+              (dump_path, f"production/{filename}"),
+              (manifest_path, f"production/{Path(filename).stem}.row-counts.tsv"),
+          ]
           with tempfile.TemporaryDirectory() as temp_dir:
-              downloaded = Path(temp_dir) / filename
-              reader.download_file(bucket, key, str(downloaded))
-              downloaded_digest = sha256_file(downloaded)
-              if downloaded.stat().st_size != size or downloaded_digest != digest:
-                  raise SystemExit("Private object storage round-trip verification failed.")
+              for source, key in objects:
+                  digest = sha256_file(source)
+                  size = source.stat().st_size
+                  writer.upload_file(
+                      str(source),
+                      bucket,
+                      key,
+                      ExtraArgs={
+                          "ContentType": "application/octet-stream",
+                          "Metadata": {"sha256": digest},
+                      },
+                  )
+                  head = reader.head_object(Bucket=bucket, Key=key)
+                  if head.get("ContentLength") != size or head.get("Metadata", {}).get("sha256") != digest:
+                      raise SystemExit(f"Private object metadata does not match source file: {key}")
 
-          print(f"Private Neon backup verified: {key}")
-          print(f"Size: {size} bytes")
-          print(f"SHA-256: {digest}")
+                  downloaded = Path(temp_dir) / source.name
+                  reader.download_file(bucket, key, str(downloaded))
+                  if downloaded.stat().st_size != size or sha256_file(downloaded) != digest:
+                      raise SystemExit(f"Private object round-trip verification failed: {key}")
+
+                  print(f"Verified private object: {key}")
+                  print(f"Size: {size} bytes")
+                  print(f"SHA-256: {digest}")
           PY
