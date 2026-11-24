@@ -5,11 +5,11 @@ on:
     inputs:
       backup_run_id:
         description: "Successful Neon Database Backup workflow run ID"
-        required: false
+        required: true
         type: string
       target_confirmation:
         description: "Type exactly g01-restore-test to authorize replacing objects in that test branch"
-        required: false
+        required: true
         type: string
 
 permissions:
