@@ -1,11 +1,6 @@
 name: Neon Database Backup
 
 on:
-  push:
-    branches:
-      - fix/restore-backup-row-count-manifest
-    paths:
-      - .github/workflows/neon-backup.yml
   workflow_dispatch:
   schedule:
     # 每日台灣時間 03:00（UTC 19:00）
@@ -73,7 +68,7 @@ jobs:
           case "$WORKFLOW_REF:$WORKFLOW_EVENT" in
             refs/heads/main:schedule|refs/heads/main:workflow_dispatch)
               ;;
-            refs/heads/fix/restore-backup-row-count-manifest:workflow_dispatch|refs/heads/fix/restore-backup-row-count-manifest:push)
+            refs/heads/fix/restore-backup-row-count-manifest:workflow_dispatch)
               ;;
             *)
               echo "Refusing backup from an unapproved branch or event: $WORKFLOW_REF / $WORKFLOW_EVENT"
