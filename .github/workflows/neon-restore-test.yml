@@ -101,6 +101,13 @@ jobs:
                   retries={"max_attempts": 3, "mode": "standard"},
               ),
           )
+          def sha256_file(path):
+              digest = hashlib.sha256()
+              with path.open("rb") as stream:
+                  for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                      digest.update(chunk)
+              return digest.hexdigest()
+
           head = client.head_object(Bucket=bucket, Key=key)
           expected_size = head.get("ContentLength", 0)
           expected_digest = head.get("Metadata", {}).get("sha256", "")
@@ -110,7 +117,7 @@ jobs:
           destination = Path("restore-input") / Path(key).name
           client.download_file(bucket, key, str(destination))
           actual_size = destination.stat().st_size
-          actual_digest = hashlib.sha256(destination.read_bytes()).hexdigest()
+          actual_digest = sha256_file(destination)
           if actual_size != expected_size or actual_digest != expected_digest:
               raise SystemExit("Downloaded backup size or SHA-256 does not match private object metadata.")
 
