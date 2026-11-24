@@ -3,8 +3,12 @@ name: Neon Restore Test
 on:
   workflow_dispatch:
     inputs:
+      backup_run_id:
+        description: "Successful Neon Database Backup workflow run ID"
+        required: true
+        type: string
       backup_object_key:
-        description: "Exact private Neon backup object key, e.g. production/family-finance-20261119T005812Z.dump"
+        description: "Exact private Neon dump key, e.g. production/family-finance-20261124T030000Z.dump"
         required: true
         type: string
       target_confirmation:
@@ -13,7 +17,9 @@ on:
         type: string
 
 permissions:
+  actions: read
   contents: read
+  pull-requests: read
 
 concurrency:
   group: neon-restore-test
@@ -21,54 +27,280 @@ concurrency:
 
 jobs:
   restore:
+    # Manual pre-merge validation is limited to this reviewed PR branch and main.
     name: Restore backup into isolated test branch
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
+      - name: Validate current approved restore workflow ref
+        env:
+          WORKFLOW_REF: ${{ github.ref }}
+          WORKFLOW_SHA: ${{ github.sha }}
+          WORKFLOW_EVENT: ${{ github.event_name }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_API_URL: ${{ github.api_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          case "$WORKFLOW_REF:$WORKFLOW_EVENT" in
+            refs/heads/main:workflow_dispatch|refs/heads/security/neon-private-backup-storage:workflow_dispatch)
+              ;;
+            *)
+              echo "Refusing restore from an unapproved branch or event: $WORKFLOW_REF / $WORKFLOW_EVENT"
+              exit 1
+              ;;
+          esac
+          python3 - <<'PY'
+          import json, os, urllib.error, urllib.request
+          repository = os.environ["GITHUB_REPOSITORY"]
+          api_url = os.environ["GITHUB_API_URL"].rstrip("/")
+          branch = os.environ["WORKFLOW_REF"].removeprefix("refs/heads/")
+          workflow_sha = os.environ["WORKFLOW_SHA"]
+          token = os.environ["GH_TOKEN"]
+          if not token or not workflow_sha:
+              raise SystemExit("Missing GitHub token or workflow commit SHA.")
+          headers = {"Accept": "application/vnd.github+json", "Authorization": f"Bearer {token}", "X-GitHub-Api-Version": "2022-11-28"}
+          if branch == "main":
+              url = f"{api_url}/repos/{repository}/git/ref/heads/main"
+              try:
+                  with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=20) as response:
+                      current_sha = (json.load(response).get("object") or {}).get("sha")
+              except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+                  raise SystemExit("Could not verify the current main branch commit.") from exc
+              if current_sha != workflow_sha:
+                  raise SystemExit("Refusing restore: workflow is not running the current main commit.")
+          else:
+              url = f"{api_url}/repos/{repository}/pulls/61"
+              try:
+                  with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=20) as response:
+                      pr = json.load(response)
+              except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+                  raise SystemExit("Could not verify PR #61 before starting restore.") from exc
+              head = pr.get("head") or {}
+              base = pr.get("base") or {}
+              head_repo = head.get("repo") or {}
+              if (
+                  pr.get("state") != "open"
+                  or pr.get("draft") is not True
+                  or head.get("ref") != branch
+                  or head_repo.get("full_name") != repository
+                  or base.get("ref") != "main"
+                  or head.get("sha") != workflow_sha
+              ):
+                  raise SystemExit("Refusing restore: PR #61 is not open as a draft at the exact workflow commit.")
+          print("Restore workflow ref is the current main commit or the exact open draft PR #61 head.")
+          PY
+      - name: Resolve backup run and authorize restore target
+        id: source
+        env:
+          BACKUP_RUN_ID_INPUT: ${{ inputs.backup_run_id }}
+          TARGET_CONFIRMATION_INPUT: ${{ inputs.target_confirmation }}
+          WORKFLOW_EVENT: ${{ github.event_name }}
+          WORKFLOW_BRANCH: ${{ github.ref_name }}
+          WORKFLOW_SHA: ${{ github.sha }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_API_URL: ${{ github.api_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, time, urllib.error, urllib.parse, urllib.request
+
+          repository = os.environ["GITHUB_REPOSITORY"]
+          api_url = os.environ["GITHUB_API_URL"].rstrip("/")
+          token = os.environ["GH_TOKEN"]
+          branch = os.environ["WORKFLOW_BRANCH"]
+          event = os.environ["WORKFLOW_EVENT"]
+          expected_sha = os.environ["WORKFLOW_SHA"]
+          if not token or not expected_sha:
+              raise SystemExit("Missing GitHub token or source commit SHA.")
+
+          headers = {
+              "Accept": "application/vnd.github+json",
+              "Authorization": f"Bearer {token}",
+              "X-GitHub-Api-Version": "2022-11-28",
+          }
+          encoded_repo = urllib.parse.quote(repository, safe="/")
+
+          def github_get(path):
+              request = urllib.request.Request(api_url + path, headers=headers)
+              try:
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      return json.load(response)
+              except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+                  raise SystemExit(f"Could not verify backup source through GitHub API: {path}") from exc
+
+          if event == "workflow_dispatch":
+              backup_run_id = os.environ["BACKUP_RUN_ID_INPUT"].strip()
+              target_confirmation = os.environ["TARGET_CONFIRMATION_INPUT"].strip()
+              if not backup_run_id.isdigit():
+                  raise SystemExit("backup_run_id must contain digits only.")
+              if target_confirmation != "g01-restore-test":
+                  raise SystemExit("Refusing to run: type exactly g01-restore-test in target_confirmation.")
+          else:
+              raise SystemExit("Unsupported restore trigger event.")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"backup_run_id={backup_run_id}\n")
+              output.write(f"target_confirmation={target_confirmation}\n")
+          print(f"Resolved successful backup run {backup_run_id}; target is g01-restore-test.", flush=True)
+          PY
+
       - name: Record restore provenance
         env:
+          BACKUP_RUN_ID: ${{ steps.source.outputs.backup_run_id }}
           BACKUP_OBJECT_KEY: ${{ inputs.backup_object_key }}
-          TARGET_CONFIRMATION: ${{ inputs.target_confirmation }}
+          TARGET_CONFIRMATION: ${{ steps.source.outputs.target_confirmation }}
         run: |
           set -euo pipefail
           mkdir -p restore-provenance
-          printf 'backup_object_key=%s\n' "$BACKUP_OBJECT_KEY" > restore-provenance/restore.txt
+          printf 'backup_run_id=%s\n' "$BACKUP_RUN_ID" > restore-provenance/restore.txt
+          printf 'backup_object_key=%s\n' "$BACKUP_OBJECT_KEY" >> restore-provenance/restore.txt
           printf 'target_confirmation=%s\n' "$TARGET_CONFIRMATION" >> restore-provenance/restore.txt
 
-      - name: Validate explicit target confirmation and backup object key
+      - name: Validate explicit target confirmation
         env:
-          BACKUP_OBJECT_KEY: ${{ inputs.backup_object_key }}
-          TARGET_CONFIRMATION: ${{ inputs.target_confirmation }}
+          BACKUP_RUN_ID: ${{ steps.source.outputs.backup_run_id }}
+          TARGET_CONFIRMATION: ${{ steps.source.outputs.target_confirmation }}
         run: |
           set -euo pipefail
-          python - <<'PY'
-          import os
-          import re
+          case "$BACKUP_RUN_ID" in
+            ''|*[!0-9]*)
+              echo "backup_run_id must contain digits only."
+              exit 1
+              ;;
+          esac
+          if [ "$TARGET_CONFIRMATION" != "g01-restore-test" ]; then
+            echo "Refusing to run: target confirmation is not g01-restore-test."
+            exit 1
+          fi
+          echo "Explicit or pre-authorized isolated test-branch confirmation received."
 
-          key = os.environ.get("BACKUP_OBJECT_KEY", "")
-          if not re.fullmatch(r"production/family-finance-[0-9]{8}T[0-9]{6}Z\.dump", key):
-              raise SystemExit("backup_object_key must be an exact production backup key created by the backup workflow.")
-          if os.environ.get("TARGET_CONFIRMATION") != "g01-restore-test":
-              raise SystemExit("Refusing to run: type exactly g01-restore-test in target_confirmation.")
-          print("Backup object key and explicit test-branch confirmation validated.")
+      - name: Verify selected backup run and artifact provenance
+        id: backup_source
+        env:
+          BACKUP_RUN_ID: ${{ steps.source.outputs.backup_run_id }}
+          BACKUP_OBJECT_KEY: ${{ inputs.backup_object_key }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_API_URL: ${{ github.api_url }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, re, urllib.error, urllib.parse, urllib.request
+          from datetime import datetime, timezone, timedelta
+
+          repository = os.environ["GITHUB_REPOSITORY"]
+          run_id = os.environ["BACKUP_RUN_ID"]
+          token = os.environ["GH_TOKEN"]
+          api_url = os.environ["GITHUB_API_URL"].rstrip("/")
+          if not token:
+              raise SystemExit("Missing GitHub token for backup provenance validation.")
+
+          def github_get(path):
+              request = urllib.request.Request(
+                  api_url + path,
+                  headers={
+                      "Accept": "application/vnd.github+json",
+                      "Authorization": f"Bearer {token}",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+              )
+              try:
+                  with urllib.request.urlopen(request, timeout=20) as response:
+                      return json.load(response)
+              except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+                  raise SystemExit("Could not validate the selected backup run through the GitHub API.") from exc
+
+          encoded_repo = urllib.parse.quote(repository, safe="/")
+          run = github_get(f"/repos/{encoded_repo}/actions/runs/{run_id}")
+          if run.get("status") != "completed" or run.get("conclusion") != "success":
+              raise SystemExit("Refusing to restore: selected backup workflow run has not completed successfully.")
+          head_branch = run.get("head_branch")
+          head_sha = run.get("head_sha") or ""
+          if not head_sha:
+              raise SystemExit("Selected backup run has no source commit SHA.")
+          if head_branch == "main":
+              if run.get("event") not in {"schedule", "workflow_dispatch"}:
+                  raise SystemExit("Refusing to restore: main-branch backups must come from a scheduled or manual backup run.")
+              ref = github_get(f"/repos/{encoded_repo}/git/ref/heads/main")
+              current_sha = (ref.get("object") or {}).get("sha")
+              if not current_sha or head_sha != current_sha:
+                  raise SystemExit("Refusing to restore: the main-branch backup was created from a stale commit.")
+          elif head_branch == "security/neon-private-backup-storage":
+              if run.get("event") != "workflow_dispatch":
+                  raise SystemExit("Refusing to restore: pre-merge PR backups must come from an explicit manual dispatch.")
+              pr = github_get(f"/repos/{encoded_repo}/pulls/61")
+              pr_head = pr.get("head") or {}
+              pr_base = pr.get("base") or {}
+              pr_head_repo = pr_head.get("repo") or {}
+              if (
+                  pr.get("state") != "open"
+                  or pr.get("draft") is not True
+                  or pr_head.get("ref") != head_branch
+                  or pr_head_repo.get("full_name") != repository
+                  or pr_base.get("ref") != "main"
+                  or pr_head.get("sha") != head_sha
+              ):
+                  raise SystemExit("Refusing to restore: PR #61 is not open as a draft at the exact commit used by this backup run.")
+          else:
+              raise SystemExit("Refusing to restore: backup run was not created from an approved branch.")
+          head_repository = (run.get("head_repository") or {}).get("full_name")
+          if head_repository != repository:
+              raise SystemExit("Refusing to restore: selected backup run did not originate from this repository.")
+          workflow_id = run.get("workflow_id")
+          if not workflow_id:
+              raise SystemExit("Selected backup run has no workflow ID.")
+          workflow = github_get(f"/repos/{encoded_repo}/actions/workflows/{workflow_id}")
+          if workflow.get("path") != ".github/workflows/neon-backup.yml":
+              raise SystemExit("Refusing to restore: selected run does not belong to Neon Database Backup.")
+          run_number = run.get("run_number")
+          if not isinstance(run_number, int) or run_number < 1:
+              raise SystemExit("Selected backup run has an invalid run number.")
+          object_key = os.environ.get("BACKUP_OBJECT_KEY", "").strip()
+          if not re.fullmatch(r"production/family-finance-[0-9]{8}T[0-9]{6}Z\.dump", object_key):
+              raise SystemExit("BACKUP_OBJECT_KEY must be an exact private Production backup object key.")
+          object_stamp = object_key.rsplit("-", 1)[1].removesuffix(".dump")
+          object_time = datetime.strptime(object_stamp, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+          run_time = datetime.fromisoformat(run["created_at"].replace("Z", "+00:00"))
+          now = datetime.now(timezone.utc)
+          if object_time > now or now - object_time > timedelta(hours=24):
+              raise SystemExit("Selected private backup object must be no older than 24 hours.")
+          if abs((object_time - run_time).total_seconds()) > 3600:
+              raise SystemExit("Private backup object timestamp does not match the selected backup workflow run.")
+          manifest_key = object_key[:-5] + ".row-counts.tsv"
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"backup_object_key={object_key}\n")
+              output.write(f"backup_manifest_key={manifest_key}\n")
+              output.write(f"run_number={run_number}\n")
+              output.write(f"head_sha={head_sha}\n")
+              output.write(f"workflow_id={workflow_id}\n")
+          with open("restore-provenance/restore.txt", "a", encoding="utf-8") as provenance_file:
+              provenance_file.write(f"backup_run_number={run_number}\n")
+              provenance_file.write(f"backup_head_sha={head_sha}\n")
+              provenance_file.write(f"backup_workflow_id={workflow_id}\n")
+              provenance_file.write(f"backup_manifest_key={manifest_key}\n")
+          print("GitHub confirmed the successful backup run; its private dump and snapshot manifest will be verified directly in Neon Object Storage.")
           PY
 
       - name: Install S3 client
         run: |
           python -m pip install --disable-pip-version-check "boto3>=1.35,<2.0"
 
-      - name: Download and verify backup from private Neon Object Storage
+      - name: Download and verify private dump and row-count manifest from Neon Object Storage
         env:
-          BACKUP_OBJECT_KEY: ${{ inputs.backup_object_key }}
-          NEON_STORAGE_ENDPOINT: ${{ vars.NEON_STORAGE_ENDPOINT }}
-          NEON_STORAGE_REGION: ${{ vars.NEON_STORAGE_REGION }}
-          NEON_BACKUP_BUCKET: ${{ vars.NEON_BACKUP_BUCKET }}
-          NEON_RESTORE_S3_ACCESS_KEY_ID: ${{ secrets.NEON_RESTORE_S3_ACCESS_KEY_ID }}
-          NEON_RESTORE_S3_SECRET_ACCESS_KEY: ${{ secrets.NEON_RESTORE_S3_SECRET_ACCESS_KEY }}
+          BACKUP_OBJECT_KEY: \${{ steps.backup_source.outputs.backup_object_key }}
+          BACKUP_MANIFEST_KEY: \${{ steps.backup_source.outputs.backup_manifest_key }}
+          NEON_STORAGE_ENDPOINT: \${{ vars.NEON_STORAGE_ENDPOINT }}
+          NEON_STORAGE_REGION: \${{ vars.NEON_STORAGE_REGION }}
+          NEON_BACKUP_BUCKET: \${{ vars.NEON_BACKUP_BUCKET }}
+          NEON_RESTORE_S3_ACCESS_KEY_ID: \${{ secrets.NEON_RESTORE_S3_ACCESS_KEY_ID }}
+          NEON_RESTORE_S3_SECRET_ACCESS_KEY: \${{ secrets.NEON_RESTORE_S3_SECRET_ACCESS_KEY }}
         run: |
           set -euo pipefail
           mkdir -p restore-input
           python - <<'PY'
+          import csv
           import hashlib
           import os
           import re
@@ -77,9 +309,13 @@ jobs:
           import boto3
           from botocore.config import Config
 
-          key = os.environ["BACKUP_OBJECT_KEY"].strip()
-          if not re.fullmatch(r"production/family-finance-[0-9]{8}T[0-9]{6}Z\.dump", key):
-              raise SystemExit("Refusing to download an object outside the approved production backup key format.")
+          dump_key = os.environ["BACKUP_OBJECT_KEY"].strip()
+          manifest_key = os.environ["BACKUP_MANIFEST_KEY"].strip()
+          expected_manifest_key = dump_key[:-5] + ".row-counts.tsv"
+          if not re.fullmatch(r"production/family-finance-[0-9]{8}T[0-9]{6}Z\.dump", dump_key):
+              raise SystemExit("Refusing to download a key outside the approved Production backup format.")
+          if manifest_key != expected_manifest_key:
+              raise SystemExit("Selected row-count manifest key does not correspond to the selected dump key.")
 
           endpoint = os.environ["NEON_STORAGE_ENDPOINT"].strip()
           region = os.environ["NEON_STORAGE_REGION"].strip()
@@ -87,7 +323,7 @@ jobs:
           access_key = os.environ["NEON_RESTORE_S3_ACCESS_KEY_ID"].strip()
           secret_key = os.environ["NEON_RESTORE_S3_SECRET_ACCESS_KEY"]
           if not endpoint.startswith("https://") or not region or not bucket or not access_key or not secret_key:
-              raise SystemExit("Missing or invalid private Neon Object Storage restore configuration.")
+              raise SystemExit("Missing private Neon Object Storage read-only credentials or configuration.")
 
           client = boto3.client(
               "s3",
@@ -101,6 +337,7 @@ jobs:
                   retries={"max_attempts": 3, "mode": "standard"},
               ),
           )
+
           def sha256_file(path):
               digest = hashlib.sha256()
               with path.open("rb") as stream:
@@ -108,26 +345,41 @@ jobs:
                       digest.update(chunk)
               return digest.hexdigest()
 
-          head = client.head_object(Bucket=bucket, Key=key)
-          expected_size = head.get("ContentLength", 0)
-          expected_digest = head.get("Metadata", {}).get("sha256", "")
-          if expected_size <= 0 or not re.fullmatch(r"[0-9a-f]{64}", expected_digest):
-              raise SystemExit("Private backup object is empty or missing its SHA-256 metadata.")
+          dump_head = client.head_object(Bucket=bucket, Key=dump_key)
+          manifest_head = client.head_object(Bucket=bucket, Key=manifest_key)
+          expected_objects = [
+              (dump_key, Path("restore-input") / Path(dump_key).name, dump_head, "dump"),
+              (manifest_key, Path("restore-input") / "row-counts.tsv", manifest_head, "manifest"),
+          ]
+          verified = {}
+          for key, destination, head, label in expected_objects:
+              size = head.get("ContentLength", 0)
+              digest = head.get("Metadata", {}).get("sha256", "")
+              if size <= 0 or not re.fullmatch(r"[0-9a-f]{64}", digest):
+                  raise SystemExit(f"Private backup {label} object is empty or missing SHA-256 metadata.")
+              client.download_file(bucket, key, str(destination))
+              actual_size = destination.stat().st_size
+              actual_digest = sha256_file(destination)
+              if actual_size != size or actual_digest != digest:
+                  raise SystemExit(f"Downloaded backup {label} does not match private object metadata.")
+              verified[label] = {"size": actual_size, "sha256": actual_digest}
+              print(f"Verified private backup {label}: {key}")
 
-          destination = Path("restore-input") / Path(key).name
-          client.download_file(bucket, key, str(destination))
-          actual_size = destination.stat().st_size
-          actual_digest = sha256_file(destination)
-          if actual_size != expected_size or actual_digest != expected_digest:
-              raise SystemExit("Downloaded backup size or SHA-256 does not match private object metadata.")
+          with (Path("restore-input") / "row-counts.tsv").open(encoding="utf-8", newline="") as manifest_file:
+              rows = list(csv.reader(manifest_file, delimiter="\t"))
+          if not rows or any(len(row) != 2 or not row[0] or not row[1].isdigit() for row in rows):
+              raise SystemExit("Downloaded row-count manifest has an invalid format.")
+          if len({row[0] for row in rows}) != len(rows):
+              raise SystemExit("Downloaded row-count manifest contains duplicate table names.")
 
           with open("restore-provenance/restore.txt", "a", encoding="utf-8") as provenance_file:
-              provenance_file.write(f"backup_size_bytes={actual_size}\n")
-              provenance_file.write(f"backup_sha256={actual_digest}\n")
-
-          print(f"Downloaded and verified private backup object: {key}")
-          print(f"Size: {actual_size} bytes")
-          print(f"SHA-256: {actual_digest}")
+              provenance_file.write(f"backup_size_bytes={verified['dump']['size']}\n")
+              provenance_file.write(f"backup_sha256={verified['dump']['sha256']}\n")
+              provenance_file.write(f"backup_manifest_key={manifest_key}\n")
+              provenance_file.write(f"backup_manifest_size_bytes={verified['manifest']['size']}\n")
+              provenance_file.write(f"backup_manifest_sha256={verified['manifest']['sha256']}\n")
+          print(f"Dump size: {verified['dump']['size']} bytes; SHA-256: {verified['dump']['sha256']}")
+          print(f"Manifest size: {verified['manifest']['size']} bytes; SHA-256: {verified['manifest']['sha256']}")
           PY
 
       - name: Locate and validate dump file
@@ -136,7 +388,7 @@ jobs:
           set -euo pipefail
           mapfile -t DUMPS < <(find restore-input -type f -name '*.dump' -print)
           if [ "${#DUMPS[@]}" -ne 1 ]; then
-            echo "Expected exactly one .dump file in the private backup object; found ${#DUMPS[@]}."
+            echo "Expected exactly one .dump file in the selected backup artifact; found ${#DUMPS[@]}."
             find restore-input -maxdepth 3 -type f -printf '%p\n'
             exit 1
           fi
@@ -148,6 +400,25 @@ jobs:
             pg_restore --list "/work/$DUMP_PATH" > /tmp/restore-list.txt
           test -s /tmp/restore-list.txt
           echo "Backup archive is readable."
+
+      - name: Locate and validate backup row-count manifest
+        id: manifest
+        run: |
+          set -euo pipefail
+          mapfile -t MANIFESTS < <(find restore-input -type f -name 'row-counts.tsv' -print)
+          if [ "${#MANIFESTS[@]}" -ne 1 ]; then
+            echo "Expected exactly one row-count manifest in the selected backup artifact; found ${#MANIFESTS[@]}."
+            find restore-input -maxdepth 3 -type f -print
+            exit 1
+          fi
+          MANIFEST_PATH="${MANIFESTS[0]}"
+          test -s "$MANIFEST_PATH"
+          if ! awk -F '\t' 'NF != 2 || $1 == "" || $2 !~ /^[0-9]+$/ { exit 1 }' "$MANIFEST_PATH"; then
+            echo "Backup row-count manifest has an invalid format."
+            exit 1
+          fi
+          echo "manifest_path=$MANIFEST_PATH" >> "$GITHUB_OUTPUT"
+          echo "Found one valid backup row-count manifest."
 
       - name: Validate test database connection and branch endpoint
         env:
@@ -196,8 +467,16 @@ jobs:
                   branch = json.load(response).get("branch", {})
           except (urllib.error.HTTPError, urllib.error.URLError) as exc:
               raise SystemExit("Could not verify the configured restore-test branch through the Neon API.") from exc
-          if branch.get("id") != branch_id or branch.get("project_id") != project_id or branch.get("name") != "g01-restore-test":
-              raise SystemExit("Refusing to restore: Neon API did not confirm the expected g01-restore-test branch.")
+          if (
+              branch.get("id") != branch_id
+              or branch.get("project_id") != project_id
+              or branch.get("name") != "g01-restore-test"
+              or branch.get("parent_id") != "br-jolly-breeze-b3mereg2"
+              or branch.get("default") is not False
+              or branch.get("protected") is not False
+              or branch.get("primary") is True
+          ):
+              raise SystemExit("Refusing to restore: Neon API did not confirm the isolated, non-default g01-restore-test child branch.")
           endpoints_request = urllib.request.Request(
               f"https://console.neon.tech/api/v2/projects/{project_id}/branches/{branch_id}/endpoints",
               headers={"Accept": "application/json", "Authorization": f"Bearer {os.environ['NEON_API_KEY']}"},
@@ -270,6 +549,7 @@ jobs:
       - name: Verify restored baseline revision and exact schema
         env:
           DATABASE_URL: ${{ secrets.NEON_RESTORE_TEST_DATABASE_URL }}
+          MANIFEST_PATH: ${{ steps.manifest.outputs.manifest_path }}
         run: |
           set -euo pipefail
           REVISION="$(docker run --rm --env DATABASE_URL postgres:18-bookworm psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atc "SELECT version_num FROM public.alembic_version")"
@@ -314,101 +594,34 @@ jobs:
           diff -u /tmp/expected-public-tables.txt /tmp/actual-public-tables.txt
           echo "Restored schema matches the 28-table Production baseline at a7c9e1f3b5d7."
 
-          docker run --rm --env DATABASE_URL postgres:18-bookworm \
-            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -P pager=off -c "
-              WITH expected(table_name, expected_rows) AS (
-                VALUES
-                  ('accounts', 5::bigint),
-                  ('alembic_version', 1::bigint),
-                  ('audit_logs', 0::bigint),
-                  ('categories', 5::bigint),
-                  ('credit_card_payments', 2::bigint),
-                  ('families', 3::bigint),
-                  ('family_members', 4::bigint),
-                  ('member_roles', 4::bigint),
-                  ('password_reset_tokens', 0::bigint),
-                  ('permissions', 55::bigint),
-                  ('revoked_tokens', 1::bigint),
-                  ('role_data_scopes', 135::bigint),
-                  ('role_permissions', 486::bigint),
-                  ('roles', 15::bigint),
-                  ('transactions', 28::bigint),
-                  ('transfers', 4::bigint),
-                  ('user_identities', 0::bigint),
-                  ('users', 2::bigint)
-              ),
-              actual AS (
-                SELECT 'accounts'::text AS table_name, count(*) AS actual_rows FROM public.accounts
-                UNION ALL SELECT 'alembic_version', count(*) FROM public.alembic_version
-                UNION ALL SELECT 'audit_logs', count(*) FROM public.audit_logs
-                UNION ALL SELECT 'categories', count(*) FROM public.categories
-                UNION ALL SELECT 'credit_card_payments', count(*) FROM public.credit_card_payments
-                UNION ALL SELECT 'families', count(*) FROM public.families
-                UNION ALL SELECT 'family_members', count(*) FROM public.family_members
-                UNION ALL SELECT 'member_roles', count(*) FROM public.member_roles
-                UNION ALL SELECT 'password_reset_tokens', count(*) FROM public.password_reset_tokens
-                UNION ALL SELECT 'permissions', count(*) FROM public.permissions
-                UNION ALL SELECT 'revoked_tokens', count(*) FROM public.revoked_tokens
-                UNION ALL SELECT 'role_data_scopes', count(*) FROM public.role_data_scopes
-                UNION ALL SELECT 'role_permissions', count(*) FROM public.role_permissions
-                UNION ALL SELECT 'roles', count(*) FROM public.roles
-                UNION ALL SELECT 'transactions', count(*) FROM public.transactions
-                UNION ALL SELECT 'transfers', count(*) FROM public.transfers
-                UNION ALL SELECT 'user_identities', count(*) FROM public.user_identities
-                UNION ALL SELECT 'users', count(*) FROM public.users
-              )
-              SELECT e.table_name, e.expected_rows, a.actual_rows,
-                     (e.expected_rows = a.actual_rows) AS matches_backup_baseline
-              FROM expected e JOIN actual a USING (table_name)
-              ORDER BY e.table_name;
-            "
-          docker run --rm --env DATABASE_URL postgres:18-bookworm \
+          if [ -z "${MANIFEST_PATH:-}" ] || [ ! -s "$MANIFEST_PATH" ]; then
+            echo "Missing backup row-count manifest."
+            exit 1
+          fi
+          # Build one deterministic query from the restored public tables.
+          COUNT_QUERY="$(docker run --rm --env DATABASE_URL postgres:18-bookworm \
             psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atc "
-              DO \$\$ 
-              DECLARE mismatch_count integer;
-              BEGIN
-                WITH expected(table_name, expected_rows) AS (
-                  VALUES
-                    ('accounts', 5::bigint), ('alembic_version', 1::bigint),
-                    ('audit_logs', 0::bigint), ('categories', 5::bigint),
-                    ('credit_card_payments', 2::bigint), ('families', 3::bigint),
-                    ('family_members', 4::bigint), ('member_roles', 4::bigint),
-                    ('password_reset_tokens', 0::bigint), ('permissions', 55::bigint),
-                    ('revoked_tokens', 1::bigint), ('role_data_scopes', 135::bigint),
-                    ('role_permissions', 486::bigint), ('roles', 15::bigint),
-                    ('transactions', 28::bigint), ('transfers', 4::bigint),
-                    ('user_identities', 0::bigint), ('users', 2::bigint)
-                ),
-                actual AS (
-                  SELECT 'accounts'::text table_name, count(*) actual_rows FROM public.accounts
-                  UNION ALL SELECT 'alembic_version', count(*) FROM public.alembic_version
-                  UNION ALL SELECT 'audit_logs', count(*) FROM public.audit_logs
-                  UNION ALL SELECT 'categories', count(*) FROM public.categories
-                  UNION ALL SELECT 'credit_card_payments', count(*) FROM public.credit_card_payments
-                  UNION ALL SELECT 'families', count(*) FROM public.families
-                  UNION ALL SELECT 'family_members', count(*) FROM public.family_members
-                  UNION ALL SELECT 'member_roles', count(*) FROM public.member_roles
-                  UNION ALL SELECT 'password_reset_tokens', count(*) FROM public.password_reset_tokens
-                  UNION ALL SELECT 'permissions', count(*) FROM public.permissions
-                  UNION ALL SELECT 'revoked_tokens', count(*) FROM public.revoked_tokens
-                  UNION ALL SELECT 'role_data_scopes', count(*) FROM public.role_data_scopes
-                  UNION ALL SELECT 'role_permissions', count(*) FROM public.role_permissions
-                  UNION ALL SELECT 'roles', count(*) FROM public.roles
-                  UNION ALL SELECT 'transactions', count(*) FROM public.transactions
-                  UNION ALL SELECT 'transfers', count(*) FROM public.transfers
-                  UNION ALL SELECT 'user_identities', count(*) FROM public.user_identities
-                  UNION ALL SELECT 'users', count(*) FROM public.users
-                )
-                SELECT count(*) INTO mismatch_count
-                FROM expected e JOIN actual a USING (table_name)
-                WHERE e.expected_rows <> a.actual_rows;
-                IF mismatch_count <> 0 THEN
-                  RAISE EXCEPTION 'Restored table row counts differ from backup baseline: % table(s)', mismatch_count;
-                END IF;
-                RAISE NOTICE 'All 18 table row counts match the recorded backup baseline.';
-              END
-              \$\$;
-            "
+              SELECT string_agg(
+                format('SELECT %L AS table_name, count(*)::bigint AS row_count FROM %I.%I',
+                       tablename, schemaname, tablename),
+                ' UNION ALL ' ORDER BY tablename
+              )
+              FROM pg_catalog.pg_tables
+              WHERE schemaname = 'public';
+            ")"
+          if [ -z "$COUNT_QUERY" ]; then
+            echo "No public tables found after restore."
+            exit 1
+          fi
+          docker run --rm --env DATABASE_URL postgres:18-bookworm \
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -AtF "$(printf '\t')" \
+            -c "$COUNT_QUERY ORDER BY table_name" > /tmp/restored-row-counts.tsv
+
+          sort "$MANIFEST_PATH" > /tmp/expected-row-counts.tsv
+          sort /tmp/restored-row-counts.tsv > /tmp/actual-row-counts.tsv
+          echo "Comparing restored table counts with the manifest generated from this exact backup:"
+          diff -u /tmp/expected-row-counts.tsv /tmp/actual-row-counts.tsv
+          echo "All restored public table row counts match the selected backup manifest."
 
       - name: Upload restore provenance
         uses: actions/upload-artifact@v4
