@@ -1,11 +1,6 @@
 name: Neon Restore Test
 
 on:
-  push:
-    branches:
-      - fix/restore-backup-row-count-manifest
-    paths:
-      - .github/workflows/neon-restore-test.yml
   workflow_dispatch:
     inputs:
       backup_run_id:
@@ -44,7 +39,7 @@ jobs:
         run: |
           set -euo pipefail
           case "$WORKFLOW_REF:$WORKFLOW_EVENT" in
-            refs/heads/main:workflow_dispatch|refs/heads/fix/restore-backup-row-count-manifest:workflow_dispatch|refs/heads/fix/restore-backup-row-count-manifest:push)
+            refs/heads/main:workflow_dispatch|refs/heads/fix/restore-backup-row-count-manifest:workflow_dispatch)
               ;;
             *)
               echo "Refusing restore from an unapproved branch or event: $WORKFLOW_REF / $WORKFLOW_EVENT"
@@ -131,41 +126,7 @@ jobs:
               except (urllib.error.HTTPError, urllib.error.URLError) as exc:
                   raise SystemExit(f"Could not verify backup source through GitHub API: {path}") from exc
 
-          if event == "push":
-              if branch != "fix/restore-backup-row-count-manifest":
-                  raise SystemExit("Automatic restore is allowed only from the reviewed PR branch.")
-              target_confirmation = "g01-restore-test"
-              workflow = github_get(f"/repos/{encoded_repo}/actions/workflows/neon-backup.yml")
-              if workflow.get("path") != ".github/workflows/neon-backup.yml" or not workflow.get("id"):
-                  raise SystemExit("Could not identify the Neon Database Backup workflow.")
-              workflow_id = workflow["id"]
-              deadline = time.monotonic() + 40 * 60
-              backup_run = None
-              print(f"Waiting for push-triggered backup from exact commit {expected_sha}.", flush=True)
-              while time.monotonic() < deadline:
-                  runs = github_get(
-                      f"/repos/{encoded_repo}/actions/workflows/{workflow_id}/runs"
-                      f"?branch={urllib.parse.quote(branch)}&event=push&per_page=100"
-                  ).get("workflow_runs", [])
-                  matches = [
-                      item for item in runs
-                      if item.get("path") == ".github/workflows/neon-backup.yml"
-                      and item.get("head_sha") == expected_sha
-                  ]
-                  if matches:
-                      candidate = max(matches, key=lambda item: item.get("run_number", 0))
-                      if candidate.get("status") == "completed":
-                          if candidate.get("conclusion") != "success":
-                              raise SystemExit(
-                                  f"Push-triggered Neon backup failed: {candidate.get('conclusion')}."
-                              )
-                          backup_run = candidate
-                          break
-                  time.sleep(15)
-              if backup_run is None:
-                  raise SystemExit("Timed out waiting for the push-triggered backup; the test branch was not modified.")
-              backup_run_id = str(backup_run["id"])
-          elif event == "workflow_dispatch":
+          if event == "workflow_dispatch":
               backup_run_id = os.environ["BACKUP_RUN_ID_INPUT"].strip()
               target_confirmation = os.environ["TARGET_CONFIRMATION_INPUT"].strip()
               if not backup_run_id.isdigit():
@@ -259,8 +220,8 @@ jobs:
               if not current_sha or head_sha != current_sha:
                   raise SystemExit("Refusing to restore: the main-branch backup was created from a stale commit.")
           elif head_branch == "fix/restore-backup-row-count-manifest":
-              if run.get("event") not in {"workflow_dispatch", "push"}:
-                  raise SystemExit("Refusing to restore: pre-merge PR backups must be manually dispatched or triggered by the guarded PR-file push.")
+              if run.get("event") != "workflow_dispatch":
+                  raise SystemExit("Refusing to restore: pre-merge PR backups must come from an explicit manual dispatch.")
               pr = github_get(f"/repos/{encoded_repo}/pulls/59")
               pr_head = pr.get("head") or {}
               pr_base = pr.get("base") or {}
