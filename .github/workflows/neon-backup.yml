@@ -21,6 +21,7 @@ concurrency:
 jobs:
   backup:
     # Manual pre-merge validation is limited to this reviewed PR branch and main.
+    # Event-scoped concurrency keeps stale dispatch runs from blocking the push rehearsal.
     if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/restore-backup-row-count-manifest' }}
     name: Create and verify Neon backup
     runs-on: ubuntu-latest
