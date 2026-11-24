@@ -102,7 +102,7 @@ jobs:
           for run in list_runs("in_progress"):
               if run.get("path") == ".github/workflows/neon-runner-probe.yml" and run.get("head_sha") != expected_sha:
                   print(f"Cancelling stale launcher run {run['id']} ({run.get('head_sha')}).", flush=True)
-                  api("POST", f"/actions/runs/{run['id']}/cancel")
+                  api("POST", f"/actions/runs/{run['id']}/force-cancel")
 
           # Cancel queued backup attempts whose workflow commit is stale.
           for run in list_runs("queued"):
