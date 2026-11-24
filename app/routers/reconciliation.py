@@ -1242,6 +1242,7 @@ def list_ledger_only_transactions(
         Transaction.account_id == session.account_id,
         Transaction.currency_code == session.currency_code,
         Transaction.is_voided.is_(False),
+        Transaction.transaction_type.in_(["income", "expense"]),
         Transaction.transaction_date >= start_utc,
         Transaction.transaction_date < end_utc,
         ~Transaction.id.in_(active_match_transaction_ids),

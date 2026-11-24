@@ -1,0 +1,70 @@
+name: G-03-03-05 Two-way Reconciliation UI Tests
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "app/routers/reconciliation.py"
+      - "static/index.html"
+      - "static/reconciliation.js"
+      - "static/styles.css"
+      - "tests/test_g03_03_05_reconciliation_ui.py"
+      - ".github/workflows/g03-03-05-reconciliation-ui-tests.yml"
+      - "requirements.txt"
+      - "requirements-dev.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  two-way-reconciliation:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: family_finance_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d family_finance_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/family_finance_test
+      JWT_SECRET_KEY: g03-03-05-two-way-reconciliation-test-secret-at-least-32-bytes
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: Validate JavaScript syntax
+        run: |
+          node --check static/app.js
+          node --check static/reconciliation.js
+      - name: Compile application and tests
+        run: python -m compileall -q app tests main.py
+      - name: Run two-way reconciliation regression tests
+        run: |
+          python -m pytest -q \
+            tests/test_g03_03_05_reconciliation_ui.py \
+            tests/test_g03_03_02_reconciliation_balance.py \
+            tests/test_g03_03_03_reconciliation_issues.py \
+            tests/test_g03_03_04_reconciliation_final_report.py \
+            tests/test_g03_02_03_reconciliation_matches.py

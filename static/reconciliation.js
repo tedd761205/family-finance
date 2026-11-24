@@ -122,11 +122,15 @@
       host.append(card);
     }
   }
-  function renderSessionActions(session){
+  function renderSessionActions(session,report){
     const host=el("reconciliation-session-actions");
     host.replaceChildren();
     if(session.status==="in_progress"){
-      host.append(makeButton("完成對帳","primary small",completeReconciliationSession));
+      const ready=report?.ready_to_complete===true;
+      const button=makeButton(ready?"完成對帳":"尚有項目待處理","primary small",completeReconciliationSession);
+      button.disabled=!ready;
+      host.append(button);
+      if(!ready)host.append(makeText("span","tiny muted","請先完成雙向核對、差異說明與餘額檢查。"));
     }else if(session.status==="completed"){
       host.append(makeButton("重新開啟對帳","secondary small",reopenReconciliationSession));
       host.append(makeText("span","tiny muted","已完成於 "+dateLabel(session.completed_at)));
@@ -158,6 +162,9 @@
         makeText("span","tiny muted","剩餘 "+money(row.remaining_amount,row.currency_code))
       );
       card.append(top,meta);
+      if(editable&&row.reconciliation_status!=="excluded"){
+        card.append(makeButton("記錄銀行端差異","secondary small",()=>createBankRowIssue(row)));
+      }
       if(row.exclusion){
         const reason=makeText("p","reconciliation-reason","排除原因："+row.exclusion.reason);
         card.append(reason);
@@ -213,6 +220,221 @@
       host.append(card);
     }
   }
+  function renderLedgerOnlyPanel(result){
+    const host=el("reconciliation-ledger-only-list");
+    const count=el("reconciliation-ledger-only-count");
+    host.replaceChildren();
+    if(result.error){
+      count.textContent="無法載入";
+      host.append(makeText("p","tiny muted","帳務端清單無法載入："+result.error.message));
+      return;
+    }
+    const resolvedIds=new Set((activeReconciliationIssues||[])
+      .filter(item=>item.status==="resolved"&&["ledger_only","explained"].includes(item.category)&&item.transaction_id!==null)
+      .map(item=>Number(item.transaction_id)));
+    const items=(result.data.transactions||[]).filter(item=>!resolvedIds.has(Number(item.id)));
+    count.textContent=(result.data.total||0)+" 筆未配對 · "+items.length+" 筆待說明";
+    if(!items.length){
+      host.append(makeText("p","tiny muted","目前沒有待說明的帳務獨有交易。"));
+      return;
+    }
+    for(const item of items){
+      const card=document.createElement("article");
+      card.className="reconciliation-ledger-card";
+      const detail=document.createElement("div");
+      detail.append(
+        makeText("strong",null,item.description||("正式交易 #"+item.id)),
+        makeText("p","tiny muted",dateLabel(item.transaction_date)+" · "+(item.transaction_type==="expense"?"支出":"收入")+" · "+money(item.amount,item.currency_code)+" · 交易 #"+item.id)
+      );
+      card.append(detail);
+      if(activeReconciliationSession?.status==="in_progress"){
+        card.append(makeButton("記錄帳務端差異","secondary small",()=>createLedgerOnlyIssue(item)));
+      }
+      host.append(card);
+    }
+  }
+
+  function balanceLine(label,ledgerValue,statementValue,difference,matches,currency){
+    const row=document.createElement("div");
+    row.className="reconciliation-balance-line";
+    const status=matches===null?"對帳單未提供":(matches?"相符":"不相符");
+    const statusClassName=matches===false?"reconciliation-status-unmatched":"reconciliation-status-matched";
+    row.append(
+      makeText("strong",null,label),
+      makeText("span","tiny muted","帳務 "+money(ledgerValue,currency)),
+      makeText("span","tiny muted","對帳單 "+(statementValue===null||statementValue===undefined?"未提供":money(statementValue,currency))),
+      makeText("span","tiny muted","差異 "+(difference===null||difference===undefined?"—":money(difference,currency))),
+      makeText("span",matches===null?"reconciliation-status":statusClassName,status)
+    );
+    return row;
+  }
+
+  function renderBalanceCheck(result){
+    const host=el("reconciliation-balance-check");
+    host.replaceChildren();
+    if(result.error){
+      host.append(makeText("p","tiny muted","餘額核對無法載入："+result.error.message+"。完整餘額核對需要家庭層級交易資料範圍。"));
+      return;
+    }
+    const data=result.data.result||{};
+    const currency=result.data.currency_code||activeReconciliationSession?.currency_code||"TWD";
+    host.append(
+      makeText("p","tiny muted",result.data.account_name+" · "+(result.data.balance_convention==="positive_is_debt"?"信用卡：正數代表欠款":"資產帳戶：正數代表資產")),
+      balanceLine("期初餘額",data.opening_balance,data.statement_opening_balance,data.opening_difference,data.opening_matches,currency),
+      balanceLine("期末餘額",data.closing_balance,data.statement_closing_balance,data.closing_difference,data.closing_matches,currency),
+      makeText("p","tiny muted","期間收入 "+money(data.period_income,currency)+" · 期間支出 "+money(data.period_expense,currency)+" · 淨變動 "+money(data.period_net_change,currency))
+    );
+  }
+
+  function issueCategoryLabel(category){
+    return ({
+      bank_only:"銀行獨有",
+      ledger_only:"帳務獨有",
+      amount_mismatch:"金額不一致",
+      date_mismatch:"日期不一致",
+      pending:"待確認",
+      explained:"已說明"
+    })[category]||category;
+  }
+
+  function renderReconciliationIssues(result){
+    const host=el("reconciliation-issues-list");
+    host.replaceChildren();
+    if(result.error){
+      activeReconciliationIssues=[];
+      host.append(makeText("p","tiny muted","差異紀錄無法載入："+result.error.message));
+      return;
+    }
+    activeReconciliationIssues=result.data.issues||[];
+    const summary=el("reconciliation-issues-count");
+    summary.textContent="共 "+(result.data.total||0)+" 筆";
+    if(!activeReconciliationIssues.length){
+      host.append(makeText("p","tiny muted","尚無人工分類的差異紀錄。"));
+      return;
+    }
+    for(const item of activeReconciliationIssues){
+      const card=document.createElement("article");
+      card.className="reconciliation-issue-card";
+      const source=[
+        item.bank_import_row_id?"銀行明細 #"+item.bank_import_row_id:"",
+        item.transaction_id?"正式交易 #"+item.transaction_id:""
+      ].filter(Boolean).join(" · ")||"未連結來源";
+      card.append(
+        makeText("strong",null,issueCategoryLabel(item.category)+" · "+(item.status==="resolved"?"已結案":"待處理")),
+        makeText("p","tiny muted",source+" · "+item.reason),
+        item.status==="resolved"?makeText("p","reconciliation-resolution","處理說明："+(item.resolution_note||"—")):makeText("p","tiny muted","尚未結案")
+      );
+      if(item.status==="open"&&activeReconciliationSession?.status==="in_progress"){
+        card.append(makeButton("填寫處理說明並結案","secondary small",()=>resolveReconciliationIssue(item)));
+      }
+      host.append(card);
+    }
+  }
+
+  function renderFinalReport(result){
+    const host=el("reconciliation-final-report");
+    host.replaceChildren();
+    if(result.error){
+      activeReconciliationReport=null;
+      host.append(makeText("p","tiny muted","最終驗收報告無法載入："+result.error.message+"。此報告需要家庭層級交易資料範圍；無法載入時不會允許完成對帳。"));
+      return;
+    }
+    const report=result.data;
+    activeReconciliationReport=report;
+    const bank=report.bank_side||{};
+    const ledger=report.ledger_side||{};
+    const issues=report.issues||{};
+    const blockers=report.completion_blockers||{};
+    host.append(
+      makeText("p",report.ready_to_complete?"reconciliation-report-ready":"reconciliation-report-blocked",report.ready_to_complete?"雙向核對完成，可以進行結案":"尚有項目未完成，暫時不能結案"),
+      makeText("p","tiny muted","銀行端：總計 "+(bank.statement_rows||0)+" 筆 · 已配對 "+(bank.matched_rows||0)+" · 已排除 "+(bank.excluded_rows||0)+" · 未核對 "+(bank.unresolved_rows||0)),
+      makeText("p","tiny muted","帳務端：尚未配對 "+(ledger.unmatched_transactions||0)+" 筆正式交易"),
+      makeText("p","tiny muted","差異紀錄：待處理 "+(issues.open_count||0)+" 筆 · 已結案 "+(issues.resolved_count||0)+" 筆"),
+      makeText("p","tiny muted","阻擋原因：銀行未核對 "+(blockers.unresolved_bank_rows||0)+" 筆 · 帳務未說明 "+(blockers.unmatched_ledger_transactions||0)+" 筆 · 未結案差異 "+(blockers.open_issues||0)+" 筆 · 餘額不符 "+(blockers.balance_mismatch?"是":"否")),
+      makeText("p","tiny muted","本報告為唯讀；完成操作時，伺服器仍會在資料庫交易中重新檢查所有條件。")
+    );
+  }
+
+  let activeReconciliationIssues=[];
+  let activeReconciliationReport=null;
+
+  async function loadReconciliationAdvanced(sessionId){
+    const base="/reconciliations/sessions/"+sessionId;
+    const get=path=>api(path+(path.includes("?")?"&":"?")+"family_id="+selectedFamilyId).then(data=>({data})).catch(error=>({error}));
+    const [ledger,balance,issues,report]=await Promise.all([
+      get(base+"/ledger-only?limit=500"),
+      get(base+"/balance-check"),
+      get(base+"/issues?limit=200"),
+      get(base+"/final-report")
+    ]);
+    renderLedgerOnlyPanel(ledger);
+    renderBalanceCheck(balance);
+    renderReconciliationIssues(issues);
+    renderFinalReport(report);
+    renderSessionActions(activeReconciliationSession,report.data);
+  }
+
+  async function createLedgerOnlyIssue(transaction){
+    if(!activeReconciliationSession)return;
+    const choice=window.prompt("請選擇差異分類：1＝帳務獨有（建議）；2＝已說明","1");
+    const category=choice==="1"?"ledger_only":choice==="2"?"explained":null;
+    if(!category)return;
+    const reason=window.prompt("請說明這筆帳務交易為何尚未出現在銀行明細：");
+    if(!reason||!reason.trim())return;
+    try{
+      await api("/reconciliations/sessions/"+activeReconciliationSession.id+"/issues?family_id="+selectedFamilyId,{
+        method:"POST",
+        body:JSON.stringify({transaction_id:transaction.id,category,reason:reason.trim()})
+      });
+      reconciliationNotice("帳務端差異已記錄；原正式交易沒有被修改。");
+      await loadReconciliationAdvanced(activeReconciliationSession.id);
+    }catch(error){reconciliationNotice("建立帳務端差異失敗："+error.message,"error");}
+  }
+
+  async function createBankRowIssue(row){
+    if(!activeReconciliationSession)return;
+    const choice=window.prompt("請選擇銀行端差異分類：1＝銀行獨有；2＝待確認；3＝已說明；4＝金額不一致；5＝日期不一致","1");
+    const categories={"1":"bank_only","2":"pending","3":"explained","4":"amount_mismatch","5":"date_mismatch"};
+    const category=categories[choice];
+    if(!category)return;
+    let transactionId=null;
+    if(category==="amount_mismatch"||category==="date_mismatch"){
+      const candidates=[];
+      for(const item of [...(row.matches||[]),...(reconciliationSuggestions.get(row.id)||[])]){
+        const id=Number(item.transaction_id);
+        if(id&&!candidates.some(candidate=>candidate.id===id))candidates.push({id,description:item.description||("正式交易 #"+id)});
+      }
+      if(!candidates.length){reconciliationNotice("金額／日期差異需要同時連結銀行明細與正式交易，請先配對或取得候選交易。","error");return;}
+      const list=candidates.map((item,index)=>(index+1)+"＝"+item.description+" (#"+item.id+")").join("\n");
+      const selected=Number(window.prompt("選擇關聯的正式交易：\n"+list,"1"));
+      if(!Number.isInteger(selected)||selected<1||selected>candidates.length)return;
+      transactionId=candidates[selected-1].id;
+    }
+    const reason=window.prompt("請輸入差異原因：");
+    if(!reason||!reason.trim())return;
+    try{
+      await api("/reconciliations/sessions/"+activeReconciliationSession.id+"/issues?family_id="+selectedFamilyId,{
+        method:"POST",
+        body:JSON.stringify({bank_import_row_id:row.id,transaction_id:transactionId,category,reason:reason.trim()})
+      });
+      reconciliationNotice("銀行端差異已記錄；原始銀行資料沒有被修改。");
+      await loadReconciliationAdvanced(activeReconciliationSession.id);
+    }catch(error){reconciliationNotice("建立銀行端差異失敗："+error.message,"error");}
+  }
+
+  async function resolveReconciliationIssue(item){
+    const note=window.prompt("請輸入處理說明（必填）：",item.resolution_note||"");
+    if(!note||!note.trim())return;
+    try{
+      await api("/reconciliations/sessions/"+activeReconciliationSession.id+"/issues/"+item.id+"/resolve?family_id="+selectedFamilyId,{
+        method:"POST",
+        body:JSON.stringify({resolution_note:note.trim()})
+      });
+      reconciliationNotice("差異已結案，處理說明與稽核紀錄已保留。");
+      await loadReconciliationAdvanced(activeReconciliationSession.id);
+    }catch(error){reconciliationNotice("結案差異失敗："+error.message,"error");}
+  }
+
   async function loadReconciliationDetail(sessionId){
     clearReconciliationNotice();
     try{
@@ -232,8 +454,8 @@
       el("reconciliation-detail-title").textContent="對帳工作階段 #"+activeReconciliationSession.id;
       el("reconciliation-detail-subtitle").textContent="帳戶 #"+activeReconciliationSession.account_id+" · "+dateLabel(activeReconciliationSession.period_start)+" 至 "+dateLabel(activeReconciliationSession.period_end)+" · "+activeReconciliationSession.currency_code;
       renderKpis(activeReconciliationSession,activeReconciliationRows);
-      renderSessionActions(activeReconciliationSession);
       renderReconciliationRows(activeReconciliationRows);
+      await loadReconciliationAdvanced(sessionId);
       el("reconciliation-detail-panel").scrollIntoView({behavior:"smooth",block:"start"});
     }catch(error){
       reconciliationNotice("無法載入對帳明細："+error.message,"error");
@@ -346,6 +568,10 @@
         period_start:el("reconciliation-period-start").value,
         period_end:el("reconciliation-period-end").value
       };
+      const openingBalance=el("reconciliation-opening-balance").value.trim();
+      const closingBalance=el("reconciliation-closing-balance").value.trim();
+      if(openingBalance)payload.opening_balance=openingBalance;
+      if(closingBalance)payload.closing_balance=closingBalance;
       if(!payload.account_id||!payload.source_batch_id)throw new Error("請選擇帳戶及已確認的匯入批次。");
       if(payload.period_end<payload.period_start)throw new Error("對帳結束日期不可早於開始日期。");
       const result=await api("/reconciliations/sessions?family_id="+selectedFamilyId,{method:"POST",body:JSON.stringify(payload)});

@@ -462,6 +462,8 @@
               <label class="field">已確認的銀行明細批次<select id="reconciliation-batch" required><option value="">請先選擇帳戶</option></select></label>
               <label class="field">對帳開始日期<input id="reconciliation-period-start" type="date" required></label>
               <label class="field">對帳結束日期<input id="reconciliation-period-end" type="date" required></label>
+              <label class="field">對帳單期初餘額（選填）<input id="reconciliation-opening-balance" type="number" step="0.0001" placeholder="對帳單有提供才填"></label>
+              <label class="field">對帳單期末餘額（選填）<input id="reconciliation-closing-balance" type="number" step="0.0001" placeholder="對帳單有提供才填"></label>
             </div>
             <div class="form-actions"><button class="primary" id="reconciliation-session-submit" type="submit">建立對帳工作階段</button></div>
           </form>
@@ -481,6 +483,27 @@
           <p class="tiny muted">配對不會建立、修改或作廢帳務交易。若交易不存在，請先到「收支紀錄」建立正確交易，再回來核對。部分配對、未核對資料不可直接完成對帳。</p>
           <div id="reconciliation-rows" class="reconciliation-rows"></div>
           <p id="reconciliation-rows-empty" class="empty-state hidden">此工作階段沒有可顯示的銀行明細。</p>
+          <div class="reconciliation-advanced-grid">
+            <section class="subpanel reconciliation-advanced-card">
+              <div class="section-heading"><h3>帳務端：尚未配對交易</h3><span id="reconciliation-ledger-only-count" class="count">載入中</span></div>
+              <p class="tiny muted">列出本期間內尚未與任何對帳明細配對的正式收入／支出。未配對不代表錯帳；請逐筆確認是否為跨日入帳或銀行明細尚未匯入。</p>
+              <div id="reconciliation-ledger-only-list" class="reconciliation-ledger-list"></div>
+            </section>
+            <section class="subpanel reconciliation-advanced-card">
+              <div class="section-heading"><h3>期初／期末餘額核對</h3></div>
+              <p class="tiny muted">資產帳戶以正數代表資產；信用卡以正數代表欠款。對帳單未提供的餘額不會推測。</p>
+              <div id="reconciliation-balance-check" class="reconciliation-balance-check"><p class="tiny muted">載入核對結果中…</p></div>
+            </section>
+          </div>
+          <section class="subpanel">
+            <div class="section-heading"><h3>差異分類與處理歷史</h3><span id="reconciliation-issues-count" class="count">載入中</span></div>
+            <p class="tiny muted">差異紀錄需要原因；結案時必須填寫處理說明。分類不會自動建立、修改或作廢正式交易。</p>
+            <div id="reconciliation-issues-list" class="reconciliation-issues-list"></div>
+          </section>
+          <section class="subpanel">
+            <div class="section-heading"><h3>雙向對帳最終驗收報告</h3></div>
+            <div id="reconciliation-final-report" class="reconciliation-final-report"><p class="tiny muted">載入驗收報告中…</p></div>
+          </section>
         </div>
       </section>
       <section id="accounts-view" class="panel accounts-panel hidden">
