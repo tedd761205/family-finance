@@ -3,8 +3,8 @@ name: Neon Restore Test
 on:
   workflow_dispatch:
     inputs:
-      backup_run_id:
-        description: "Successful Neon Database Backup workflow run ID"
+      backup_object_key:
+        description: "Exact private Neon backup object key, e.g. production/family-finance-20261119T005812Z.dump"
         required: true
         type: string
       target_confirmation:
@@ -13,7 +13,6 @@ on:
         type: string
 
 permissions:
-  actions: read
   contents: read
 
 concurrency:
@@ -28,39 +27,97 @@ jobs:
     steps:
       - name: Record restore provenance
         env:
-          BACKUP_RUN_ID: ${{ inputs.backup_run_id }}
-          TARGET_CONFIRMATION: ${{ inputs.target_confirmation }}
+          BACKUP_OBJECT_KEY: \${{ inputs.backup_object_key }}
+          TARGET_CONFIRMATION: \${{ inputs.target_confirmation }}
         run: |
           set -euo pipefail
           mkdir -p restore-provenance
-          printf 'backup_run_id=%s\n' "$BACKUP_RUN_ID" > restore-provenance/restore.txt
+          printf 'backup_object_key=%s\n' "$BACKUP_OBJECT_KEY" > restore-provenance/restore.txt
           printf 'target_confirmation=%s\n' "$TARGET_CONFIRMATION" >> restore-provenance/restore.txt
 
-      - name: Validate explicit target confirmation
+      - name: Validate explicit target confirmation and backup object key
         env:
-          BACKUP_RUN_ID: ${{ inputs.backup_run_id }}
-          TARGET_CONFIRMATION: ${{ inputs.target_confirmation }}
+          BACKUP_OBJECT_KEY: \${{ inputs.backup_object_key }}
+          TARGET_CONFIRMATION: \${{ inputs.target_confirmation }}
         run: |
           set -euo pipefail
-          case "$BACKUP_RUN_ID" in
-            ''|*[!0-9]*)
-              echo "backup_run_id must contain digits only."
-              exit 1
-              ;;
-          esac
-          if [ "$TARGET_CONFIRMATION" != "g01-restore-test" ]; then
-            echo "Refusing to run: type exactly g01-restore-test in target_confirmation."
-            exit 1
-          fi
-          echo "Explicit test-branch confirmation received."
+          python - <<'PY'
+          import os
+          import re
 
-      - name: Download backup artifact from selected run
-        uses: actions/download-artifact@v4
-        with:
-          repository: ${{ github.repository }}
-          run-id: ${{ inputs.backup_run_id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: restore-input
+          key = os.environ.get("BACKUP_OBJECT_KEY", "")
+          if not re.fullmatch(r"production/family-finance-[0-9]{8}T[0-9]{6}Z\.dump", key):
+              raise SystemExit("backup_object_key must be an exact production backup key created by the backup workflow.")
+          if os.environ.get("TARGET_CONFIRMATION") != "g01-restore-test":
+              raise SystemExit("Refusing to run: type exactly g01-restore-test in target_confirmation.")
+          print("Backup object key and explicit test-branch confirmation validated.")
+          PY
+
+      - name: Install S3 client
+        run: |
+          python -m pip install --disable-pip-version-check "boto3>=1.35,<2.0"
+
+      - name: Download and verify backup from private Neon Object Storage
+        env:
+          BACKUP_OBJECT_KEY: \${{ inputs.backup_object_key }}
+          NEON_STORAGE_ENDPOINT: \${{ vars.NEON_STORAGE_ENDPOINT }}
+          NEON_STORAGE_REGION: \${{ vars.NEON_STORAGE_REGION }}
+          NEON_BACKUP_BUCKET: \${{ vars.NEON_BACKUP_BUCKET }}
+          NEON_RESTORE_S3_ACCESS_KEY_ID: \${{ secrets.NEON_RESTORE_S3_ACCESS_KEY_ID }}
+          NEON_RESTORE_S3_SECRET_ACCESS_KEY: \${{ secrets.NEON_RESTORE_S3_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p restore-input
+          python - <<'PY'
+          import hashlib
+          import os
+          import re
+          from pathlib import Path
+
+          import boto3
+          from botocore.config import Config
+
+          key = os.environ["BACKUP_OBJECT_KEY"].strip()
+          if not re.fullmatch(r"production/family-finance-[0-9]{8}T[0-9]{6}Z\.dump", key):
+              raise SystemExit("Refusing to download an object outside the approved production backup key format.")
+
+          endpoint = os.environ["NEON_STORAGE_ENDPOINT"].strip()
+          region = os.environ["NEON_STORAGE_REGION"].strip()
+          bucket = os.environ["NEON_BACKUP_BUCKET"].strip()
+          access_key = os.environ["NEON_RESTORE_S3_ACCESS_KEY_ID"].strip()
+          secret_key = os.environ["NEON_RESTORE_S3_SECRET_ACCESS_KEY"]
+          if not endpoint.startswith("https://") or not region or not bucket or not access_key or not secret_key:
+              raise SystemExit("Missing or invalid private Neon Object Storage restore configuration.")
+
+          client = boto3.client(
+              "s3",
+              endpoint_url=endpoint,
+              region_name=region,
+              aws_access_key_id=access_key,
+              aws_secret_access_key=secret_key,
+              config=Config(
+                  signature_version="s3v4",
+                  s3={"addressing_style": "path"},
+                  retries={"max_attempts": 3, "mode": "standard"},
+              ),
+          )
+          head = client.head_object(Bucket=bucket, Key=key)
+          expected_size = head.get("ContentLength", 0)
+          expected_digest = head.get("Metadata", {}).get("sha256", "")
+          if expected_size <= 0 or not re.fullmatch(r"[0-9a-f]{64}", expected_digest):
+              raise SystemExit("Private backup object is empty or missing its SHA-256 metadata.")
+
+          destination = Path("restore-input") / Path(key).name
+          client.download_file(bucket, key, str(destination))
+          actual_size = destination.stat().st_size
+          actual_digest = hashlib.sha256(destination.read_bytes()).hexdigest()
+          if actual_size != expected_size or actual_digest != expected_digest:
+              raise SystemExit("Downloaded backup size or SHA-256 does not match private object metadata.")
+
+          print(f"Downloaded and verified private backup object: {key}")
+          print(f"Size: {actual_size} bytes")
+          print(f"SHA-256: {actual_digest}")
+          PY
 
       - name: Locate and validate dump file
         id: dump
@@ -68,7 +125,7 @@ jobs:
           set -euo pipefail
           mapfile -t DUMPS < <(find restore-input -type f -name '*.dump' -print)
           if [ "${#DUMPS[@]}" -ne 1 ]; then
-            echo "Expected exactly one .dump file in the selected backup artifact; found ${#DUMPS[@]}."
+            echo "Expected exactly one .dump file in the private backup object; found ${#DUMPS[@]}."
             find restore-input -maxdepth 3 -type f -printf '%p\n'
             exit 1
           fi
