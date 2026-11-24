@@ -90,6 +90,8 @@ jobs:
           NEON_BACKUP_BUCKET: ${{ vars.NEON_BACKUP_BUCKET }}
           NEON_BACKUP_S3_ACCESS_KEY_ID: ${{ secrets.NEON_BACKUP_S3_ACCESS_KEY_ID }}
           NEON_BACKUP_S3_SECRET_ACCESS_KEY: ${{ secrets.NEON_BACKUP_S3_SECRET_ACCESS_KEY }}
+          NEON_RESTORE_S3_ACCESS_KEY_ID: ${{ secrets.NEON_RESTORE_S3_ACCESS_KEY_ID }}
+          NEON_RESTORE_S3_SECRET_ACCESS_KEY: ${{ secrets.NEON_RESTORE_S3_SECRET_ACCESS_KEY }}
         run: |
           set -euo pipefail
 
@@ -106,11 +108,13 @@ jobs:
           endpoint = os.environ["NEON_STORAGE_ENDPOINT"].strip()
           region = os.environ["NEON_STORAGE_REGION"].strip()
           bucket = os.environ["NEON_BACKUP_BUCKET"].strip()
-          access_key = os.environ["NEON_BACKUP_S3_ACCESS_KEY_ID"].strip()
-          secret_key = os.environ["NEON_BACKUP_S3_SECRET_ACCESS_KEY"]
+          write_access_key = os.environ["NEON_BACKUP_S3_ACCESS_KEY_ID"].strip()
+          write_secret_key = os.environ["NEON_BACKUP_S3_SECRET_ACCESS_KEY"]
+          read_access_key = os.environ["NEON_RESTORE_S3_ACCESS_KEY_ID"].strip()
+          read_secret_key = os.environ["NEON_RESTORE_S3_SECRET_ACCESS_KEY"]
           filename = os.environ["BACKUP_FILE"].strip()
 
-          if not endpoint.startswith("https://") or not region or not bucket or not access_key or not secret_key:
+          if not endpoint.startswith("https://") or not region or not bucket or not write_access_key or not write_secret_key or not read_access_key or not read_secret_key:
               raise SystemExit("Missing or invalid private Neon Object Storage configuration.")
           if not re.fullmatch(r"family-finance-[0-9]{8}T[0-9]{6}Z\.dump", filename):
               raise SystemExit("Unexpected backup filename; refusing to upload.")
@@ -128,20 +132,29 @@ jobs:
           digest = sha256_file(source)
           size = source.stat().st_size
           key = f"production/{filename}"
-          client = boto3.client(
+          client_config = Config(
+              signature_version="s3v4",
+              s3={"addressing_style": "path"},
+              retries={"max_attempts": 3, "mode": "standard"},
+          )
+          writer = boto3.client(
               "s3",
               endpoint_url=endpoint,
               region_name=region,
-              aws_access_key_id=access_key,
-              aws_secret_access_key=secret_key,
-              config=Config(
-                  signature_version="s3v4",
-                  s3={"addressing_style": "path"},
-                  retries={"max_attempts": 3, "mode": "standard"},
-              ),
+              aws_access_key_id=write_access_key,
+              aws_secret_access_key=write_secret_key,
+              config=client_config,
+          )
+          reader = boto3.client(
+              "s3",
+              endpoint_url=endpoint,
+              region_name=region,
+              aws_access_key_id=read_access_key,
+              aws_secret_access_key=read_secret_key,
+              config=client_config,
           )
 
-          client.upload_file(
+          writer.upload_file(
               str(source),
               bucket,
               key,
@@ -150,13 +163,13 @@ jobs:
                   "Metadata": {"sha256": digest},
               },
           )
-          head = client.head_object(Bucket=bucket, Key=key)
+          head = reader.head_object(Bucket=bucket, Key=key)
           if head.get("ContentLength") != size or head.get("Metadata", {}).get("sha256") != digest:
               raise SystemExit("Uploaded object metadata does not match the source backup.")
 
           with tempfile.TemporaryDirectory() as temp_dir:
               downloaded = Path(temp_dir) / filename
-              client.download_file(bucket, key, str(downloaded))
+              reader.download_file(bucket, key, str(downloaded))
               downloaded_digest = sha256_file(downloaded)
               if downloaded.stat().st_size != size or downloaded_digest != digest:
                   raise SystemExit("Private object storage round-trip verification failed.")
