@@ -78,10 +78,83 @@ jobs:
             postgres:18-bookworm \
             sh -c 'pg_restore --list "/backups/$BACKUP_FILE" > /tmp/restore-list.txt && test -s /tmp/restore-list.txt && head -n 20 /tmp/restore-list.txt'
 
-      - name: Upload backup artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: family-finance-neon-backup-${{ github.run_number }}
-          path: backups/*.dump
-          if-no-files-found: error
-          retention-days: 14
+      - name: Install S3 client
+        run: |
+          python -m pip install --disable-pip-version-check "boto3>=1.35,<2.0"
+
+      - name: Upload and verify backup in private Neon Object Storage
+        env:
+          BACKUP_FILE: ${{ steps.dump.outputs.backup_file }}
+          NEON_STORAGE_ENDPOINT: ${{ vars.NEON_STORAGE_ENDPOINT }}
+          NEON_STORAGE_REGION: ${{ vars.NEON_STORAGE_REGION }}
+          NEON_BACKUP_BUCKET: ${{ vars.NEON_BACKUP_BUCKET }}
+          NEON_BACKUP_S3_ACCESS_KEY_ID: ${{ secrets.NEON_BACKUP_S3_ACCESS_KEY_ID }}
+          NEON_BACKUP_S3_SECRET_ACCESS_KEY: ${{ secrets.NEON_BACKUP_S3_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+
+          python - <<'PY'
+          import hashlib
+          import os
+          import re
+          import tempfile
+          from pathlib import Path
+
+          import boto3
+          from botocore.config import Config
+
+          endpoint = os.environ["NEON_STORAGE_ENDPOINT"].strip()
+          region = os.environ["NEON_STORAGE_REGION"].strip()
+          bucket = os.environ["NEON_BACKUP_BUCKET"].strip()
+          access_key = os.environ["NEON_BACKUP_S3_ACCESS_KEY_ID"].strip()
+          secret_key = os.environ["NEON_BACKUP_S3_SECRET_ACCESS_KEY"]
+          filename = os.environ["BACKUP_FILE"].strip()
+
+          if not endpoint.startswith("https://") or not region or not bucket or not access_key or not secret_key:
+              raise SystemExit("Missing or invalid private Neon Object Storage configuration.")
+          if not re.fullmatch(r"family-finance-[0-9]{8}T[0-9]{6}Z\.dump", filename):
+              raise SystemExit("Unexpected backup filename; refusing to upload.")
+          source = Path("backups") / filename
+          if not source.is_file() or source.stat().st_size <= 0:
+              raise SystemExit("Backup dump is missing or empty.")
+
+          digest = hashlib.sha256(source.read_bytes()).hexdigest()
+          size = source.stat().st_size
+          key = f"production/{filename}"
+          client = boto3.client(
+              "s3",
+              endpoint_url=endpoint,
+              region_name=region,
+              aws_access_key_id=access_key,
+              aws_secret_access_key=secret_key,
+              config=Config(
+                  signature_version="s3v4",
+                  s3={"addressing_style": "path"},
+                  retries={"max_attempts": 3, "mode": "standard"},
+              ),
+          )
+
+          client.upload_file(
+              str(source),
+              bucket,
+              key,
+              ExtraArgs={
+                  "ContentType": "application/octet-stream",
+                  "Metadata": {"sha256": digest},
+              },
+          )
+          head = client.head_object(Bucket=bucket, Key=key)
+          if head.get("ContentLength") != size or head.get("Metadata", {}).get("sha256") != digest:
+              raise SystemExit("Uploaded object metadata does not match the source backup.")
+
+          with tempfile.TemporaryDirectory() as temp_dir:
+              downloaded = Path(temp_dir) / filename
+              client.download_file(bucket, key, str(downloaded))
+              downloaded_digest = hashlib.sha256(downloaded.read_bytes()).hexdigest()
+              if downloaded.stat().st_size != size or downloaded_digest != digest:
+                  raise SystemExit("Private object storage round-trip verification failed.")
+
+          print(f"Private Neon backup verified: {key}")
+          print(f"Size: {size} bytes")
+          print(f"SHA-256: {digest}")
+          PY
