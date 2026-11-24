@@ -135,8 +135,20 @@ jobs:
           stale_backup_run_id = 45351959777
           _, stale_backup = api("GET", f"/actions/runs/{stale_backup_run_id}")
           if stale_backup and stale_backup.get("head_branch") == branch and stale_backup.get("status") in {"queued", "in_progress"}:
-              api("POST", f"/actions/runs/{stale_backup_run_id}/cancel")
-              print(f"Cancelled superseded queued backup run {stale_backup_run_id}.", flush=True)
+              try:
+                  api("POST", f"/actions/runs/{stale_backup_run_id}/cancel")
+                  print(f"Cancelled superseded queued backup run {stale_backup_run_id}.", flush=True)
+              except SystemExit as exc:
+                  # GitHub may expose a partially-created run as queued before it
+                  # is actually cancellable. Do not reuse it or block the fresh run.
+                  if "HTTP 409" in str(exc) and "not been queued yet" in str(exc):
+                      print(
+                          f"Superseded backup run {stale_backup_run_id} is not cancellable yet; "
+                          "a new isolated run will be created and validated independently.",
+                          flush=True,
+                      )
+                  else:
+                      raise
 
           backup = dispatch_and_wait(" .github/workflows/neon-backup.yml".strip(), timeout_minutes=35)
           backup_run_id = str(backup["id"])
