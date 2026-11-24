@@ -87,7 +87,7 @@ jobs:
           status, _ = api("PUT", f"/actions/workflows/{workflow_id}/disable")
           _, workflow = api("GET", f"/actions/workflows/{workflow_id}")
           workflow_state = workflow.get("state")
-          if workflow_state != "disabled":
+          if workflow_state not in {"disabled", "disabled_manually"}:
               raise SystemExit(f"Neon Database Backup workflow is not disabled (state={workflow_state}).")
           print(f"Neon Database Backup workflow disabled (HTTP {status}).", flush=True)
 
