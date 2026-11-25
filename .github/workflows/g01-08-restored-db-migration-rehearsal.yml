@@ -153,7 +153,7 @@ jobs:
               env_file.write(
                   "DATABASE_URL="
                   + direct_url.render_as_string(hide_password=False)
-                  + "\\n"
+                  + "\n"
               )
           print(f"Resolved isolated direct Neon endpoint: {direct_host}")
           PY
