@@ -91,10 +91,14 @@
           <label class="field">家人的 Google Email<input id="family-member-email" type="email" required maxlength="254" placeholder="name@gmail.com"></label>
           <button class="primary" id="family-member-invite-submit" type="submit">邀請加入家庭</button>
         </form>
-        <p class="tiny muted">可邀請尚未註冊的家人。建立後請複製邀請連結傳給對方；連結 7 天有效、僅能使用一次，且必須由該 Email 對應的 Google 帳號登入接受。接受後預設為「一般成員」，你可再統一調整角色與細項權限。</p>\n        <div id="family-invite-link-panel" class="invite-link-panel hidden"><label class="field">新邀請連結（僅建立時顯示）<input id="family-invite-url" type="url" readonly></label><button class="secondary small" id="copy-family-invite-link" type="button">複製邀請連結</button></div>
+        <p class="tiny muted">可邀請尚未註冊的家人。建立後請複製邀請連結傳給對方；連結 7 天有效、僅能使用一次，且必須由該 Email 對應的 Google 帳號登入接受。接受後預設為「一般成員」，你可再統一調整角色與細項權限。</p>
+        <div id="family-invite-link-panel" class="invite-link-panel hidden"><label class="field">新邀請連結（僅建立時顯示）<input id="family-invite-url" type="url" readonly></label><button class="secondary small" id="copy-family-invite-link" type="button">複製邀請連結</button></div>
         <div class="section-heading"><h3>成員名單</h3><span class="count" id="family-members-count">0 位成員</span></div>
         <div id="family-members-loading" class="muted hidden">正在載入家庭成員…</div>
-        <div id="family-members-list" class="family-members-list"></div>\n        <div class="section-heading"><h3>待接受邀請</h3></div>\n        <div id="family-invitations-list" class="family-invitations-list"></div>\n        <p id="family-invitations-empty" class="tiny muted">目前沒有待接受的邀請。</p>
+        <div id="family-members-list" class="family-members-list"></div>
+        <div class="section-heading"><h3>待接受邀請</h3></div>
+        <div id="family-invitations-list" class="family-invitations-list"></div>
+        <p id="family-invitations-empty" class="tiny muted">目前沒有待接受的邀請。</p>
         <div id="family-members-empty" class="empty-state hidden"><h3>目前沒有可顯示的成員</h3><p class="muted">請確認目前登入帳號已加入此家庭。</p></div>
       </section>
 
