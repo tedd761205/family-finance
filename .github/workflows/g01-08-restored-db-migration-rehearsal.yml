@@ -331,18 +331,18 @@ jobs:
 
 
                   issue_update_permission = connection.execute(text("""
-                      SELECT id FROM permissions WHERE code = 'reconciliation.update' AND is_active = true
+                      SELECT id FROM public.permissions WHERE code = 'reconciliation.update' AND is_active = true
                   """)).scalar_one_or_none()
                   if issue_update_permission is None:
                       raise SystemExit("Missing active reconciliation.update permission after migration rehearsal.")
                   missing_role_grants = connection.execute(text("""
                       SELECT r.id, r.family_id, r.name
-                      FROM roles r
+                      FROM public.roles r
                       WHERE r.is_system = true
                         AND r.name IN ('家庭管理員', '財務管理員', '記帳人員')
                         AND NOT EXISTS (
                             SELECT 1
-                            FROM role_permissions rp
+                            FROM public.role_permissions rp
                             WHERE rp.role_id = r.id
                               AND rp.permission_id = :permission_id
                         )
