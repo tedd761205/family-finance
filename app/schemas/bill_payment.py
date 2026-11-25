@@ -36,6 +36,7 @@ class BillRefundCreate(BaseModel):
     amount: Decimal = Field(gt=0, max_digits=20, decimal_places=4)
     currency_code: str = Field(min_length=3, max_length=3)
     payment_date: datetime
+    exchange_rate: Decimal | None = Field(default=None, gt=0, max_digits=20, decimal_places=10)
     description: str | None = Field(default=None, max_length=200)
     note: str | None = None
 
