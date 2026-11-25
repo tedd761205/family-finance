@@ -39,7 +39,7 @@ def test_family_members_ui_refreshes_after_family_switch():
     with TestClient(app) as client:
         javascript = client.get("/static/app.js").text
 
-    assert 'if(!$("family-members-view").classList.contains("hidden")){await loadFamilyMembers();}' in javascript
+    assert 'if(!$("family-members-view").classList.contains("hidden")){await loadFamilyMembers();await loadFamilyInvitations();}' in javascript
 
 
 def test_family_members_ui_has_mobile_styles():
