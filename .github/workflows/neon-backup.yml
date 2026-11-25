@@ -380,3 +380,34 @@ jobs:
                   print(f"Size: {size} bytes")
                   print(f"SHA-256: {digest}")
           PY
+
+      - name: Publish non-sensitive backup provenance artifact
+        env:
+          BACKUP_FILE: family-finance-${{ github.run_started_at }}
+          BACKUP_BUCKET: ${{ vars.NEON_BACKUP_BUCKET }}
+        run: |
+          set -euo pipefail
+          BACKUP_FILE="$(find backups -maxdepth 1 -type f -name 'family-finance-*.dump' -printf '%f\\n' | head -n 1)"
+          if [ -z "$BACKUP_FILE" ]; then
+            echo "Verified backup dump filename is missing."
+            exit 1
+          fi
+          STEM="${BACKUP_FILE%.dump}"
+          mkdir -p backup-evidence
+          {
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_number=${GITHUB_RUN_NUMBER}"
+            echo "commit_sha=${GITHUB_SHA}"
+            echo "bucket=${BACKUP_BUCKET}"
+            echo "dump_key=production/${BACKUP_FILE}"
+            echo "manifest_key=production/${STEM}.row-counts.tsv"
+          } > backup-evidence/backup.txt
+          test -s backup-evidence/backup.txt
+
+      - name: Upload backup provenance artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: family-finance-neon-backup-${{ github.run_number }}
+          path: backup-evidence/backup.txt
+          if-no-files-found: error
+          retention-days: 30
