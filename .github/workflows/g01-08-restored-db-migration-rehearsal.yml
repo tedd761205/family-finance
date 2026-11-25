@@ -131,9 +131,36 @@ jobs:
               print(f"  {table}: {count}")
           PY
 
-      - name: Apply pending migrations to isolated restored snapshot
+      - name: Resolve direct Neon endpoint for migration
         env:
           DATABASE_URL: ${{ secrets.NEON_RESTORE_TEST_DATABASE_URL }}
+          EXPECTED_POOLER_HOST: ${{ vars.NEON_RESTORE_TEST_HOST }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from sqlalchemy.engine import make_url
+
+          url = make_url(os.environ["DATABASE_URL"])
+          expected_host = os.environ["EXPECTED_POOLER_HOST"]
+          if url.host != expected_host:
+              raise SystemExit("Refusing to resolve a direct endpoint from an unexpected Neon host.")
+          if "-pooler." not in url.host:
+              raise SystemExit("Expected the configured restore-test URL to use the Neon pooler host.")
+          direct_host = url.host.replace("-pooler.", ".", 1)
+          direct_url = url.set(host=direct_host)
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
+              env_file.write(
+                  "DATABASE_URL="
+                  + direct_url.render_as_string(hide_password=False)
+                  + "\\n"
+              )
+          print(f"Resolved isolated direct Neon endpoint: {direct_host}")
+          PY
+
+      - name: Apply pending migrations to isolated restored snapshot
+        env:
+          PGOPTIONS: "-c search_path=public"
         run: |
           set -euo pipefail
           python -m alembic upgrade c7d9e1f3a5b7 2>&1 | tee migration-rehearsal-artifacts/alembic-upgrade.log
