@@ -334,6 +334,7 @@
     workspace.classList.remove("hidden");
     candidates.replaceChildren();
     candidates.classList.add("hidden");
+    reviewPanel?.classList.add("hidden");
     fillButton.disabled = true;
     setBusy(true);
 
@@ -427,7 +428,12 @@
   fillButton.addEventListener("click", fillTransactionForm);
   receiptTypeSelect?.addEventListener("change", () => {
     if (parsedFields) renderCandidates(parsedFields, []);
-    if (parsedFields) fillButton.disabled = !hasReviewData();
+    if (parsedFields) {
+      fillButton.disabled = !hasReviewData();
+      if (receiptTypeSelect.value !== "auto") {
+        setStatus("已手動選擇「" + receiptTypeLabel() + "」。請再核對辨識欄位；分類不會自動變更帳務金額。");
+      }
+    }
   });
   [merchantInput, amountInput, dateInput, invoiceNumberInput].forEach((input) => {
     input?.addEventListener("input", () => {
