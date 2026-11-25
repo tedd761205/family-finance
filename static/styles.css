@@ -298,3 +298,11 @@
  .reconciliation-balance-line{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px}
  .reconciliation-balance-line strong{grid-column:1/-1}
 }
+
+
+/* Family invitation links and pending invitations */
+.invite-link-panel{display:flex;gap:12px;align-items:end;flex-wrap:wrap;padding:14px;margin:12px 0;border:1px solid var(--line,#d8e1dc);border-radius:12px;background:var(--surface-soft,#f7faf8)}
+.invite-link-panel .field{flex:1;min-width:240px}
+.family-invitation-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line,#e3e9e5)}
+.family-invitation-row p{margin:5px 0 0}
+@media(max-width:600px){.family-invitation-row{align-items:flex-start;flex-direction:column}.invite-link-panel{align-items:stretch;flex-direction:column}}

@@ -83,18 +83,22 @@
 
       <section id="family-members-view" class="panel family-members-panel hidden">
         <div class="accounts-heading">
-          <div><p class="eyebrow">FAMILY MEMBERS</p><h2>家庭成員</h2><p class="muted">查看目前家庭成員與角色，邀請已註冊的家人共同記帳。</p></div>
+          <div><p class="eyebrow">FAMILY MEMBERS</p><h2>家庭成員</h2><p class="muted">先輸入家人的 Google Email 建立邀請；家人自行登入並接受後，才會加入家庭。</p></div>
           <div class="heading-actions"><button class="secondary small" id="close-family-members" type="button">收起</button><button class="primary small" id="refresh-family-members" type="button">重新整理</button></div>
         </div>
         <div id="family-members-notice" class="notice" role="status" aria-live="polite"></div>
         <form id="family-member-invite-form" class="member-invite-form">
-          <label class="field">家人的註冊 Email<input id="family-member-email" type="email" required maxlength="254" placeholder="name@example.com"></label>
+          <label class="field">家人的 Google Email<input id="family-member-email" type="email" required maxlength="254" placeholder="name@gmail.com"></label>
           <button class="primary" id="family-member-invite-submit" type="submit">邀請加入家庭</button>
         </form>
-        <p class="tiny muted">目前僅能邀請已建立系統帳號的 Email；新加入者會先取得「一般成員」角色。角色調整與自訂權限將在後續管理功能提供。</p>
+        <p class="tiny muted">可邀請尚未註冊的家人。建立後請複製邀請連結傳給對方；連結 7 天有效、僅能使用一次，且必須由該 Email 對應的 Google 帳號登入接受。接受後預設為「一般成員」，你可再統一調整角色與細項權限。</p>
+        <div id="family-invite-link-panel" class="invite-link-panel hidden"><label class="field">新邀請連結（僅建立時顯示）<input id="family-invite-url" type="url" readonly></label><button class="secondary small" id="copy-family-invite-link" type="button">複製邀請連結</button></div>
         <div class="section-heading"><h3>成員名單</h3><span class="count" id="family-members-count">0 位成員</span></div>
         <div id="family-members-loading" class="muted hidden">正在載入家庭成員…</div>
         <div id="family-members-list" class="family-members-list"></div>
+        <div class="section-heading"><h3>待接受邀請</h3></div>
+        <div id="family-invitations-list" class="family-invitations-list"></div>
+        <p id="family-invitations-empty" class="tiny muted">目前沒有待接受的邀請。</p>
         <div id="family-members-empty" class="empty-state hidden"><h3>目前沒有可顯示的成員</h3><p class="muted">請確認目前登入帳號已加入此家庭。</p></div>
       </section>
 

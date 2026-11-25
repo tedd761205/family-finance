@@ -1,5 +1,6 @@
 const API = "";
 const TOKEN_KEY = "family_finance_access_token";
+const INVITE_TOKEN_KEY = "family_finance_pending_invite";
 let mode = "login";
 let currentUser = null;
 let selectedFamilyId = null;
@@ -15,8 +16,8 @@ async function api(path, options={}){const headers={"Content-Type":"application/
 function setMode(next){mode=next;$("login-tab").classList.toggle("active",mode==="login");$("register-tab").classList.toggle("active",mode==="register");$("name-wrap").classList.toggle("hidden",mode!=="register");$("form-title").textContent=mode==="login"?"歡迎回來":"建立家庭帳號";$("form-desc").textContent=mode==="login"?"使用 Email 與密碼登入家庭記帳系統。":"建立帳號後即可建立家庭或加入家人邀請。";$("submit-auth").textContent=mode==="login"?"登入":"建立帳號";$("password").autocomplete=mode==="login"?"current-password":"new-password";clearNotice("notice");}
 function showAuth(){currentUser=null;$("auth-view").classList.remove("hidden");$("app-view").classList.add("hidden");}
 function showApp(){$("auth-view").classList.add("hidden");$("app-view").classList.remove("hidden");}
-async function loadApp(){try{currentUser=await api("/auth/me");}catch(error){showAuth();notice("notice",error.message,"error");return;}$("user-greeting").textContent=currentUser.display_name+"（"+currentUser.email+"）";showApp();try{await loadFamilies();}catch(error){notice("notice-app","已登入，但家庭清單載入失敗："+error.message,"error");}}
-async function loadFamilies(){const result=await api("/families/mine");$("family-count").textContent=result.total+" 個家庭";const list=$("family-list");list.replaceChildren();$("empty-family").classList.toggle("hidden",result.total!==0);if(!selectedFamilyId&&result.families.length){selectedFamilyId=result.families[0].family_id;}for(const family of result.families){const card=document.createElement("button");card.type="button";card.className="family-card"+(selectedFamilyId===family.family_id?" selected":"");const title=document.createElement("strong");title.textContent=family.family_name;const meta=document.createElement("span");meta.textContent=family.currency+" · 家庭成員";card.append(title,meta);card.addEventListener("click",async()=>{selectedFamilyId=family.family_id;for(const node of list.children)node.classList.remove("selected");card.classList.add("selected");notice("notice-app","已切換至「"+family.family_name+"」。","success");if(!$("accounts-view").classList.contains("hidden")){await loadAccounts();}if(!$("transactions-view").classList.contains("hidden")){await showTransactions();}if(!$("transfers-view").classList.contains("hidden")){await showTransfers();}if(!$("credit-card-payments-view").classList.contains("hidden")){await showCreditCardPayments();}if(!$("bills-view").classList.contains("hidden")){await showBills();}if(!$("bill-payments-view").classList.contains("hidden")){$("bill-payments-view").classList.add("hidden");activeBillForPayments=null;}if(!$("recurring-bills-view").classList.contains("hidden")){await showRecurringBills();}if(!$("reports-view").classList.contains("hidden")){await loadFinancialReports();}if(!$("family-members-view").classList.contains("hidden")){await loadFamilyMembers();}if(!$("family-roles-view").classList.contains("hidden")){await loadFamilyRoles();}if(!$("audit-logs-view").classList.contains("hidden")){await loadAuditLogs();}if(!$("bank-reconciliation-view").classList.contains("hidden")&&window.loadBankReconciliationWorkspace){await window.loadBankReconciliationWorkspace();}});list.append(card);}}
+async function loadApp(){try{currentUser=await api("/auth/me");}catch(error){showAuth();notice("notice",error.message,"error");return;}$("user-greeting").textContent=currentUser.display_name+"（"+currentUser.email+"）";showApp();try{await loadFamilies();await handlePendingFamilyInvitation();}catch(error){notice("notice-app","已登入，但家庭清單載入失敗："+error.message,"error");}}
+async function loadFamilies(){const result=await api("/families/mine");$("family-count").textContent=result.total+" 個家庭";const list=$("family-list");list.replaceChildren();$("empty-family").classList.toggle("hidden",result.total!==0);if(!selectedFamilyId&&result.families.length){selectedFamilyId=result.families[0].family_id;}for(const family of result.families){const card=document.createElement("button");card.type="button";card.className="family-card"+(selectedFamilyId===family.family_id?" selected":"");const title=document.createElement("strong");title.textContent=family.family_name;const meta=document.createElement("span");meta.textContent=family.currency+" · 家庭成員";card.append(title,meta);card.addEventListener("click",async()=>{selectedFamilyId=family.family_id;for(const node of list.children)node.classList.remove("selected");card.classList.add("selected");notice("notice-app","已切換至「"+family.family_name+"」。","success");if(!$("accounts-view").classList.contains("hidden")){await loadAccounts();}if(!$("transactions-view").classList.contains("hidden")){await showTransactions();}if(!$("transfers-view").classList.contains("hidden")){await showTransfers();}if(!$("credit-card-payments-view").classList.contains("hidden")){await showCreditCardPayments();}if(!$("bills-view").classList.contains("hidden")){await showBills();}if(!$("bill-payments-view").classList.contains("hidden")){$("bill-payments-view").classList.add("hidden");activeBillForPayments=null;}if(!$("recurring-bills-view").classList.contains("hidden")){await showRecurringBills();}if(!$("reports-view").classList.contains("hidden")){await loadFinancialReports();}if(!$("family-members-view").classList.contains("hidden")){await loadFamilyMembers();await loadFamilyInvitations();}if(!$("family-roles-view").classList.contains("hidden")){await loadFamilyRoles();}if(!$("audit-logs-view").classList.contains("hidden")){await loadAuditLogs();}if(!$("bank-reconciliation-view").classList.contains("hidden")&&window.loadBankReconciliationWorkspace){await window.loadBankReconciliationWorkspace();}});list.append(card);}}
 function accountTypeLabel(type){return({bank:"銀行帳戶",time_deposit:"定期存款",cash:"現金",credit_card:"信用卡",e_wallet:"電子支付",other:"其他"})[type]||type;}
 function money(value,currency){const amount=Number(value||0);try{return new Intl.NumberFormat("zh-TW",{style:"currency",currency:currency||"TWD",minimumFractionDigits:2,maximumFractionDigits:2}).format(amount);}catch{return amount.toFixed(2)+" "+(currency||"");}}
 function toggleCreditFields(){const isCard=$("account-type").value==="credit_card";$("credit-fields").classList.toggle("hidden",!isCard);}
@@ -41,7 +42,7 @@ $("login-tab").addEventListener("click",()=>setMode("login"));$("register-tab").
 $("auth-form").addEventListener("submit",async(event)=>{event.preventDefault();clearNotice("notice");const button=$("submit-auth");button.disabled=true;try{const payload={email:$("email").value.trim(),password:$("password").value};let result;if(mode==="login"){result=await api("/auth/login",{method:"POST",body:JSON.stringify(payload)});}else{payload.display_name=$("display-name").value.trim();await api("/auth/register",{method:"POST",body:JSON.stringify(payload)});result=await api("/auth/login",{method:"POST",body:JSON.stringify({email:payload.email,password:payload.password})});}sessionStorage.setItem(TOKEN_KEY,result.access_token);$("auth-form").reset();await loadApp();}catch(error){notice("notice",error.message,"error");}finally{button.disabled=false;}});
 $("create-family-form").addEventListener("submit",async(event)=>{event.preventDefault();clearNotice("notice-app");const button=event.submitter;button.disabled=true;try{const result=await api("/families",{method:"POST",body:JSON.stringify({name:$("family-name").value.trim(),currency:$("family-currency").value})});$("family-name").value="";selectedFamilyId=result.family_id;await loadFamilies();notice("notice-app","家庭「"+result.family_name+"」已建立，建立者已設定為家庭管理員。","success");}catch(error){notice("notice-app",error.message,"error");}finally{button.disabled=false;}});
 $("logout-button").addEventListener("click",async()=>{let revoked=false;try{await api("/auth/logout",{method:"POST"});revoked=true;}catch{}sessionStorage.removeItem(TOKEN_KEY);selectedFamilyId=null;accounts=[];accountBalances.clear();$("accounts-view").classList.add("hidden");showAuth();setMode("login");if(revoked){notice("notice","已安全登出。","success");}else{notice("notice","已清除此瀏覽器的登入狀態，但伺服器端 Token 撤銷未確認；請確認網路連線後重新登入。","error");}});
-async function init(){if(token()){await loadApp();}else{showAuth();}try{const cfg=await fetch("/app-config").then(r=>r.json());if(cfg.google_client_id){const script=document.createElement("script");script.src="https://accounts.google.com/gsi/client";script.async=true;script.defer=true;script.onload=()=>{google.accounts.id.initialize({client_id:cfg.google_client_id,callback:async(response)=>{try{let result;try{result=await api("/auth/google",{method:"POST",body:JSON.stringify({id_token:response.credential})});}catch(error){if(error.status!==409)throw error;const accepted=window.confirm("這個 Google Email 已有家庭記帳系統帳號。是否使用 Google 已驗證的相同 Email，將 Google 安全綁定到既有帳號並登入？\n\n此操作不會建立新帳號，也不會更動原有家庭與帳務資料。");if(!accepted)return;result=await api("/auth/google/recover",{method:"POST",body:JSON.stringify({id_token:response.credential})});}sessionStorage.setItem(TOKEN_KEY,result.access_token);await loadApp();}catch(error){notice("notice",error.message,"error");}}});google.accounts.id.renderButton($("google-button"),{theme:"outline",size:"large",shape:"rectangular",width:300,text:"continue_with",locale:"zh_TW"});$("google-hint").classList.add("hidden");};document.head.append(script);}}catch{}}
+async function init(){captureFamilyInvitationToken();if(token()){await loadApp();}else{showAuth();}try{const cfg=await fetch("/app-config").then(r=>r.json());if(cfg.google_client_id){const script=document.createElement("script");script.src="https://accounts.google.com/gsi/client";script.async=true;script.defer=true;script.onload=()=>{google.accounts.id.initialize({client_id:cfg.google_client_id,callback:async(response)=>{try{let result;try{result=await api("/auth/google",{method:"POST",body:JSON.stringify({id_token:response.credential})});}catch(error){if(error.status!==409)throw error;const accepted=window.confirm("這個 Google Email 已有家庭記帳系統帳號。是否使用 Google 已驗證的相同 Email，將 Google 安全綁定到既有帳號並登入？\n\n此操作不會建立新帳號，也不會更動原有家庭與帳務資料。");if(!accepted)return;result=await api("/auth/google/recover",{method:"POST",body:JSON.stringify({id_token:response.credential})});}sessionStorage.setItem(TOKEN_KEY,result.access_token);await loadApp();}catch(error){notice("notice",error.message,"error");}}});google.accounts.id.renderButton($("google-button"),{theme:"outline",size:"large",shape:"rectangular",width:300,text:"continue_with",locale:"zh_TW"});$("google-hint").classList.add("hidden");};document.head.append(script);}}catch{}}
 init();
 
 // --------------------------------------------------
@@ -1830,13 +1831,15 @@ function openFamilyMembers() {
   $("family-members-view").classList.remove("hidden");
   $("family-members-view").scrollIntoView({behavior: "smooth", block: "start"});
   loadFamilyMembers();
+  loadFamilyInvitations();
 }
 
 $("open-family-members").addEventListener("click", openFamilyMembers);
 $("close-family-members").addEventListener("click", () => {
   $("family-members-view").classList.add("hidden");
 });
-$("refresh-family-members").addEventListener("click", loadFamilyMembers);
+$("refresh-family-members").addEventListener("click", async () => { await loadFamilyMembers(); await loadFamilyInvitations(); });
+$("copy-family-invite-link").addEventListener("click", async () => { const value = $("family-invite-url").value; if (!value) return; try { await navigator.clipboard.writeText(value); notice("family-members-notice", "邀請連結已複製。", "success"); } catch { $("family-invite-url").select(); notice("family-members-notice", "瀏覽器無法自動複製，已選取連結，請手動複製。", "error"); } });
 $("family-member-invite-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!selectedFamilyId) return;
@@ -1845,13 +1848,15 @@ $("family-member-invite-form").addEventListener("submit", async (event) => {
   clearNotice("family-members-notice");
   try {
     const email = $("family-member-email").value.trim();
-    await api("/families/" + selectedFamilyId + "/members", {
+    const result = await api("/families/" + selectedFamilyId + "/invitations", {
       method: "POST",
       body: JSON.stringify({email})
     });
     $("family-member-email").value = "";
-    await loadFamilyMembers();
-    notice("family-members-notice", "家庭成員已成功加入，並指派預設「一般成員」角色。", "success");
+    $("family-invite-url").value = result.invite_url;
+    $("family-invite-link-panel").classList.remove("hidden");
+    await loadFamilyInvitations();
+    notice("family-members-notice", "邀請已建立。請複製邀請連結傳給家人；家人須使用此 Email 的 Google 帳號登入並接受邀請。", "success");
   } catch (error) {
     notice("family-members-notice", "邀請失敗：" + error.message, "error");
   } finally {
@@ -1859,6 +1864,75 @@ $("family-member-invite-form").addEventListener("submit", async (event) => {
   }
 });
 
+
+
+async function loadFamilyInvitations() {
+  if (!selectedFamilyId) return;
+  const host = $("family-invitations-list");
+  if (!host) return;
+  host.replaceChildren();
+  try {
+    const result = await api("/families/" + selectedFamilyId + "/invitations");
+    for (const invitation of (result.invitations || [])) {
+      const row = document.createElement("article");
+      row.className = "family-invitation-row";
+      const info = document.createElement("div");
+      const email = document.createElement("strong");
+      email.textContent = invitation.email;
+      const expiry = document.createElement("p");
+      expiry.className = "tiny muted";
+      expiry.textContent = "邀請人：" + invitation.invited_by + " · 到期：" + new Date(invitation.expires_at).toLocaleString("zh-TW");
+      info.append(email, expiry);
+      const revoke = document.createElement("button");
+      revoke.type = "button";
+      revoke.className = "danger small";
+      revoke.textContent = "撤銷邀請";
+      revoke.addEventListener("click", async () => {
+        if (!window.confirm("確定撤銷寄給 " + invitation.email + " 的邀請？")) return;
+        try {
+          await api("/families/" + selectedFamilyId + "/invitations/" + invitation.invitation_id, {method:"DELETE"});
+          await loadFamilyInvitations();
+          notice("family-members-notice", "邀請已撤銷。", "success");
+        } catch (error) {
+          notice("family-members-notice", error.message, "error");
+        }
+      });
+      row.append(info, revoke);
+      host.append(row);
+    }
+    $("family-invitations-empty").classList.toggle("hidden", (result.invitations || []).length > 0);
+  } catch (error) {
+    $("family-invitations-empty").classList.remove("hidden");
+    $("family-invitations-empty").textContent = "待接受邀請載入失敗：" + error.message;
+  }
+}
+
+function captureFamilyInvitationToken() {
+  const params = new URLSearchParams(window.location.hash.startsWith("#") ? window.location.hash.slice(1) : "");
+  const inviteToken = params.get("invite");
+  if (inviteToken) {
+    sessionStorage.setItem(INVITE_TOKEN_KEY, inviteToken);
+    window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+  }
+}
+
+async function handlePendingFamilyInvitation() {
+  const inviteToken = sessionStorage.getItem(INVITE_TOKEN_KEY);
+  if (!inviteToken) return;
+  try {
+    const result = await api("/families/invitations/accept", {
+      method: "POST",
+      body: JSON.stringify({token: inviteToken})
+    });
+    sessionStorage.removeItem(INVITE_TOKEN_KEY);
+    selectedFamilyId = result.family_id;
+    await loadFamilies();
+    notice("notice-app", "已成功加入家庭！系統已先指派「一般成員」角色，家庭管理員可再調整權限。", "success");
+  } catch (error) {
+    if ([404, 409, 410].includes(error.status)) sessionStorage.removeItem(INVITE_TOKEN_KEY);
+    notice("notice-app", error.message + "。若目前登入的不是受邀 Google 帳號，請先登出再使用正確帳號登入。", "error");
+  }
+}
 
 // --------------------------------------------------
 // G-02-11：角色、細項權限及成員角色指派
