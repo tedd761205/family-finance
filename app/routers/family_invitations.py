@@ -40,6 +40,15 @@ def _normalize_email(value: str) -> str:
     return value.strip().lower()
 
 
+def _build_invite_url(public_app_url: str, raw_token: str) -> str:
+    """Build an invite URL that asks LINE to open it in the external browser."""
+    base_url = public_app_url.rstrip("/")
+    encoded_token = quote(raw_token, safe="")
+    # LINE supports openExternalBrowser=1 for ordinary web URLs. Keep the
+    # one-time token in the fragment so it is not sent in the initial HTTP request.
+    return f"{base_url}/?openExternalBrowser=1#invite={encoded_token}"
+
+
 def _require_inviter(db: Session, user: User, family_id: int) -> None:
     if not user.is_active:
         raise HTTPException(status_code=403, detail="此帳號已停用")
@@ -132,7 +141,7 @@ def create_family_invitation(
         raise HTTPException(status_code=409, detail="建立邀請時發生資料衝突，請重新操作") from exc
 
     public_app_url = os.getenv("PUBLIC_APP_URL", "https://family-finance-web-grst.onrender.com").rstrip("/")
-    invite_url = f"{public_app_url}/#invite={quote(raw_token, safe='')}"
+    invite_url = _build_invite_url(public_app_url, raw_token)
     return FamilyInvitationCreateResponse(
         success=True,
         invitation_id=invitation.id,
