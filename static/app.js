@@ -1372,6 +1372,7 @@ function resetBillPaymentForm() {
   billPaymentOriginalId=null;
   $("bill-payment-form").reset();
   $("bill-payment-date").value=localDateString();
+  $("bill-payment-exchange-rate").value="";
   $("bill-payment-form-title").textContent="新增帳單付款";
   $("bill-payment-submit").textContent="確認付款";
   $("bill-payment-form-panel").classList.add("hidden");
@@ -1399,8 +1400,10 @@ function startBillPaymentCreate() {
   $("bill-payment-date").value=localDateString();
   $("bill-payment-description").value="";
   $("bill-payment-note").value="";
+  $("bill-payment-exchange-rate").value="";
   populateBillPaymentAccounts();
   $("bill-payment-form-panel").classList.remove("hidden");
+  updateBillPaymentExchangeFields();
   $("bill-payment-form-panel").scrollIntoView({behavior:"smooth",block:"start"});
 }
 
@@ -1418,8 +1421,10 @@ function startBillRefund(original) {
   $("bill-payment-date").value=localDateString();
   $("bill-payment-description").value="帳單退款："+activeBillForPayments.title;
   $("bill-payment-note").value="";
-  populateBillPaymentAccounts(original.account_id);
+  $("bill-payment-exchange-rate").value="";
+  populateBillPaymentAccounts(original.account_id,original.account_currency_code);
   $("bill-payment-form-panel").classList.remove("hidden");
+  updateBillPaymentExchangeFields();
   $("bill-payment-form-panel").scrollIntoView({behavior:"smooth",block:"start"});
 }
 
