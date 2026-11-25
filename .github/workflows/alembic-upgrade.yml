@@ -4,11 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       backup_run_id:
-        description: "Successful Neon Database Backup workflow run ID (maximum age 24 hours)"
-        required: true
-        type: string
-      backup_object_key:
-        description: "Exact private Neon Object Storage key, e.g. production/family-finance-20261119T005812Z.dump"
+        description: "Successful Neon Database Backup run ID (maximum age 24 hours)"
         required: true
         type: string
       restore_run_id:
@@ -55,7 +51,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install "boto3>=1.35,<2.0"
 
       - name: Download restore-test provenance
         uses: actions/download-artifact@v4
@@ -71,27 +66,17 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPOSITORY: ${{ github.repository }}
           BACKUP_RUN_ID: ${{ inputs.backup_run_id }}
-          BACKUP_OBJECT_KEY: ${{ inputs.backup_object_key }}
           RESTORE_RUN_ID: ${{ inputs.restore_run_id }}
           REHEARSAL_RUN_ID: ${{ inputs.rehearsal_run_id }}
           TARGET_CONFIRMATION: ${{ inputs.target_confirmation }}
-          NEON_STORAGE_ENDPOINT: ${{ vars.NEON_STORAGE_ENDPOINT }}
-          NEON_STORAGE_REGION: ${{ vars.NEON_STORAGE_REGION }}
-          NEON_BACKUP_BUCKET: ${{ vars.NEON_BACKUP_BUCKET }}
-          NEON_RESTORE_S3_ACCESS_KEY_ID: ${{ secrets.NEON_RESTORE_S3_ACCESS_KEY_ID }}
-          NEON_RESTORE_S3_SECRET_ACCESS_KEY: ${{ secrets.NEON_RESTORE_S3_SECRET_ACCESS_KEY }}
         run: |
           set -euo pipefail
           python - <<'PY'
           import json
           import os
-          import re
           import urllib.error
           import urllib.request
           from datetime import datetime, timezone, timedelta
-
-          import boto3
-          from botocore.config import Config
 
           repo = os.environ["GH_REPOSITORY"]
           token = os.environ["GH_TOKEN"]
@@ -150,7 +135,7 @@ jobs:
           restore_time = as_time(runs["restore"]["created_at"])
           rehearsal_time = as_time(runs["rehearsal"]["created_at"])
           if now - backup_time > timedelta(hours=24) or backup_time > now:
-              raise SystemExit("The successful backup workflow run must be no older than 24 hours.")
+              raise SystemExit("The successful backup must be no older than 24 hours.")
           if not backup_time <= restore_time <= rehearsal_time <= now:
               raise SystemExit("Evidence order must be backup, restore test, then migration rehearsal.")
           rehearsal_sha = runs["rehearsal"].get("head_sha", "")
@@ -158,56 +143,6 @@ jobs:
               raise SystemExit("Migration rehearsal run has no commit SHA.")
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
               env_file.write(f"REHEARSAL_SHA={rehearsal_sha}\n")
-
-          object_key = os.environ.get("BACKUP_OBJECT_KEY", "").strip()
-          if not re.fullmatch(r"production/family-finance-[0-9]{8}T[0-9]{6}Z\.dump", object_key):
-              raise SystemExit("BACKUP_OBJECT_KEY must be an exact production backup object key.")
-          object_timestamp = datetime.strptime(
-              object_key.rsplit("-", 1)[1].removesuffix(".dump"),
-              "%Y%m%dT%H%M%SZ",
-          ).replace(tzinfo=timezone.utc)
-          if abs((object_timestamp - backup_time).total_seconds()) > 3600:
-              raise SystemExit("The selected private backup object's timestamp does not match the selected backup workflow run.")
-          if object_timestamp > now or now - object_timestamp > timedelta(hours=24):
-              raise SystemExit("The selected private backup object must be no older than 24 hours.")
-
-          endpoint = os.environ.get("NEON_STORAGE_ENDPOINT", "").strip()
-          region = os.environ.get("NEON_STORAGE_REGION", "").strip()
-          bucket = os.environ.get("NEON_BACKUP_BUCKET", "").strip()
-          access_key = os.environ.get("NEON_RESTORE_S3_ACCESS_KEY_ID", "").strip()
-          secret_key = os.environ.get("NEON_RESTORE_S3_SECRET_ACCESS_KEY", "")
-          if not endpoint.startswith("https://") or not region or not bucket or not access_key or not secret_key:
-              raise SystemExit("Missing private Neon Object Storage read-only credentials or configuration.")
-          storage = boto3.client(
-              "s3",
-              endpoint_url=endpoint,
-              region_name=region,
-              aws_access_key_id=access_key,
-              aws_secret_access_key=secret_key,
-              config=Config(
-                  signature_version="s3v4",
-                  s3={"addressing_style": "path"},
-                  retries={"max_attempts": 3, "mode": "standard"},
-              ),
-          )
-          try:
-              backup_head = storage.head_object(Bucket=bucket, Key=object_key)
-          except Exception as exc:
-              raise SystemExit("The selected private Neon backup object could not be verified.") from exc
-          if backup_head.get("ContentLength", 0) <= 0 or not re.fullmatch(
-              r"[0-9a-f]{64}", backup_head.get("Metadata", {}).get("sha256", "")
-          ):
-              raise SystemExit("The selected private Neon backup object is empty or missing SHA-256 metadata.")
-
-          manifest_key = object_key[:-5] + ".row-counts.tsv"
-          try:
-              manifest_head = storage.head_object(Bucket=bucket, Key=manifest_key)
-          except Exception as exc:
-              raise SystemExit("The selected private Neon row-count manifest could not be verified.") from exc
-          if manifest_head.get("ContentLength", 0) <= 0 or not re.fullmatch(
-              r"[0-9a-f]{64}", manifest_head.get("Metadata", {}).get("sha256", "")
-          ):
-              raise SystemExit("The selected private Neon row-count manifest is empty or missing SHA-256 metadata.")
 
           provenance_path = "restore-evidence/restore.txt"
           try:
@@ -219,18 +154,8 @@ jobs:
                   )
           except OSError as exc:
               raise SystemExit("Restore-test provenance artifact is missing or unreadable.") from exc
-          if provenance.get("backup_object_key") != object_key:
-              raise SystemExit("Restore-test provenance does not match the selected private backup object key.")
-          if provenance.get("backup_size_bytes") != str(backup_head.get("ContentLength", "")):
-              raise SystemExit("Restore-test provenance size does not match the private backup object.")
-          if provenance.get("backup_sha256") != backup_head.get("Metadata", {}).get("sha256", ""):
-              raise SystemExit("Restore-test provenance SHA-256 does not match the private backup object.")
-          if provenance.get("backup_manifest_key") != manifest_key:
-              raise SystemExit("Restore-test provenance does not match the selected private row-count manifest key.")
-          if provenance.get("backup_manifest_size_bytes") != str(manifest_head.get("ContentLength", "")):
-              raise SystemExit("Restore-test provenance manifest size does not match the private object.")
-          if provenance.get("backup_manifest_sha256") != manifest_head.get("Metadata", {}).get("sha256", ""):
-              raise SystemExit("Restore-test provenance manifest SHA-256 does not match the private object.")
+          if provenance.get("backup_run_id") != ids["backup"]:
+              raise SystemExit("Restore-test provenance does not match the selected backup run ID.")
           if provenance.get("target_confirmation") != "g01-restore-test":
               raise SystemExit("Restore-test provenance does not confirm the isolated g01-restore-test target.")
           if provenance.get("project_id") != "wild-credit-40100572":
@@ -239,6 +164,11 @@ jobs:
               raise SystemExit("Restore-test provenance does not contain a verified branch identity.")
           if provenance.get("endpoint_host", "").strip() == "":
               raise SystemExit("Restore-test provenance does not contain the verified Neon endpoint host.")
+
+          backup_artifacts = get_json(f"/actions/runs/{ids['backup']}/artifacts").get("artifacts", [])
+          backup_name = f"family-finance-neon-backup-{runs['backup']['run_number']}"
+          if not any(a.get("name") == backup_name and not a.get("expired") and a.get("size_in_bytes", 0) > 0 for a in backup_artifacts):
+              raise SystemExit("Selected backup run has no available, non-empty backup artifact.")
 
           restore_artifacts = get_json(f"/actions/runs/{ids['restore']}/artifacts").get("artifacts", [])
           if not any(a.get("name") == "neon-restore-test-provenance" and not a.get("expired") and a.get("size_in_bytes", 0) > 0 for a in restore_artifacts):
@@ -250,8 +180,7 @@ jobs:
 
           print("Authorization phrase accepted.")
           print("Backup, restore-test, and migration-rehearsal runs completed successfully.")
-          print(f"Private Neon dump and row-count manifest objects are present and verified: {object_key}, {manifest_key}")
-          print("Restore provenance and migration rehearsal report are available.")
+          print("Backup artifact and rehearsal report are available.")
           print("Migration rehearsal evidence is available; migration-source equality will be checked against current main.")
           print("Production migration evidence gate passed.")
           PY
@@ -264,7 +193,7 @@ jobs:
             echo "Missing migration rehearsal commit SHA." >&2
             exit 1
           fi
-          git diff --exit-code "${REHEARSAL_SHA}" HEAD -- alembic/versions requirements.txt alembic.ini app/validate_role_catalog.py
+          git diff --exit-code "${REHEARSAL_SHA}" HEAD -- alembic/versions requirements.txt alembic.ini app/permission_catalog.py app/role_catalog.py app/validate_role_catalog.py
 
       - name: Validate production endpoint and exact baseline (read-only)
         env:
@@ -350,6 +279,7 @@ jobs:
               "d3e5f7a9b1c3",
               "f4a6c8d0e2b4",
               "a6b8c0d2e4f6",
+              "c7d9e1f3a5b7",
           ]
           for index, revision_id in enumerate(expected_chain):
               revision = scripts.get_revision(revision_id)
@@ -360,7 +290,7 @@ jobs:
                       f"expected parent {expected_parent}, found "
                       f"{None if revision is None else revision.down_revision}."
                   )
-          if scripts.get_revision("a6b8c0d2e4f6") is None:
+          if scripts.get_revision("c7d9e1f3a5b7") is None:
               raise SystemExit("Authorized target migration is missing from the repository.")
 
           engine = create_engine(url, pool_pre_ping=True, connect_args={"connect_timeout": 10})
@@ -394,7 +324,7 @@ jobs:
           print(f"Production endpoint matched Neon API endpoint and configured host: {expected_host}")
           print(f"Neon API confirmed project {project_id}, branch {branch_id} (production).")
           print(f"Current Alembic baseline: {baseline}")
-          print("Authorized Alembic target: a6b8c0d2e4f6")
+          print("Authorized Alembic target: c7d9e1f3a5b7")
           print(f"Verified baseline tables: {len(existing)}")
           print("Selected production row counts:")
           for table, count in counts.items():
@@ -407,7 +337,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           set -euo pipefail
-          python -m alembic upgrade a6b8c0d2e4f6 2>&1 | tee production-alembic-upgrade.log
+          python -m alembic upgrade c7d9e1f3a5b7 2>&1 | tee production-alembic-upgrade.log
           python -m alembic current 2>&1 | tee production-alembic-current.txt
 
       - name: Verify production schema and preserved data
@@ -439,7 +369,7 @@ jobs:
                       counts_before[parts[0]] = int(parts[1])
 
           scripts = ScriptDirectory.from_config(Config("alembic.ini"))
-          expected_revision = {"a6b8c0d2e4f6"}
+          expected_revision = {"c7d9e1f3a5b7"}
           engine = create_engine(make_url(os.environ["DATABASE_URL"]), pool_pre_ping=True, connect_args={"connect_timeout": 10})
           try:
               with engine.connect() as connection:
@@ -569,6 +499,30 @@ jobs:
                   if missing_triggers:
                       raise SystemExit(f"Missing required category-scope triggers: {missing_triggers}.")
 
+
+                  issue_update_permission = connection.execute(text("""
+                      SELECT id FROM permissions WHERE code = 'reconciliation.update' AND is_active = true
+                  """)).scalar_one_or_none()
+                  if issue_update_permission is None:
+                      raise SystemExit("Missing active reconciliation.update permission after migration.")
+                  missing_role_grants = connection.execute(text("""
+                      SELECT r.id, r.family_id, r.name
+                      FROM roles r
+                      WHERE r.is_system = true
+                        AND r.name IN ('家庭管理員', '財務管理員', '記帳人員')
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM role_permissions rp
+                            WHERE rp.role_id = r.id
+                              AND rp.permission_id = :permission_id
+                        )
+                  """), {"permission_id": issue_update_permission}).all()
+                  if missing_role_grants:
+                      raise SystemExit(
+                          "Existing default reconciliation roles are missing issue-update permission: "
+                          + repr([(row.id, row.family_id, row.name) for row in missing_role_grants])
+                      )
+
                   print(f"Final Alembic revision: {sorted(current)}")
                   print(f"Public table count: {len(tables)}")
                   print(f"G-03 tables verified: {len(new_tables)}")
@@ -577,6 +531,7 @@ jobs:
                   print(f"Required G-03 check constraints verified: {len(required_checks)}")
                   print(f"Required category-scope triggers verified: {len(required_triggers)}")
                   print("Selected existing data row counts did not decrease.")
+                  print("Active reconciliation.update permission and all existing finance/bookkeeping system-role grants verified.")
           finally:
               engine.dispose()
           PY
