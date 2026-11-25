@@ -221,6 +221,35 @@
           <div class="heading-actions"><button class="secondary small" id="close-transactions" type="button">收起</button><button class="primary small" id="add-transaction-button" type="button">＋ 新增收支</button></div>
         </div>
         <div id="transaction-notice" class="notice" role="status" aria-live="polite"></div>
+        <section class="local-receipt-tool" aria-labelledby="local-receipt-title">
+          <div class="local-receipt-heading">
+            <div>
+              <h3 id="local-receipt-title">發票拍照辨識（本機試用）</h3>
+              <p>照片只在目前裝置辨識，不會上傳到家庭記帳系統，也不會呼叫 Google Cloud Vision。</p>
+            </div>
+            <span class="local-receipt-tag">不產生 OCR API 費用</span>
+          </div>
+          <div class="local-receipt-actions">
+            <button class="primary" id="local-receipt-camera" type="button">拍照辨識</button>
+            <button class="secondary" id="local-receipt-choose" type="button">選擇手機照片</button>
+          </div>
+          <input id="local-receipt-camera-input" class="hidden" type="file" accept="image/jpeg,image/png,image/webp" capture="environment">
+          <input id="local-receipt-file-input" class="hidden" type="file" accept="image/jpeg,image/png,image/webp">
+          <p id="local-receipt-status" class="local-receipt-status" role="status" aria-live="polite">支援紙本、手寫發票及一般收據照片。第一次使用會下載辨識程式與繁體中文模型，會使用網路流量；這不是付費 OCR API，也不會上傳照片。</p>
+          <div id="local-receipt-workspace" class="local-receipt-workspace hidden">
+            <img id="local-receipt-preview" class="local-receipt-preview" alt="待辨識的發票照片">
+            <div class="local-receipt-progress" aria-hidden="true"><span id="local-receipt-progress-bar"></span></div>
+            <label class="field">辨識文字（可複製或檢查）
+              <textarea id="local-receipt-text" rows="7" readonly placeholder="辨識完成後會顯示文字"></textarea>
+            </label>
+            <div id="local-receipt-candidates" class="local-receipt-candidates hidden"></div>
+            <div class="form-actions">
+              <button class="primary" id="local-receipt-fill" type="button" disabled>帶入記帳表單</button>
+              <button class="secondary" id="local-receipt-clear" type="button">清除照片</button>
+            </div>
+            <p class="tiny muted">試用版只在本機辨識並提供欄位建議，不會保存發票照片或自動建立支出。請核對金額、日期及帳戶後，再自行新增收支。</p>
+          </div>
+        </section>
         <div class="transaction-filters">
           <label class="field">類型<select id="transaction-filter-type"><option value="">全部類型</option><option value="income">收入</option><option value="expense">支出</option><option value="opening_balance">期初餘額</option></select></label>
           <label class="field">帳戶<select id="transaction-filter-account"><option value="">全部帳戶</option></select></label>
@@ -635,5 +664,6 @@
   </script>
   <script src="/static/app.js" defer></script>
   <script src="/static/reconciliation.js" defer></script>
+  <script src="/static/local-receipt-ocr.js" defer></script>
 </body>
 </html>
