@@ -6,6 +6,7 @@
   const LANGUAGE_PATH = "https://tessdata.projectnaptha.com/4.0.0";
   const MAX_FILE_BYTES = 10 * 1024 * 1024;
   const MAX_BARCODE_IMAGE_EDGE = 1800;
+  const MAX_OCR_IMAGE_EDGE = 2600;
 
   const $ = (id) => document.getElementById(id);
   const cameraButton = $("local-receipt-camera");
@@ -39,7 +40,7 @@
     isProcessing = busy;
     cameraButton.disabled = busy;
     chooseButton.disabled = busy;
-    fillButton.disabled = busy || !parsedFields || (!parsedFields.amount && !parsedFields.date);
+    fillButton.disabled = busy || !parsedFields || (!parsedFields.amount && !parsedFields.date && !parsedFields.invoiceNumber);
     clearButton.disabled = busy;
   }
 
@@ -105,7 +106,7 @@
 
   function extractCandidates(text) {
     let date = null;
-    let match = text.match(/(?<!\d)(20\d{2})\s*[./-]\s*(\d{1,2})\s*[./-]\s*(\d{1,2})(?!\d)/);
+    let match = text.match(/(?:^|[^\d])(20\d{2})\s*[./-]\s*(\d{1,2})\s*[./-]\s*(\d{1,2})(?!\d)/);
     if (match) date = validDate(Number(match[1]), Number(match[2]), Number(match[3]));
     if (!date) {
       match = text.match(/(?:民國\s*)?(\d{2,3})\s*[年./-]\s*(\d{1,2})\s*[月./-]\s*(\d{1,2})\s*日?/);
@@ -129,7 +130,7 @@
     };
   }
 
-  async function loadImageCanvas(file) {
+  async function loadImageCanvas(file, maxEdge = MAX_BARCODE_IMAGE_EDGE) {
     const image = typeof createImageBitmap === "function"
       ? await createImageBitmap(file)
       : await new Promise((resolve, reject) => {
@@ -146,13 +147,14 @@
           imageElement.src = temporaryUrl;
         });
 
-    const scale = Math.min(1, MAX_BARCODE_IMAGE_EDGE / Math.max(image.width, image.height));
+    const scale = Math.min(1, maxEdge / Math.max(image.width, image.height));
     const width = Math.max(1, Math.round(image.width * scale));
     const height = Math.max(1, Math.round(image.height * scale));
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
     const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) throw new Error("目前瀏覽器無法處理照片，請改用其他瀏覽器。");
     context.drawImage(image, 0, 0, width, height);
     if (typeof image.close === "function") image.close();
     return canvas;
@@ -161,11 +163,12 @@
   async function decodeLocalCodes(file) {
     const found = [];
     try {
+      const canvas = await loadImageCanvas(file, MAX_BARCODE_IMAGE_EDGE);
       const detectorSupported = "BarcodeDetector" in window;
       if (detectorSupported && typeof createImageBitmap === "function") {
         try {
           const detector = new BarcodeDetector({ formats: ["qr_code", "code_128", "ean_13", "ean_8", "upc_a", "upc_e", "code_39", "itf"] });
-          const bitmap = await createImageBitmap(file);
+          const bitmap = await createImageBitmap(canvas);
           const detected = await detector.detect(bitmap);
           bitmap.close();
           for (const code of detected) {
@@ -179,8 +182,8 @@
       }
 
       const jsQR = await loadScript(JSQR_SRC, "jsQR");
-      const canvas = await loadImageCanvas(file);
       const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (!context) return found;
       const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
       const full = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "attemptBoth" });
       if (full && full.data && !found.some((item) => item.value === full.data)) found.push({ format: "QR Code", value: full.data });
@@ -193,6 +196,7 @@
         crop.width = region.width;
         crop.height = canvas.height;
         const cropContext = crop.getContext("2d", { willReadFrequently: true });
+        if (!cropContext) continue;
         cropContext.drawImage(canvas, region.x, 0, region.width, canvas.height, 0, 0, region.width, canvas.height);
         const cropData = cropContext.getImageData(0, 0, crop.width, crop.height);
         const result = jsQR(cropData.data, cropData.width, cropData.height, { inversionAttempts: "attemptBoth" });
@@ -271,7 +275,8 @@
       const codeResults = await decodeLocalCodes(file);
       const currentWorker = await getWorker();
       setStatus("正在本機辨識照片，照片不會傳送到伺服器或 Google。");
-      const result = await currentWorker.recognize(file);
+      const ocrCanvas = await loadImageCanvas(file, MAX_OCR_IMAGE_EDGE);
+      const result = await currentWorker.recognize(ocrCanvas);
       const recognizedText = (result && result.data && result.data.text || "").trim();
       const codeText = codeResults.map((item, index) => "\n[" + item.format + " " + (index + 1) + "] " + item.value).join("");
       textArea.value = recognizedText + (codeText ? "\n\n本機條碼解碼結果：" + codeText : "");
