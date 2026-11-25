@@ -239,15 +239,46 @@
           <div id="local-receipt-workspace" class="local-receipt-workspace hidden">
             <img id="local-receipt-preview" class="local-receipt-preview" alt="待辨識的發票照片">
             <div class="local-receipt-progress" aria-hidden="true"><span id="local-receipt-progress-bar"></span></div>
-            <label class="field">辨識文字（可複製或檢查）
-              <textarea id="local-receipt-text" rows="7" readonly placeholder="辨識完成後會顯示文字"></textarea>
+            <label class="field local-receipt-type-field">憑證種類
+              <select id="local-receipt-type">
+                <option value="auto">自動判斷</option>
+                <option value="electronic_invoice">電子發票證明聯（QR Code）</option>
+                <option value="two_part_invoice">二聯式統一發票</option>
+                <option value="three_part_invoice">三聯式統一發票</option>
+                <option value="receipt">一般收據</option>
+                <option value="handwritten">手寫憑證</option>
+              </select>
+              <span class="tiny muted">系統會先自動判斷；判斷不準確時，可以在這裡自行更改。</span>
             </label>
             <div id="local-receipt-candidates" class="local-receipt-candidates hidden"></div>
+            <section id="local-receipt-review" class="local-receipt-review hidden" aria-label="辨識結果核對">
+              <div class="local-receipt-review-heading">
+                <strong>辨識結果，請核對後再帶入</strong>
+                <span class="tiny muted">欄位皆可修改</span>
+              </div>
+              <div class="local-receipt-review-grid">
+                <label class="field">商家名稱<input id="local-receipt-merchant" type="text" maxlength="100" placeholder="請確認或輸入商家名稱"></label>
+                <label class="field">總金額<input id="local-receipt-amount" type="number" min="0" step="0.01" placeholder="請確認金額"></label>
+                <label class="field">消費日期<input id="local-receipt-date" type="date"></label>
+                <label class="field">發票號碼<input id="local-receipt-invoice-number" type="text" maxlength="20" placeholder="選填"></label>
+                <label class="field">賣方統一編號<input id="local-receipt-seller-tax-id" type="text" inputmode="numeric" maxlength="10" placeholder="選填"></label>
+                <label class="field">買方統一編號<input id="local-receipt-buyer-tax-id" type="text" inputmode="numeric" maxlength="10" placeholder="選填"></label>
+              </div>
+              <label class="field">商品明細（可編輯）
+                <textarea id="local-receipt-items" rows="3" placeholder="若有辨識到商品，會列在這裡"></textarea>
+              </label>
+            </section>
+            <details class="local-receipt-raw">
+              <summary>檢視原始辨識文字與 QR Code 內容</summary>
+              <label class="field">原始辨識內容
+                <textarea id="local-receipt-text" rows="7" readonly placeholder="辨識完成後會顯示文字"></textarea>
+              </label>
+            </details>
             <div class="form-actions">
-              <button class="primary" id="local-receipt-fill" type="button" disabled>帶入記帳表單</button>
+              <button class="primary" id="local-receipt-fill" type="button" disabled>核對完成，帶入記帳表單</button>
               <button class="secondary" id="local-receipt-clear" type="button">清除照片</button>
             </div>
-            <p class="tiny muted">試用版只在本機辨識並提供欄位建議，不會保存發票照片或自動建立支出。請核對金額、日期及帳戶後，再自行新增收支。</p>
+            <p class="tiny muted">照片及辨識都在目前裝置進行，不會上傳或保存原圖，也不會自動建立支出。帶入後仍須選擇帳戶、分類並按「新增紀錄」才會正式入帳。</p>
           </div>
         </section>
         <div class="transaction-filters">
@@ -664,6 +695,7 @@
   </script>
   <script src="/static/app.js" defer></script>
   <script src="/static/reconciliation.js" defer></script>
+  <script src="/static/local-receipt-parser.js" defer></script>
   <script src="/static/local-receipt-ocr.js" defer></script>
 </body>
 </html>

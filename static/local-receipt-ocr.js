@@ -21,8 +21,17 @@
   const candidates = $("local-receipt-candidates");
   const fillButton = $("local-receipt-fill");
   const clearButton = $("local-receipt-clear");
+  const receiptTypeSelect = $("local-receipt-type");
+  const reviewPanel = $("local-receipt-review");
+  const merchantInput = $("local-receipt-merchant");
+  const amountInput = $("local-receipt-amount");
+  const dateInput = $("local-receipt-date");
+  const invoiceNumberInput = $("local-receipt-invoice-number");
+  const sellerTaxIdInput = $("local-receipt-seller-tax-id");
+  const buyerTaxIdInput = $("local-receipt-buyer-tax-id");
+  const itemsInput = $("local-receipt-items");
 
-  if (!cameraButton || !chooseButton || !cameraInput || !fileInput) return;
+  if (!cameraButton || !chooseButton || !cameraInput || !fileInput || !window.FamilyReceiptParser) return;
 
   let workerPromise = null;
   let worker = null;
@@ -40,7 +49,7 @@
     isProcessing = busy;
     cameraButton.disabled = busy;
     chooseButton.disabled = busy;
-    fillButton.disabled = busy || !parsedFields || (!parsedFields.amount && !parsedFields.date && !parsedFields.invoiceNumber);
+    fillButton.disabled = busy || !hasReviewData();
     clearButton.disabled = busy;
   }
 
@@ -162,6 +171,16 @@
 
   async function decodeLocalCodes(file) {
     const found = [];
+    const addCode = (value, format, side = null) => {
+      if (!value) return;
+      const existing = found.find((item) => item.value === value);
+      if (existing) {
+        if (side && !existing.side) existing.side = side;
+        return;
+      }
+      found.push({ format: format || "條碼", value: value, side: side });
+    };
+
     try {
       const canvas = await loadImageCanvas(file, MAX_BARCODE_IMAGE_EDGE);
       const detectorSupported = "BarcodeDetector" in window;
@@ -177,11 +196,7 @@
             const bitmap = await createImageBitmap(canvas);
             const detected = await detector.detect(bitmap);
             bitmap.close();
-            for (const code of detected) {
-              if (code.rawValue && !found.some((item) => item.value === code.rawValue)) {
-                found.push({ format: code.format || "條碼", value: code.rawValue });
-              }
-            }
+            for (const code of detected) addCode(code.rawValue, code.format || "條碼");
           }
         } catch (_error) {
           // Some browsers expose BarcodeDetector but do not implement every format.
@@ -193,11 +208,14 @@
       if (!context) return found;
       const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
       const full = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "attemptBoth" });
-      if (full && full.data && !found.some((item) => item.value === full.data)) found.push({ format: "QR Code", value: full.data });
+      if (full && full.data) addCode(full.data, "QR Code");
 
-      // 台灣電子發票證明聯通常有左右兩個 QR Code；分半掃描以增加雙碼同時辨識機會。
+      // 台灣電子發票左右 QR Code 分開解碼，保留左右位置以便合併解析。
       const middle = Math.floor(canvas.width / 2);
-      for (const region of [{ x: 0, width: middle }, { x: middle, width: canvas.width - middle }]) {
+      for (const region of [
+        { x: 0, width: middle, side: "left" },
+        { x: middle, width: canvas.width - middle, side: "right" }
+      ]) {
         if (region.width < 2) continue;
         const crop = document.createElement("canvas");
         crop.width = region.width;
@@ -207,9 +225,7 @@
         cropContext.drawImage(canvas, region.x, 0, region.width, canvas.height, 0, 0, region.width, canvas.height);
         const cropData = cropContext.getImageData(0, 0, crop.width, crop.height);
         const result = jsQR(cropData.data, cropData.width, cropData.height, { inversionAttempts: "attemptBoth" });
-        if (result && result.data && !found.some((item) => item.value === result.data)) {
-          found.push({ format: "QR Code", value: result.data });
-        }
+        if (result && result.data) addCode(result.data, "QR Code", region.side);
       }
     } catch (_error) {
       // OCR can still proceed when the optional local barcode decoder is unavailable.
@@ -217,13 +233,55 @@
     return found;
   }
 
+  function hasReviewData() {
+    if (!parsedFields) return false;
+    return Boolean(
+      (amountInput && amountInput.value.trim()) ||
+      (dateInput && dateInput.value.trim()) ||
+      (invoiceNumberInput && invoiceNumberInput.value.trim()) ||
+      (merchantInput && merchantInput.value.trim())
+    );
+  }
+
+  function effectiveReceiptType() {
+    if (receiptTypeSelect && receiptTypeSelect.value !== "auto") return receiptTypeSelect.value;
+    return parsedFields ? parsedFields.type : "unknown";
+  }
+
+  function receiptTypeLabel() {
+    const labels = window.FamilyReceiptParser.TYPE_LABELS || {};
+    return labels[effectiveReceiptType()] || labels.unknown || "尚待判斷";
+  }
+
+  function renderReview(fields) {
+    if (!reviewPanel || !fields) return;
+    merchantInput.value = fields.merchant || "";
+    amountInput.value = fields.amount || "";
+    dateInput.value = fields.date || "";
+    invoiceNumberInput.value = fields.invoiceNumber || "";
+    sellerTaxIdInput.value = fields.sellerTaxId || "";
+    buyerTaxIdInput.value = fields.buyerTaxId || "";
+    itemsInput.value = (fields.items || []).map((item) =>
+      item.name + " × " + item.quantity + "，單價 " + item.unitPrice
+    ).join("\n");
+    receiptTypeSelect.value = "auto";
+    reviewPanel.classList.remove("hidden");
+    fillButton.disabled = !hasReviewData();
+  }
+
   function renderCandidates(fields, codeResults) {
     candidates.replaceChildren();
     const pieces = [];
-    if (fields.date) pieces.push("日期建議：" + fields.date);
-    if (fields.amount) pieces.push("金額建議：NT$ " + fields.amount);
+    const typeName = receiptTypeLabel();
+    pieces.push("憑證種類：" + typeName);
+    if (fields.merchant) pieces.push("商家：" + fields.merchant);
+    if (fields.date) pieces.push("日期：" + fields.date);
+    if (fields.amount) pieces.push("總金額：NT$ " + fields.amount);
     if (fields.invoiceNumber) pieces.push("發票號碼：" + fields.invoiceNumber);
-    if (codeResults.length) pieces.push("本機掃描到 " + codeResults.length + " 個 QR Code／條碼");
+    if (fields.sellerTaxId) pieces.push("賣方統編：" + fields.sellerTaxId);
+    if (fields.buyerTaxId) pieces.push("買方統編：" + fields.buyerTaxId);
+    if (fields.items && fields.items.length) pieces.push("商品明細：" + fields.items.length + " 項");
+    if (codeResults.length) pieces.push("本機解碼 " + codeResults.length + " 個 QR Code／條碼");
     for (const value of pieces) {
       const item = document.createElement("span");
       item.className = "local-receipt-candidate";
@@ -231,7 +289,7 @@
       candidates.appendChild(item);
     }
     candidates.classList.toggle("hidden", pieces.length === 0);
-    fillButton.disabled = isProcessing || (!fields.amount && !fields.date && !fields.invoiceNumber);
+    fillButton.disabled = isProcessing || !hasReviewData();
   }
 
   function clearPhoto() {
@@ -244,6 +302,8 @@
     workspace.classList.add("hidden");
     candidates.replaceChildren();
     candidates.classList.add("hidden");
+    reviewPanel?.classList.add("hidden");
+    if (receiptTypeSelect) receiptTypeSelect.value = "auto";
     fillButton.disabled = true;
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     previewUrl = null;
@@ -274,6 +334,7 @@
     workspace.classList.remove("hidden");
     candidates.replaceChildren();
     candidates.classList.add("hidden");
+    reviewPanel?.classList.add("hidden");
     fillButton.disabled = true;
     setBusy(true);
 
@@ -287,12 +348,15 @@
       const recognizedText = (result && result.data && result.data.text || "").trim();
       const codeText = codeResults.map((item, index) => "\n[" + item.format + " " + (index + 1) + "] " + item.value).join("");
       textArea.value = recognizedText + (codeText ? "\n\n本機條碼解碼結果：" + codeText : "");
-      parsedFields = extractCandidates(recognizedText);
+      parsedFields = window.FamilyReceiptParser.parseReceiptData(recognizedText, codeResults);
+      renderReview(parsedFields);
       renderCandidates(parsedFields, codeResults);
       if (!recognizedText && !codeResults.length) {
-        setStatus("沒有辨識到文字或條碼。請把發票放平、拍清楚、避免反光後再試一次。", true);
+        setStatus("沒有辨識到文字或條碼。請把憑證放平、拍清楚、避免反光後再試一次。", true);
+      } else if (parsedFields.type === "unknown") {
+        setStatus("已取得文字，但無法可靠判斷憑證種類。請手動選擇種類並核對欄位；不確定的資料請自行補上。", true);
       } else {
-        setStatus("本機辨識完成。請核對文字與欄位建議；辨識結果不會自動建立支出。");
+        setStatus("本機辨識完成。請先確認憑證種類，再核對或修改欄位；資料不會自動建立支出。");
       }
     } catch (error) {
       parsedFields = null;
@@ -300,26 +364,46 @@
       setStatus(error && error.message ? error.message : "本機辨識失敗，請重新拍照或稍後再試。", true);
     } finally {
       setBusy(false);
-      if (parsedFields) fillButton.disabled = !parsedFields.amount && !parsedFields.date && !parsedFields.invoiceNumber;
+      if (parsedFields) fillButton.disabled = !hasReviewData();
     }
   }
 
   function fillTransactionForm() {
-    if (!parsedFields || (!parsedFields.amount && !parsedFields.date && !parsedFields.invoiceNumber)) return;
+    if (!hasReviewData()) return;
     if (typeof window.resetTransactionForm === "function") window.resetTransactionForm();
     const type = $("transaction-type");
     type.value = "expense";
     type.dispatchEvent(new Event("change", { bubbles: true }));
-    if (parsedFields.amount) $("transaction-amount").value = parsedFields.amount;
-    if (parsedFields.date) $("transaction-date").value = parsedFields.date;
-    if (parsedFields.invoiceNumber) $("transaction-reference").value = parsedFields.invoiceNumber;
-    if (!$("transaction-description").value.trim()) $("transaction-description").value = "發票消費（請補商家名稱）";
+
+    const merchant = merchantInput.value.trim();
+    const amount = amountInput.value.trim();
+    const date = dateInput.value.trim();
+    const invoiceNumber = invoiceNumberInput.value.trim();
+    const sellerTaxId = sellerTaxIdInput.value.trim();
+    const buyerTaxId = buyerTaxIdInput.value.trim();
+    const itemLines = itemsInput.value.trim();
+
+    if (amount) $("transaction-amount").value = amount;
+    if (date) $("transaction-date").value = date;
+    if (invoiceNumber) $("transaction-reference").value = invoiceNumber;
+    if (merchant) $("transaction-description").value = merchant.slice(0, 255);
+    else if (!$("transaction-description").value.trim()) $("transaction-description").value = "發票／收據消費（請補商家名稱）";
+
+    const noteParts = [];
+    noteParts.push("憑證種類：" + receiptTypeLabel());
+    if (sellerTaxId) noteParts.push("賣方統編：" + sellerTaxId);
+    if (buyerTaxId) noteParts.push("買方統編：" + buyerTaxId);
+    if (itemLines) noteParts.push("商品明細：\n" + itemLines);
+    if (noteParts.length && !$("transaction-note").value.trim()) {
+      $("transaction-note").value = noteParts.join("\n");
+    }
+
     $("transaction-form-panel").classList.remove("hidden");
     $("transaction-form-panel").scrollIntoView({ behavior: "smooth", block: "start" });
-    setStatus("已將可辨識的日期、金額及發票號碼帶入記帳表單。請自行核對、選擇帳戶及分類，再按「新增紀錄」。");
+    setStatus("已將可辨識資料帶入記帳表單。請再核對金額、商家、帳戶及分類，最後按「新增紀錄」才會正式入帳。");
   }
 
-  function disposeLocalReceiptSession() {
+    function disposeLocalReceiptSession() {
     clearPhoto();
     if (worker) {
       const currentWorker = worker;
@@ -342,4 +426,18 @@
   fileInput.addEventListener("change", () => handleFile(fileInput.files && fileInput.files[0]));
   clearButton.addEventListener("click", clearPhoto);
   fillButton.addEventListener("click", fillTransactionForm);
+  receiptTypeSelect?.addEventListener("change", () => {
+    if (parsedFields) renderCandidates(parsedFields, []);
+    if (parsedFields) {
+      fillButton.disabled = !hasReviewData();
+      if (receiptTypeSelect.value !== "auto") {
+        setStatus("已手動選擇「" + receiptTypeLabel() + "」。請再核對辨識欄位；分類不會自動變更帳務金額。");
+      }
+    }
+  });
+  [merchantInput, amountInput, dateInput, invoiceNumberInput].forEach((input) => {
+    input?.addEventListener("input", () => {
+      fillButton.disabled = !hasReviewData();
+    });
+  });
 })();

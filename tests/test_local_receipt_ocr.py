@@ -12,6 +12,10 @@ def test_local_receipt_ocr_pilot_is_available_in_transaction_workspace():
     assert 'id="local-receipt-camera-input"' in page.text
     assert 'id="local-receipt-file-input"' in page.text
     assert 'id="local-receipt-workspace"' in page.text
+    assert 'id="local-receipt-type"' in page.text
+    assert 'id="local-receipt-merchant"' in page.text
+    assert 'id="local-receipt-amount"' in page.text
+    assert 'id="local-receipt-date"' in page.text
     assert "不會上傳照片" in page.text
     assert "會使用網路流量" in page.text
     assert script.status_code == 200
@@ -38,13 +42,17 @@ def test_local_receipt_ocr_only_suggests_fields_and_requires_manual_transaction_
         script = client.get("/static/local-receipt-ocr.js").text
         page = client.get("/")
 
-    assert "extractCandidates" in script
+    assert "FamilyReceiptParser.parseReceiptData" in script
+    assert "renderReview(parsedFields)" in script
+    assert "hasReviewData()" in script
     assert 'transaction-amount' in script
     assert 'transaction-date' in script
     assert 'transaction-reference' in script
     assert 'transaction-form-panel' in script
     assert "新增紀錄" in page.text
     assert "自動建立支出" in page.text
+    assert 'id="local-receipt-fill"' in page.text
+    assert "買方統一編號" in page.text
 
 
 def test_local_receipt_ocr_limits_image_types_and_size():
