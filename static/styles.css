@@ -501,3 +501,52 @@ textarea:focus-visible {
   .app-nav-button { min-height: 64px; padding: 7px 2px; }
   .app-nav-button .nav-label { font-size: 11px; }
 }
+
+
+/* Permission-aware tool finder: show one category at a time on touch screens. */
+.more-tools-controls{display:grid;gap:13px;margin:0 0 18px}
+.more-tools-search{display:grid;gap:7px;color:var(--nav-ink);font-size:14px;font-weight:750}
+.more-tools-search input{width:100%;min-height:50px;box-sizing:border-box;padding:12px 14px;border:1px solid var(--nav-border);border-radius:12px;background:#fff;color:var(--nav-ink);font:inherit;font-size:16px}
+.more-category-picker{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}
+.more-category-button{display:flex;align-items:center;justify-content:center;gap:7px;min-width:0;min-height:50px;padding:9px 12px;border:1px solid var(--nav-border);border-radius:12px;background:#fff;color:var(--nav-ink);font:inherit;font-size:14px;font-weight:750;cursor:pointer}
+.more-category-button[aria-pressed="true"]{border-color:#8eb6a0;background:var(--nav-accent-soft);color:#174b3d;box-shadow:inset 0 0 0 1px #b9d4c3}
+.more-category-count{color:var(--nav-muted);font-size:11px;font-weight:600;white-space:nowrap}
+.more-tools-guidance,.more-tools-empty{margin:0;padding:10px 12px;border-radius:10px;background:#edf4ef;color:#415c4d;font-size:13px;line-height:1.6}
+.more-tools-empty{background:#fff7ea;color:#785923}
+.quick-tool-group .quick-grid{grid-template-columns:1fr}
+.app-navigation{--visible-nav-items:5}
+@media(min-width:761px) and (max-width:1200px){
+ .more-category-picker{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .quick-tool-group .quick-grid{grid-template-columns:1fr}
+}
+@media(max-width:760px){
+ .more-tools-controls{gap:11px;margin-bottom:14px}
+ .more-category-picker{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+ .more-category-button{justify-content:flex-start;min-height:54px;padding:10px 12px;font-size:14px}
+ .more-category-count{margin-left:auto}
+ .quick-tool-group .quick-card-button{
+   display:grid;
+   grid-template-columns:42px minmax(0,1fr) max-content;
+   grid-template-areas:"icon title action" "icon desc action";
+   align-items:center;
+   gap:3px 10px;
+   min-height:82px;
+   padding:11px 12px;
+   text-align:left;
+ }
+ .quick-tool-group .quick-icon{grid-area:icon;display:grid;place-items:center;width:40px;height:40px;margin:0}
+ .quick-tool-group .quick-card-title{grid-area:title;margin:0;font-size:15px}
+ .quick-tool-group .quick-card-description{grid-area:desc;margin:0;font-size:12px;line-height:1.45}
+ .quick-tool-group .coming{grid-area:action;margin:0;align-self:center;font-size:11px;white-space:nowrap}
+ .app-navigation{grid-template-columns:repeat(var(--visible-nav-items,5),minmax(0,1fr))}
+}
+@media(max-width:420px){
+ .quick-tool-group .quick-card-button{
+   grid-template-columns:36px minmax(0,1fr);
+   grid-template-areas:"icon title" "icon desc" "icon action";
+   column-gap:9px;
+   min-height:84px;
+ }
+ .quick-tool-group .quick-icon{width:34px;height:34px}
+ .quick-tool-group .coming{justify-self:start;margin-top:2px}
+}
