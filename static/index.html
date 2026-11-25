@@ -6,6 +6,15 @@
   <meta name="theme-color" content="#173b35">
   <title>家庭記帳系統</title>
   <link rel="stylesheet" href="/static/styles.css">
+  <style>
+    .browser-help{margin-top:26px;padding:16px 18px;border:1px solid #dce8e0;border-radius:14px;background:#fff}
+    .browser-help-title{margin:0 0 6px;color:#1b5142;font-size:14px;font-weight:750}
+    .browser-help-copy{margin:0 0 12px;color:#63756d;font-size:12px;line-height:1.7}
+    .browser-help-button{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;min-height:42px}
+    #browser-help-fallback{margin:12px 0 0}
+    @media(max-width:760px){.browser-help{margin-top:22px}.intro{padding-left:0}}
+  </style>
+
 </head>
 <body>
   <main class="shell">
@@ -19,6 +28,12 @@
         <h1>讓每一筆家庭收支，<br>都清楚有跡可循。</h1>
         <p class="intro-copy">帳戶、帳單與家庭支出集中管理，讓家人一起掌握財務狀況。</p>
         <ul class="benefits"><li>家庭帳務集中管理</li><li>帳單與付款分開記錄</li><li>依家庭角色管理資料權限</li></ul>
+        <section id="android-browser-help" class="browser-help hidden" aria-live="polite">
+          <p class="browser-help-title">建議使用 Chrome 開啟</p>
+          <p class="browser-help-copy">若目前是在 LINE 內開啟，請點下方按鈕嘗試切換至 Chrome。</p>
+          <a id="open-in-chrome" class="secondary browser-help-button" href="intent://family-finance-web-grst.onrender.com/#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=https%3A%2F%2Ffamily-finance-web-grst.onrender.com%2F;end">使用 Chrome 開啟</a>
+          <p id="browser-help-fallback" class="browser-help-copy hidden">如果沒有跳轉，請點 LINE 右上角「⋯」，選擇「以其他瀏覽器開啟」，再選 Chrome。</p>
+        </section>
       </div>
       <section class="panel auth-panel">
         <div class="tabs" role="tablist" aria-label="登入或註冊">
@@ -553,6 +568,22 @@
     </section>
     <footer>家庭記帳系統 <span>·</span> 安全管理每一筆家庭收支</footer>
   </main>
+  <script>
+    (() => {
+      const ua = navigator.userAgent || "";
+      const isAndroid = /Android/i.test(ua);
+      const isLine = /Line\//i.test(ua) || /; wv\)/i.test(ua);
+      if (!isAndroid || !isLine) return;
+      const panel = document.getElementById("android-browser-help");
+      const link = document.getElementById("open-in-chrome");
+      const fallback = document.getElementById("browser-help-fallback");
+      if (!panel || !link || !fallback) return;
+      panel.classList.remove("hidden");
+      link.addEventListener("click", () => {
+        window.setTimeout(() => fallback.classList.remove("hidden"), 1200);
+      }, { once: true });
+    })();
+  </script>
   <script src="/static/app.js" defer></script>
   <script src="/static/reconciliation.js" defer></script>
 </body>
