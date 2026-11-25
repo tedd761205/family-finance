@@ -2832,9 +2832,10 @@ function applyMoreToolsFilter(){
 }
 
 function applyFamilyNavigationPermissions(){
-  document.querySelectorAll(".quick-card-button[data-permissions]").forEach(card=>{
-    const codes=card.dataset.permissions.split(",").map(code=>code.trim()).filter(Boolean);
-    const allowed=hasAnyCurrentFamilyPermission(codes);
+  document.querySelectorAll(".quick-card-button[data-permissions],.quick-card-button[data-permissions-all]").forEach(card=>{
+    const anyCodes=(card.dataset.permissions||"").split(",").map(code=>code.trim()).filter(Boolean);
+    const allCodes=(card.dataset.permissionsAll||"").split(",").map(code=>code.trim()).filter(Boolean);
+    const allowed=(!anyCodes.length||hasAnyCurrentFamilyPermission(anyCodes))&&allCodes.every(code=>currentFamilyPermissionCodes.has(code));
     card.dataset.permissionAllowed=String(allowed);
     card.classList.toggle("hidden",!allowed);
   });
