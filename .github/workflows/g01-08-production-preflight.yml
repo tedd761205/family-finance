@@ -75,6 +75,7 @@ jobs:
               "bills", "recurring_bills", "bill_payments", "attachments",
               "ocr_tasks", "notifications", "export_templates",
               "export_template_versions", "export_schedules", "export_runs",
+              "family_invitations",
           }
           with engine.connect() as connection:
               tables = set(connection.execute(text("""
@@ -115,6 +116,7 @@ jobs:
               "bills", "recurring_bills", "bill_payments", "attachments",
               "ocr_tasks", "notifications", "export_templates",
               "export_template_versions", "export_schedules", "export_runs",
+              "family_invitations",
           }
 
           try:
