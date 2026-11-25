@@ -105,3 +105,16 @@ def test_invitation_requires_matching_google_identity():
         _require_verified_google_email(db, user, "family@example.com")
 
     assert exc.value.status_code == 403
+
+
+
+def test_invitation_url_requests_external_browser_and_keeps_token_in_fragment():
+    from urllib.parse import parse_qs, urlsplit
+
+    url = family_invitations._build_invite_url(
+        "https://family-finance.example", "one-time-token"
+    )
+    parsed = urlsplit(url)
+
+    assert parse_qs(parsed.query) == {"openExternalBrowser": ["1"]}
+    assert parse_qs(parsed.fragment) == {"invite": ["one-time-token"]}
