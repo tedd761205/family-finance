@@ -1,6 +1,7 @@
 const API = "";
 const TOKEN_KEY = "family_finance_access_token";
 const INVITE_TOKEN_KEY = "family_finance_pending_invite";
+const RECEIPT_CAPTURE_RETURN_KEY = "family_finance_receipt_capture_return";
 let mode = "login";
 let currentUser = null;
 let selectedFamilyId = null;
@@ -18,7 +19,61 @@ async function api(path, options={}){const headers={"Content-Type":"application/
 function setMode(next){mode=next;$("login-tab").classList.toggle("active",mode==="login");$("register-tab").classList.toggle("active",mode==="register");$("name-wrap").classList.toggle("hidden",mode!=="register");$("form-title").textContent=mode==="login"?"歡迎回來":"建立家庭帳號";$("form-desc").textContent=mode==="login"?"使用 Email 與密碼登入家庭記帳系統。":"建立帳號後即可建立家庭或加入家人邀請。";$("submit-auth").textContent=mode==="login"?"登入":"建立帳號";$("password").autocomplete=mode==="login"?"current-password":"new-password";clearNotice("notice");}
 function showAuth(){currentUser=null;$("auth-view").classList.remove("hidden");$("app-view").classList.add("hidden");}
 function showApp(){$("auth-view").classList.add("hidden");$("app-view").classList.remove("hidden");}
-async function loadApp(){try{currentUser=await api("/auth/me");}catch(error){showAuth();notice("notice",error.message,"error");return;}$("user-greeting").textContent=currentUser.display_name+"（"+currentUser.email+"）";showApp();try{await loadFamilies();await handlePendingFamilyInvitation();}catch(error){notice("notice-app","已登入，但家庭清單載入失敗："+error.message,"error");}}
+function clearReceiptCaptureReturn(){try{sessionStorage.removeItem(RECEIPT_CAPTURE_RETURN_KEY);}catch{}}
+function readReceiptCaptureReturn(){
+  try{
+    const raw=sessionStorage.getItem(RECEIPT_CAPTURE_RETURN_KEY);
+    if(!raw)return null;
+    const state=JSON.parse(raw);
+    const age=Date.now()-Number(state.startedAt);
+    if(state.version!==1||state.view!=="transactions"||state.familyId===null||state.familyId===undefined||!Number.isFinite(age)||age<0||age>10*60*1000){
+      clearReceiptCaptureReturn();
+      return null;
+    }
+    return state;
+  }catch{
+    clearReceiptCaptureReturn();
+    return null;
+  }
+}
+window.prepareReceiptCaptureReturn=()=>{
+  if(!$("transactions-view")||$("transactions-view").classList.contains("hidden")||!selectedFamilyId)return false;
+  try{
+    sessionStorage.setItem(RECEIPT_CAPTURE_RETURN_KEY,JSON.stringify({
+      version:1,
+      view:"transactions",
+      familyId:selectedFamilyId,
+      startedAt:Date.now()
+    }));
+    return true;
+  }catch{return false;}
+};
+window.clearReceiptCaptureReturn=clearReceiptCaptureReturn;
+async function loadApp(){
+  const pendingReceiptReturn=readReceiptCaptureReturn();
+  if(pendingReceiptReturn)selectedFamilyId=pendingReceiptReturn.familyId;
+  try{currentUser=await api("/auth/me");}catch(error){showAuth();notice("notice",error.message,"error");return;}
+  $("user-greeting").textContent=currentUser.display_name+"（"+currentUser.email+"）";
+  showApp();
+  try{
+    await loadFamilies();
+    await handlePendingFamilyInvitation();
+    if(pendingReceiptReturn){
+      // Only restore the captured family if the current user still belongs to it.
+      if(selectedFamilyId===pendingReceiptReturn.familyId){
+        await showTransactions();
+        if(!window.__familyReceiptPhotoReturned){
+          const status=$("local-receipt-status");
+          if(status)status.textContent="已返回發票拍照畫面。若照片沒有自動帶回，請重新拍照或選擇手機照片；辨識仍只在本機進行。";
+        }
+      }
+      clearReceiptCaptureReturn();
+    }
+  }catch(error){
+    clearReceiptCaptureReturn();
+    notice("notice-app","已登入，但家庭清單載入失敗："+error.message,"error");
+  }
+}
 async function loadFamilies(){
   const result=await api("/families/mine");
   const families=result.families||[];
