@@ -1811,8 +1811,8 @@ function renderFamilyMembers(members) {
       remove.addEventListener("click", async () => {
         const label = member.display_name || member.email || "這位成員";
         const accepted = window.confirm(
-          "確定要將「" + label + "」移出目前家庭？\\n\\n" +
-          "對方將無法再查看此家庭資料，但使用者帳號、既有帳務及歷史紀錄都會保留。\\n" +
+          "確定要將「" + label + "」移出目前家庭？\n\n" +
+          "對方將無法再查看此家庭資料，但使用者帳號、既有帳務及歷史紀錄都會保留。\n" +
           "日後仍可重新邀請，重新加入時會先套用「一般成員」角色。"
         );
         if (!accepted) return;
