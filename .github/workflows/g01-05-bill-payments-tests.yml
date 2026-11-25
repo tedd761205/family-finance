@@ -77,6 +77,24 @@ jobs:
           with engine.connect() as c:
               table_ok = c.execute(text("SELECT to_regclass('public.bill_payments') IS NOT NULL")).scalar_one()
               link_ok = c.execute(text("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='transactions' AND column_name='bill_payment_id')")).scalar_one()
+              payment_columns = set(c.execute(text("""
+                  SELECT column_name FROM information_schema.columns
+                  WHERE table_schema='public' AND table_name='bill_payments'
+              """)).scalars())
+              required_payment_columns = {
+                  "account_amount", "account_currency_code", "exchange_rate", "exchange_difference"
+              }
+              payment_constraints = set(c.execute(text("""
+                  SELECT conname FROM pg_constraint
+                  WHERE connamespace='public'::regnamespace
+              """)).scalars())
+              required_payment_constraints = {
+                  "ck_bill_payments_account_amount_positive",
+                  "ck_bill_payments_exchange_rate_positive",
+                  "ck_bill_payments_account_currency_code",
+                  "ck_bill_payments_payment_exchange_difference_zero",
+                  "ck_bill_payments_same_currency_consistent",
+              }
               permission_count = c.execute(text("SELECT count(*) FROM permissions WHERE code LIKE 'payments.%'")).scalar_one()
               fk_count = c.execute(text("""
                   SELECT count(*) FROM pg_constraint
@@ -91,8 +109,13 @@ jobs:
                   SELECT to_regclass('public.uq_transactions_bill_payment') IS NOT NULL
               """)).scalar_one()
           engine.dispose()
-          if not table_ok or not link_ok or permission_count != 4 or fk_count != 4 or not unique_index:
-              raise SystemExit("G-01-05 migration objects, relationships, or permissions are incomplete")
+          missing_columns = sorted(required_payment_columns - payment_columns)
+          missing_constraints = sorted(required_payment_constraints - payment_constraints)
+          if not table_ok or not link_ok or permission_count != 4 or fk_count != 4 or not unique_index or missing_columns or missing_constraints:
+              raise SystemExit(
+                  "G-01-05 migration objects, relationships, permissions, or currency conversion fields are incomplete: "
+                  f"columns={missing_columns}, constraints={missing_constraints}"
+              )
           PY
           python -m alembic downgrade base
           python -m alembic upgrade head
