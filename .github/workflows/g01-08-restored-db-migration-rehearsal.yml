@@ -405,6 +405,10 @@ jobs:
                   print(f"G-03 tables verified: {len(expected_new)}")
                   print(f"Required indexes verified: {len(required_indexes)}")
                   print(f"Required G-03 foreign keys verified: {len(required_foreign_keys)}")
+                  payment_columns = set(connection.execute(text("""
+                      SELECT column_name FROM information_schema.columns
+                      WHERE table_schema='public' AND table_name='bill_payments'
+                  """)).scalars())
                   required_payment_columns = {
                       "account_amount", "account_currency_code", "exchange_rate", "exchange_difference"
                   }
