@@ -387,7 +387,8 @@ jobs:
           BACKUP_BUCKET: ${{ vars.NEON_BACKUP_BUCKET }}
         run: |
           set -euo pipefail
-          BACKUP_FILE="$(find backups -maxdepth 1 -type f -name 'family-finance-*.dump' -printf '%f\\n' | head -n 1)"
+          BACKUP_PATH="$(find backups -maxdepth 1 -type f -name 'family-finance-*.dump' -print -quit)"
+          BACKUP_FILE="$(basename "$BACKUP_PATH")"
           if [ -z "$BACKUP_FILE" ]; then
             echo "Verified backup dump filename is missing."
             exit 1
