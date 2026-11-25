@@ -256,7 +256,7 @@ jobs:
           if url.database != "neondb":
               raise SystemExit("Refusing to proceed: unexpected production database name.")
 
-          baseline = "a7c9e1f3b5d7"
+          baseline = "c7d9e1f3a5b7"
           existing = {
               "accounts", "alembic_version", "audit_logs", "categories",
               "credit_card_payments", "families", "family_members",
@@ -266,12 +266,11 @@ jobs:
               "bills", "recurring_bills", "bill_payments", "attachments",
               "ocr_tasks", "notifications", "export_templates",
               "export_template_versions", "export_schedules", "export_runs",
-          }
-          new_tables = {
               "bank_import_batches", "bank_import_rows",
               "reconciliation_sessions", "reconciliation_matches",
               "reconciliation_exclusions", "reconciliation_issues",
           }
+          new_tables = {"family_invitations"}
           scripts = ScriptDirectory.from_config(Config("alembic.ini"))
           expected_chain = [
               "a7c9e1f3b5d7",
@@ -290,8 +289,9 @@ jobs:
                       f"expected parent {expected_parent}, found "
                       f"{None if revision is None else revision.down_revision}."
                   )
-          if scripts.get_revision("c7d9e1f3a5b7") is None:
-              raise SystemExit("Authorized target migration is missing from the repository.")
+          invitation_revision = scripts.get_revision("f2a4c6e8b0d2")
+          if invitation_revision is None or invitation_revision.down_revision != "c7d9e1f3a5b7":
+              raise SystemExit("Family invitation migration is missing or is not based on the verified production revision.")
 
           engine = create_engine(url, pool_pre_ping=True, connect_args={"connect_timeout": 10})
           try:
@@ -324,7 +324,7 @@ jobs:
           print(f"Production endpoint matched Neon API endpoint and configured host: {expected_host}")
           print(f"Neon API confirmed project {project_id}, branch {branch_id} (production).")
           print(f"Current Alembic baseline: {baseline}")
-          print("Authorized Alembic target: c7d9e1f3a5b7")
+          print("Authorized Alembic target: f2a4c6e8b0d2")
           print(f"Verified baseline tables: {len(existing)}")
           print("Selected production row counts:")
           for table, count in counts.items():
@@ -337,7 +337,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           set -euo pipefail
-          python -m alembic upgrade c7d9e1f3a5b7 2>&1 | tee production-alembic-upgrade.log
+          python -m alembic upgrade f2a4c6e8b0d2 2>&1 | tee production-alembic-upgrade.log
           python -m alembic current 2>&1 | tee production-alembic-current.txt
 
       - name: Verify production schema and preserved data
@@ -357,6 +357,7 @@ jobs:
               "bills", "recurring_bills", "bill_payments", "attachments",
               "ocr_tasks", "notifications", "export_templates",
               "export_template_versions", "export_schedules", "export_runs",
+              "family_invitations",
           }
           counts_before = {}
           with open("production-migration-preflight.txt", encoding="utf-8") as report:
@@ -369,7 +370,7 @@ jobs:
                       counts_before[parts[0]] = int(parts[1])
 
           scripts = ScriptDirectory.from_config(Config("alembic.ini"))
-          expected_revision = {"c7d9e1f3a5b7"}
+          expected_revision = {"f2a4c6e8b0d2"}
           engine = create_engine(make_url(os.environ["DATABASE_URL"]), pool_pre_ping=True, connect_args={"connect_timeout": 10})
           try:
               with engine.connect() as connection:
@@ -416,6 +417,9 @@ jobs:
                       "uq_reconciliation_exclusions_active_row",
                       "ix_reconciliation_exclusions_session_status",
                       "ix_reconciliation_issues_session_status",
+                      "ix_family_invitations_family_id",
+                      "ix_family_invitations_email",
+                      "ix_family_invitations_pending_family_email",
                   }
                   indexes = set(connection.execute(text("""
                       SELECT indexname FROM pg_indexes WHERE schemaname='public'
@@ -450,6 +454,9 @@ jobs:
                       "fk_reconciliation_issues_transaction",
                       "fk_reconciliation_issues_created_by",
                       "fk_reconciliation_issues_updated_by",
+                      "family_invitations_family_id_fkey",
+                      "family_invitations_invited_by_user_id_fkey",
+                      "family_invitations_accepted_by_user_id_fkey",
                   }
                   foreign_keys = set(connection.execute(text("""
                       SELECT conname FROM pg_constraint
@@ -457,7 +464,29 @@ jobs:
                   """)).scalars())
                   missing_foreign_keys = sorted(required_foreign_keys - foreign_keys)
                   if missing_foreign_keys:
-                      raise SystemExit(f"Missing required G-03 foreign keys: {missing_foreign_keys}.")
+                      raise SystemExit(f"Missing required foreign keys: {missing_foreign_keys}.")
+
+                  token_unique = connection.execute(text("""
+                      SELECT EXISTS (
+                          SELECT 1 FROM pg_constraint
+                          WHERE conrelid = 'public.family_invitations'::regclass
+                            AND conname = 'uq_family_invitations_token_hash'
+                            AND contype = 'u'
+                            AND convalidated
+                      )
+                  """)).scalar_one()
+                  pending_index = connection.execute(text("""
+                      SELECT i.indisunique, pg_get_expr(i.indpred, i.indrelid) AS predicate
+                      FROM pg_index i
+                      JOIN pg_class idx ON idx.oid = i.indexrelid
+                      JOIN pg_namespace ns ON ns.oid = idx.relnamespace
+                      WHERE ns.nspname = 'public'
+                        AND idx.relname = 'ix_family_invitations_pending_family_email'
+                  """)).one_or_none()
+                  if not token_unique:
+                      raise SystemExit("Missing validated unique token_hash constraint.")
+                  if pending_index is None or not pending_index.indisunique or "status = 'pending'" not in (pending_index.predicate or ""):
+                      raise SystemExit("Pending family/email index is not unique or does not enforce status = pending.")
 
                   required_checks = {
                       "ck_bank_import_batches_status",
