@@ -4,6 +4,7 @@ import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
+import os
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func
@@ -130,7 +131,8 @@ def create_family_invitation(
         db.rollback()
         raise HTTPException(status_code=409, detail="建立邀請時發生資料衝突，請重新操作") from exc
 
-    invite_url = f"{str(request.base_url).rstrip('/')}/?invite={quote(raw_token, safe='')}"
+    public_app_url = os.getenv("PUBLIC_APP_URL", "https://family-finance-web-grst.onrender.com").rstrip("/")
+    invite_url = f"{public_app_url}/#invite={quote(raw_token, safe='')}"
     return FamilyInvitationCreateResponse(
         success=True,
         invitation_id=invitation.id,
