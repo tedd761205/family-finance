@@ -167,13 +167,20 @@
       const detectorSupported = "BarcodeDetector" in window;
       if (detectorSupported && typeof createImageBitmap === "function") {
         try {
-          const detector = new BarcodeDetector({ formats: ["qr_code", "code_128", "ean_13", "ean_8", "upc_a", "upc_e", "code_39", "itf"] });
-          const bitmap = await createImageBitmap(canvas);
-          const detected = await detector.detect(bitmap);
-          bitmap.close();
-          for (const code of detected) {
-            if (code.rawValue && !found.some((item) => item.value === code.rawValue)) {
-              found.push({ format: code.format || "條碼", value: code.rawValue });
+          const desiredFormats = ["qr_code", "code_128", "ean_13", "ean_8", "upc_a", "upc_e", "code_39", "itf"];
+          const supportedFormats = typeof BarcodeDetector.getSupportedFormats === "function"
+            ? await BarcodeDetector.getSupportedFormats()
+            : desiredFormats;
+          const formats = desiredFormats.filter((format) => supportedFormats.includes(format));
+          if (formats.length) {
+            const detector = new BarcodeDetector({ formats });
+            const bitmap = await createImageBitmap(canvas);
+            const detected = await detector.detect(bitmap);
+            bitmap.close();
+            for (const code of detected) {
+              if (code.rawValue && !found.some((item) => item.value === code.rawValue)) {
+                found.push({ format: code.format || "條碼", value: code.rawValue });
+              }
             }
           }
         } catch (_error) {
