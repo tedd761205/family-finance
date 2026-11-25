@@ -537,12 +537,15 @@ jobs:
                       FROM public.bill_payments AS payment
                       JOIN public.accounts AS account
                         ON account.family_id = payment.family_id AND account.id = payment.account_id
+                      LEFT JOIN public.transactions AS linked_transaction
+                        ON linked_transaction.family_id = payment.family_id
+                       AND linked_transaction.bill_payment_id = payment.id
                       WHERE payment.account_amount IS NULL
                          OR payment.account_currency_code IS NULL
                          OR payment.exchange_rate <> 1
                          OR payment.exchange_difference <> 0
-                         OR payment.account_amount <> payment.amount
-                         OR payment.account_currency_code <> account.currency_code
+                         OR payment.account_amount <> COALESCE(linked_transaction.amount, payment.amount)
+                         OR payment.account_currency_code <> COALESCE(linked_transaction.currency_code, account.currency_code)
                   """)).scalar_one()
                   if inconsistent_legacy_payments:
                       raise SystemExit(
