@@ -81,22 +81,54 @@
           <button class="primary" type="submit">建立家庭</button>
         </form>
       </section>
-      <section class="quick-grid">
-        <button class="quick-card quick-card-button" id="open-audit-logs" type="button"><span class="quick-icon">稽</span><span class="quick-card-title">稽核紀錄</span><span class="quick-card-description">查詢家庭成員操作、帳務異動及角色權限變更歷程。</span><span class="coming">查看操作紀錄 →</span></button>
-        <button class="quick-card quick-card-button" id="open-family-roles" type="button"><span class="quick-icon">權</span><span class="quick-card-title">角色與權限</span><span class="quick-card-description">建立自訂角色、設定細項權限及指派家人角色。</span><span class="coming">管理角色權限 →</span></button>
-        <button class="quick-card quick-card-button" id="open-family-members" type="button"><span class="quick-icon">人</span><span class="quick-card-title">家庭成員</span><span class="quick-card-description">查看家人名單與目前角色，邀請已註冊的家人加入。</span><span class="coming">管理家庭成員 →</span></button>
-        <button class="quick-card quick-card-button" id="open-accounts" type="button"><span class="quick-icon">帳</span><span class="quick-card-title">帳戶管理</span><span class="quick-card-description">銀行、現金、信用卡與電子支付。</span><span class="coming">管理帳戶 →</span></button>
-        <button class="quick-card quick-card-button" id="open-transactions" type="button"><span class="quick-icon">收</span><span class="quick-card-title">收支紀錄</span><span class="quick-card-description">新增收入、支出，查詢及管理交易。</span><span class="coming">管理收支 →</span></button>
-        <button class="quick-card quick-card-button" id="open-transfers" type="button"><span class="quick-icon">轉</span><span class="quick-card-title">帳戶轉帳</span><span class="quick-card-description">管理帳戶間轉入、轉出與手續費。</span><span class="coming">管理轉帳 →</span></button>
-        <button class="quick-card quick-card-button" id="open-credit-card-payments" type="button"><span class="quick-icon">卡</span><span class="quick-card-title">信用卡繳款</span><span class="quick-card-description">記錄繳款、同步來源帳戶與信用卡負債。</span><span class="coming">管理信用卡繳款 →</span></button>
-        <button class="quick-card quick-card-button" id="open-bills" type="button"><span class="quick-icon">單</span><span class="quick-card-title">帳單管理</span><span class="quick-card-description">管理帳單金額、到期日、分類與付款狀態。</span><span class="coming">管理帳單 →</span></button>
-        <button class="quick-card quick-card-button" id="open-recurring-bills" type="button"><span class="quick-icon">週</span><span class="quick-card-title">定期帳單</span><span class="quick-card-description">設定週期、下次日期，批次產生應繳帳單。</span><span class="coming">管理定期帳單 →</span></button>
-        <button class="quick-card quick-card-button" id="open-reports" type="button"><span class="quick-icon">報</span><span class="quick-card-title">財務報表</span><span class="quick-card-description">查看月收支、年度趨勢與分類占比。</span><span class="coming">查看財務報表 →</span></button>
-        <button class="quick-card quick-card-button" id="open-categories" type="button"><span class="quick-icon">類</span><span class="quick-card-title">收支分類</span><span class="quick-card-description">管理家庭收入與支出分類、子分類及排序。</span><span class="coming">管理分類 →</span></button>
-        <button class="quick-card quick-card-button" id="open-attachments" type="button"><span class="quick-icon">檔</span><span class="quick-card-title">帳單附件與 OCR</span><span class="quick-card-description">上傳帳單或交易圖片、查看附件並核對 OCR 辨識結果。</span><span class="coming">管理附件 →</span></button>
-        <button class="quick-card quick-card-button" id="open-notifications-exports" type="button"><span class="quick-icon">匯</span><span class="quick-card-title">通知與資料匯出</span><span class="quick-card-description">查看家庭通知、建立 CSV 匯出範本、管理匯出紀錄與排程。</span><span class="coming">管理通知與匯出 →</span></button>
-        <button class="quick-card quick-card-button" id="open-bank-imports" type="button"><span class="quick-icon">匯</span><span class="quick-card-title">銀行／信用卡匯入</span><span class="quick-card-description">上傳對帳單 CSV、對應欄位、檢查重複資料並確認入帳。</span><span class="coming">匯入對帳單 →</span></button>
-        <button class="quick-card quick-card-button" id="open-bank-reconciliation" type="button"><span class="quick-icon">對</span><span class="quick-card-title">銀行／信用卡對帳</span><span class="quick-card-description">比對銀行明細與家庭帳務、處理差異、排除及完成對帳。</span><span class="coming">開啟對帳工作區 →</span></button>
+      <nav class="app-navigation" id="app-navigation" aria-label="主要功能">
+        <button class="app-nav-button active" type="button" data-nav-key="overview" data-nav-action="overview" aria-current="page"><span class="nav-icon" aria-hidden="true">⌂</span><span class="nav-label">總覽</span></button>
+        <button class="app-nav-button" type="button" data-nav-key="entry" data-nav-target="open-transactions"><span class="nav-icon" aria-hidden="true">＋</span><span class="nav-label">記帳</span></button>
+        <button class="app-nav-button" type="button" data-nav-key="bills" data-nav-target="open-bills"><span class="nav-icon" aria-hidden="true">單</span><span class="nav-label">帳單</span></button>
+        <button class="app-nav-button" type="button" data-nav-key="reconcile" data-nav-target="open-bank-reconciliation"><span class="nav-icon" aria-hidden="true">對</span><span class="nav-label">對帳</span></button>
+        <button class="app-nav-button" type="button" data-nav-key="more" data-nav-action="more" aria-expanded="false" aria-controls="more-tools-panel"><span class="nav-icon" aria-hidden="true">☷</span><span class="nav-label">更多</span></button>
+      </nav>
+      <section id="more-tools-panel" class="more-tools-panel hidden" aria-label="更多功能">
+        <div class="more-tools-heading">
+          <div><h2>更多功能</h2><p class="muted">依用途分類，點選即可開啟</p></div>
+        </div>
+        <div class="quick-tool-groups">
+        <section class="quick-tool-group">
+          <h3>帳戶與收支</h3>
+          <div class="quick-grid">
+            <button class="quick-card quick-card-button" id="open-accounts" type="button"><span class="quick-icon">帳</span><span class="quick-card-title">帳戶管理</span><span class="quick-card-description">銀行、現金、信用卡與電子支付。</span><span class="coming">管理帳戶 →</span></button>
+            <button class="quick-card quick-card-button" id="open-transactions" type="button"><span class="quick-icon">收</span><span class="quick-card-title">收支紀錄</span><span class="quick-card-description">新增收入、支出，查詢及管理交易。</span><span class="coming">管理收支 →</span></button>
+            <button class="quick-card quick-card-button" id="open-transfers" type="button"><span class="quick-icon">轉</span><span class="quick-card-title">帳戶轉帳</span><span class="quick-card-description">管理帳戶間轉入、轉出與手續費。</span><span class="coming">管理轉帳 →</span></button>
+            <button class="quick-card quick-card-button" id="open-credit-card-payments" type="button"><span class="quick-icon">卡</span><span class="quick-card-title">信用卡繳款</span><span class="quick-card-description">記錄繳款、同步來源帳戶與信用卡負債。</span><span class="coming">管理信用卡繳款 →</span></button>
+            <button class="quick-card quick-card-button" id="open-categories" type="button"><span class="quick-icon">類</span><span class="quick-card-title">收支分類</span><span class="quick-card-description">管理家庭收入與支出分類、子分類及排序。</span><span class="coming">管理分類 →</span></button>
+          </div>
+        </section>
+        <section class="quick-tool-group">
+          <h3>帳單與報表</h3>
+          <div class="quick-grid">
+            <button class="quick-card quick-card-button" id="open-bills" type="button"><span class="quick-icon">單</span><span class="quick-card-title">帳單管理</span><span class="quick-card-description">管理帳單金額、到期日、分類與付款狀態。</span><span class="coming">管理帳單 →</span></button>
+            <button class="quick-card quick-card-button" id="open-recurring-bills" type="button"><span class="quick-icon">週</span><span class="quick-card-title">定期帳單</span><span class="quick-card-description">設定週期、下次日期，批次產生應繳帳單。</span><span class="coming">管理定期帳單 →</span></button>
+            <button class="quick-card quick-card-button" id="open-reports" type="button"><span class="quick-icon">報</span><span class="quick-card-title">財務報表</span><span class="quick-card-description">查看月收支、年度趨勢與分類占比。</span><span class="coming">查看財務報表 →</span></button>
+          </div>
+        </section>
+        <section class="quick-tool-group">
+          <h3>銀行與資料工具</h3>
+          <div class="quick-grid">
+            <button class="quick-card quick-card-button" id="open-bank-imports" type="button"><span class="quick-icon">匯</span><span class="quick-card-title">銀行／信用卡匯入</span><span class="quick-card-description">上傳對帳單 CSV、對應欄位、檢查重複資料並確認入帳。</span><span class="coming">匯入對帳單 →</span></button>
+            <button class="quick-card quick-card-button" id="open-bank-reconciliation" type="button"><span class="quick-icon">對</span><span class="quick-card-title">銀行／信用卡對帳</span><span class="quick-card-description">比對銀行明細與家庭帳務、處理差異、排除及完成對帳。</span><span class="coming">開啟對帳工作區 →</span></button>
+            <button class="quick-card quick-card-button" id="open-attachments" type="button"><span class="quick-icon">檔</span><span class="quick-card-title">帳單附件與 OCR</span><span class="quick-card-description">上傳帳單或交易圖片、查看附件並核對 OCR 辨識結果。</span><span class="coming">管理附件 →</span></button>
+            <button class="quick-card quick-card-button" id="open-notifications-exports" type="button"><span class="quick-icon">匯</span><span class="quick-card-title">通知與資料匯出</span><span class="quick-card-description">查看家庭通知、建立 CSV 匯出範本、管理匯出紀錄與排程。</span><span class="coming">管理通知與匯出 →</span></button>
+          </div>
+        </section>
+        <section class="quick-tool-group">
+          <h3>家庭管理</h3>
+          <div class="quick-grid">
+            <button class="quick-card quick-card-button" id="open-family-members" type="button"><span class="quick-icon">人</span><span class="quick-card-title">家庭成員</span><span class="quick-card-description">查看家人名單與目前角色，邀請已註冊的家人加入。</span><span class="coming">管理家庭成員 →</span></button>
+            <button class="quick-card quick-card-button" id="open-family-roles" type="button"><span class="quick-icon">權</span><span class="quick-card-title">角色與權限</span><span class="quick-card-description">建立自訂角色、設定細項權限及指派家人角色。</span><span class="coming">管理角色權限 →</span></button>
+            <button class="quick-card quick-card-button" id="open-audit-logs" type="button"><span class="quick-icon">稽</span><span class="quick-card-title">稽核紀錄</span><span class="quick-card-description">查詢家庭成員操作、帳務異動及角色權限變更歷程。</span><span class="coming">查看操作紀錄 →</span></button>
+          </div>
+        </section>
+        </div>
       </section>
 
 
