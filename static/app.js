@@ -2859,6 +2859,7 @@ function applyFamilyNavigationPermissions(){
   const moreButton=document.querySelector('#app-navigation [data-nav-action="more"]');
   const hasMoreTools=[...document.querySelectorAll(".quick-card-button")].some(card=>card.dataset.permissionAllowed==="true");
   moreButton?.classList.toggle("hidden",!hasMoreTools);
+  $("more-tools-panel")?.classList.toggle("no-authorized-tools",!hasMoreTools);
   const navigation=$("app-navigation");
   if(navigation){
     const visibleButtons=[...navigation.querySelectorAll(".app-nav-button")].filter(button=>!button.classList.contains("hidden"));
