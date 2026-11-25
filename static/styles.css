@@ -504,6 +504,7 @@ textarea:focus-visible {
 
 
 /* Permission-aware tool finder: show one category at a time on touch screens. */
+.more-tools-panel.no-authorized-tools{display:none!important}
 .more-tools-controls{display:grid;gap:13px;margin:0 0 18px}
 .more-tools-search{display:grid;gap:7px;color:var(--nav-ink);font-size:14px;font-weight:750}
 .more-tools-search input{width:100%;min-height:50px;box-sizing:border-box;padding:12px 14px;border:1px solid var(--nav-border);border-radius:12px;background:#fff;color:var(--nav-ink);font:inherit;font-size:16px}
