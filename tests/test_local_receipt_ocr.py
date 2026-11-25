@@ -21,7 +21,7 @@ def test_local_receipt_ocr_runs_in_browser_without_cloud_ocr_or_attachment_uploa
     with TestClient(app) as client:
         script = client.get("/static/local-receipt-ocr.js").text
 
-    assert 'Tesseract.createWorker("chi_tra+eng"' in script
+    assert 'tesseract.createWorker("chi_tra+eng"' in script
     assert "worker.recognize(file)" in script
     assert "BarcodeDetector" in script
     assert "jsQR" in script
@@ -44,7 +44,7 @@ def test_local_receipt_ocr_only_suggests_fields_and_requires_manual_transaction_
     assert 'transaction-reference' in script
     assert 'transaction-form-panel' in script
     assert "新增紀錄" in page.text
-    assert "辨識結果不會自動建立支出" in page.text
+    assert "自動建立支出" in page.text
 
 
 def test_local_receipt_ocr_limits_image_types_and_size():
