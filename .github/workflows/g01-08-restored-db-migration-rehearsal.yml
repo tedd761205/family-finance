@@ -128,7 +128,7 @@ jobs:
                           f"{unexpected_payment_columns}"
                       )
                   counts = {}
-                  for table in ("families", "users", "accounts", "categories", "transactions", "transfers", "credit_card_payments"):
+                  for table in ("families", "users", "accounts", "categories", "transactions", "transfers", "credit_card_payments", "bills", "bill_payments"):
                       counts[table] = connection.execute(text(f'SELECT count(*) FROM public."{table}"')).scalar_one()
           finally:
               engine.dispose()
@@ -203,7 +203,7 @@ jobs:
                   parts = line.strip().split(": ", 1)
                   if len(parts) == 2 and parts[0] in {
                       "families", "users", "accounts", "categories",
-                      "transactions", "transfers", "credit_card_payments"
+                      "transactions", "transfers", "credit_card_payments", "bills", "bill_payments"
                   }:
                       expected_counts[parts[0]] = int(parts[1])
 
@@ -370,6 +370,23 @@ jobs:
                   missing_payment_columns = sorted(required_payment_columns - payment_columns)
                   if missing_payment_columns:
                       raise SystemExit(f"Missing cross-currency bill payment columns: {missing_payment_columns}")
+                  inconsistent_legacy_payments = connection.execute(text("""
+                      SELECT count(*)
+                      FROM public.bill_payments AS payment
+                      JOIN public.accounts AS account
+                        ON account.family_id = payment.family_id AND account.id = payment.account_id
+                      WHERE payment.account_amount IS NULL
+                         OR payment.account_currency_code IS NULL
+                         OR payment.exchange_rate <> 1
+                         OR payment.exchange_difference <> 0
+                         OR payment.account_amount <> payment.amount
+                         OR payment.account_currency_code <> account.currency_code
+                  """)).scalar_one()
+                  if inconsistent_legacy_payments:
+                      raise SystemExit(
+                          "Existing same-currency bill payments were not backfilled unchanged: "
+                          f"{inconsistent_legacy_payments} inconsistent rows."
+                      )
 
                   missing_checks = sorted(required_checks - check_constraints)
                   if missing_checks:
