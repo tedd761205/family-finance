@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, String, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -10,6 +10,14 @@ class FamilyInvitation(Base):
     """以 Email 為對象、可在註冊前建立的一次性家庭邀請。"""
 
     __tablename__ = "family_invitations"
+    __table_args__ = (
+        UniqueConstraint("token_hash", name="uq_family_invitations_token_hash"),
+        Index(
+            "ix_family_invitations_pending_family_email",
+            "family_id", "email",
+            postgresql_where=text("status = 'pending'"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     family_id: Mapped[int] = mapped_column(
@@ -17,7 +25,7 @@ class FamilyInvitation(Base):
         nullable=False, index=True,
     )
     email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
-    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     invited_by_user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False,
     )
