@@ -491,6 +491,97 @@ def link_google_account(
     }
 
 
+
+@router.post(
+    "/google/recover",
+    response_model=TokenResponse,
+    status_code=status.HTTP_200_OK,
+)
+def recover_existing_account_with_google(
+    data: GoogleLoginRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    使用已由 Google 驗證的相同 Email，恢復既有系統帳號並綁定 Google。
+
+    必須同時符合：
+    1. Google ID Token 簽章、audience、issuer、期限均有效。
+    2. Google 回報 email_verified=True。
+    3. Google 驗證 Email 與既有帳號 Email 正規化後完全相同。
+    4. Google sub 尚未綁定其他系統帳號。
+    5. 既有系統帳號有效。
+
+    不接受前端提供 user_id 或 email；只使用 Google Token 可信任資料。
+    """
+    google_user = verify_google_token_or_raise(data.id_token)
+    google_sub = google_user["sub"]
+    google_email = normalize_email(google_user["email"])
+
+    identity = db.execute(
+        select(UserIdentity).where(
+            UserIdentity.provider == "google",
+            UserIdentity.provider_subject == google_sub,
+        )
+    ).scalar_one_or_none()
+
+    if identity is not None:
+        user = db.get(User, identity.user_id)
+        if user is None or not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="此 Google 身分目前無法用於帳號復原",
+            )
+        # 已經綁定的身分只能登入原本綁定的帳號，不能改綁。
+        if normalize_email(user.email) != google_email:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="此 Google 帳號已綁定其他系統帳號，無法用於復原目前 Email",
+            )
+        return create_user_token(user)
+
+    existing_user = db.execute(
+        select(User).where(User.email == google_email)
+    ).scalar_one_or_none()
+
+    if existing_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="找不到相同 Email 的既有帳號，請使用一般 Google 登入或聯絡管理員",
+        )
+
+    if not existing_user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="此系統帳號已停用，無法復原",
+        )
+
+    new_identity = UserIdentity(
+        user_id=existing_user.id,
+        provider="google",
+        provider_subject=google_sub,
+        email=google_email,
+    )
+
+    try:
+        db.add(new_identity)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Google 身分已被其他帳號使用，請使用原登入方式或聯絡管理員",
+        )
+    except Exception:
+        db.rollback()
+        logger.exception("Google 帳號復原綁定失敗")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="目前無法完成 Google 帳號復原，請稍後再試",
+        )
+
+    return create_user_token(existing_user)
+
+
 @router.get(
     "/identities",
     response_model=IdentityListResponse,
