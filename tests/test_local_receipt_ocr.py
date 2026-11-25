@@ -22,7 +22,7 @@ def test_local_receipt_ocr_runs_in_browser_without_cloud_ocr_or_attachment_uploa
         script = client.get("/static/local-receipt-ocr.js").text
 
     assert 'tesseract.createWorker(["chi_tra", "eng"]' in script
-    assert "currentWorker.recognize(file)" in script
+    assert "currentWorker.recognize(ocrCanvas)" in script
     assert "BarcodeDetector" in script
     assert "jsQR" in script
     assert "/ocr/tasks" not in script
