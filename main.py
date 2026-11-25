@@ -13,6 +13,7 @@ from app.database import check_database_connection
 
 from app.routers.auth import router as auth_router
 from app.routers.family import router as family_router
+from app.routers.family_invitations import router as family_invitations_router
 from app.routers.roles import router as family_roles_router
 from app.routers.audit_log import router as audit_log_router
 from app.routers.account import router as account_router
@@ -82,6 +83,7 @@ app = FastAPI(
 
 app.include_router(auth_router)
 app.include_router(family_router)
+app.include_router(family_invitations_router)
 app.include_router(family_roles_router)
 app.include_router(audit_log_router)
 app.include_router(account_router)
