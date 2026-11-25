@@ -33,6 +33,8 @@ def test_family_members_endpoint_is_registered_and_secured():
 
     assert "HTTPBearer" in str(operation.get("security", []))
     assert operation["responses"]["200"]["description"] == "Successful Response"
+    legacy_add = schema["paths"]["/families/{family_id}/members"]["post"]
+    assert legacy_add["responses"]["410"]["description"] == "Gone"
 
 
 def test_family_members_ui_refreshes_after_family_switch():
