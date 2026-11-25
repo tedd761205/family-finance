@@ -320,7 +320,7 @@ def test_cross_currency_bill_payment_and_partial_refunds_preserve_actual_rates(b
     )
     assert payment_detail.status_code == 200
     transaction = payment_detail.json()["transactions"][0]
-    assert transaction["amount"] == "3210.0000"
+    assert Decimal(str(transaction["amount"])) == Decimal("3210.0000")
     assert transaction["currency_code"] == "TWD"
 
     wrong_refund_currency_account = bill_payment_client.post(
