@@ -58,7 +58,10 @@
       script.crossOrigin = "anonymous";
       script.dataset.localReceiptSrc = src;
       script.onload = () => window[globalName] ? resolve(window[globalName]) : reject(new Error("辨識程式載入後無法啟動"));
-      script.onerror = () => reject(new Error("無法下載本機辨識程式，請確認網路連線後重試"));
+      script.onerror = () => {
+        script.remove();
+        reject(new Error("無法下載本機辨識程式，請確認網路連線後重試"));
+      };
       document.head.appendChild(script);
     });
   }
@@ -249,6 +252,8 @@
     }
 
     activeFile = file;
+    cameraInput.value = "";
+    fileInput.value = "";
     parsedFields = null;
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     previewUrl = URL.createObjectURL(file);
