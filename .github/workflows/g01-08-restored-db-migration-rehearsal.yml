@@ -360,6 +360,17 @@ jobs:
                       SELECT conname FROM pg_constraint
                       WHERE contype='c' AND connamespace='public'::regnamespace
                   """)).scalars())
+                  payment_columns = set(connection.execute(text("""
+                      SELECT column_name FROM information_schema.columns
+                      WHERE table_schema='public' AND table_name='bill_payments'
+                  """)).scalars())
+                  required_payment_columns = {
+                      "account_amount", "account_currency_code", "exchange_rate", "exchange_difference"
+                  }
+                  missing_payment_columns = sorted(required_payment_columns - payment_columns)
+                  if missing_payment_columns:
+                      raise SystemExit(f"Missing cross-currency bill payment columns: {missing_payment_columns}")
+
                   missing_checks = sorted(required_checks - check_constraints)
                   if missing_checks:
                       raise SystemExit(f"Required G-03 check constraints are missing: {missing_checks}")
