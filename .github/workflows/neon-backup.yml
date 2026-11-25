@@ -380,3 +380,58 @@ jobs:
                   print(f"Size: {size} bytes")
                   print(f"SHA-256: {digest}")
           PY
+
+      - name: Create non-sensitive backup evidence report
+        env:
+          BACKUP_FILE: ${{ steps.dump.outputs.backup_file }}
+          BACKUP_RUN_ID: ${{ github.run_id }}
+          BACKUP_RUN_NUMBER: ${{ github.run_number }}
+          BACKUP_COMMIT: ${{ github.sha }}
+          BACKUP_BUCKET: ${{ vars.NEON_BACKUP_BUCKET }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+
+          filename = os.environ["BACKUP_FILE"]
+          dump_path = Path("backups") / filename
+          manifest_path = Path("backups") / "row-counts.tsv"
+          if not dump_path.is_file() or not manifest_path.is_file():
+              raise SystemExit("Verified backup files are unavailable for the evidence report.")
+
+          def digest(path):
+              h = hashlib.sha256()
+              with path.open("rb") as stream:
+                  for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                      h.update(chunk)
+              return h.hexdigest()
+
+          stem = Path(filename).stem
+          evidence = {
+              "backup_run_id": os.environ["BACKUP_RUN_ID"],
+              "backup_run_number": os.environ["BACKUP_RUN_NUMBER"],
+              "backup_commit": os.environ["BACKUP_COMMIT"],
+              "backup_bucket": os.environ["BACKUP_BUCKET"],
+              "backup_object_key": f"production/{filename}",
+              "backup_size_bytes": str(dump_path.stat().st_size),
+              "backup_sha256": digest(dump_path),
+              "manifest_object_key": f"production/{stem}.row-counts.tsv",
+              "manifest_size_bytes": str(manifest_path.stat().st_size),
+              "manifest_sha256": digest(manifest_path),
+          }
+          Path("backups/backup-evidence.txt").write_text(
+              "".join(f"{key}={value}\n" for key, value in evidence.items()),
+              encoding="utf-8",
+          )
+          print("Created non-sensitive backup evidence report; database contents remain only in private Neon Object Storage.")
+          PY
+
+      - name: Upload non-sensitive backup evidence artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: family-finance-neon-backup-${{ github.run_number }}
+          path: backups/backup-evidence.txt
+          if-no-files-found: error
+          retention-days: 30
