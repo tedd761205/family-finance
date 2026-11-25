@@ -40,6 +40,52 @@ class BillPayment(Base):
         ),
         CheckConstraint("payment_type IN ('payment', 'refund')", name="ck_bill_payments_type"),
         CheckConstraint("amount > 0", name="ck_bill_payments_amount_positive"),
+        CheckConstraint("account_amount > 0", name="ck_bill_payments_account_amount_positive"),
+        CheckConstraint("exchange_rate > 0", name="ck_bill_payments_exchange_rate_positive"),
+        CheckConstraint("account_currency_code ~ '^[A-Z]{3}
+        CheckConstraint(
+            "(payment_type = 'payment' AND original_payment_id IS NULL) OR "
+            "(payment_type = 'refund' AND original_payment_id IS NOT NULL)",
+            name="ck_bill_payments_original_payment_pair",
+        ),
+        Index("ix_bill_payments_family_bill_date", "family_id", "bill_id", "payment_date"),
+        Index("ix_bill_payments_family_account_date", "family_id", "account_id", "payment_date"),
+        Index("ix_bill_payments_original_payment", "family_id", "original_payment_id"),
+        Index("ix_bill_payments_created_by", "created_by"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    family_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    bill_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    account_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    payment_type: Mapped[str] = mapped_column(String(10), nullable=False)
+    original_payment_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # amount/currency_code are always the amount applied to the bill in the bill currency.
+    amount: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
+    currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
+    # Account-side amount is the actual debit/credit posted to the selected account.
+    account_amount: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
+    account_currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
+    # Number of account-currency units for one bill-currency unit.
+    exchange_rate: Mapped[Decimal] = mapped_column(Numeric(20, 10), nullable=False, default=Decimal("1"), server_default="1")
+    # Refund-only difference versus the original payment's locked exchange rate.
+    exchange_difference: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False, default=Decimal("0"), server_default="0")
+    payment_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_voided: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    voided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    voided_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    void_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_by: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+", name="ck_bill_payments_account_currency_code"),
+        CheckConstraint("payment_type = 'refund' OR exchange_difference = 0", name="ck_bill_payments_payment_exchange_difference_zero"),
+        CheckConstraint(
+            "currency_code <> account_currency_code OR "
+            "(exchange_rate = 1 AND account_amount = amount AND exchange_difference = 0)",
+            name="ck_bill_payments_same_currency_consistent",
+        ),
         CheckConstraint(
             "(payment_type = 'payment' AND original_payment_id IS NULL) OR "
             "(payment_type = 'refund' AND original_payment_id IS NOT NULL)",
