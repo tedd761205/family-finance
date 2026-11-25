@@ -293,6 +293,7 @@
   }
 
   function clearPhoto() {
+    if (window.clearReceiptCaptureReturn) window.clearReceiptCaptureReturn();
     activeFile = null;
     parsedFields = null;
     cameraInput.value = "";
@@ -313,6 +314,8 @@
 
   async function handleFile(file) {
     if (!file) return;
+    window.__familyReceiptPhotoReturned = true;
+    if (window.clearReceiptCaptureReturn) window.clearReceiptCaptureReturn();
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
       setStatus("目前試用版只支援 JPG、PNG、WebP 圖片；PDF 與其他格式尚未開放。", true);
       return;
@@ -420,10 +423,33 @@
   });
   $("close-transactions")?.addEventListener("click", clearPhoto);
 
-  cameraButton.addEventListener("click", () => cameraInput.click());
-  chooseButton.addEventListener("click", () => fileInput.click());
-  cameraInput.addEventListener("change", () => handleFile(cameraInput.files && cameraInput.files[0]));
-  fileInput.addEventListener("change", () => handleFile(fileInput.files && fileInput.files[0]));
+  cameraButton.addEventListener("click", () => {
+    if (window.prepareReceiptCaptureReturn) window.prepareReceiptCaptureReturn();
+    cameraInput.click();
+  });
+  chooseButton.addEventListener("click", () => {
+    if (window.prepareReceiptCaptureReturn) window.prepareReceiptCaptureReturn();
+    fileInput.click();
+  });
+  const handleFileInputChange = (input, label) => {
+    const file = input.files && input.files[0];
+    if (file) {
+      handleFile(file);
+    } else {
+      if (window.clearReceiptCaptureReturn) window.clearReceiptCaptureReturn();
+      setStatus(label + "已取消；目前資料沒有變更。");
+    }
+  };
+  cameraInput.addEventListener("change", () => handleFileInputChange(cameraInput, "拍照"));
+  fileInput.addEventListener("change", () => handleFileInputChange(fileInput, "選擇照片"));
+  cameraInput.addEventListener("cancel", () => {
+    if (window.clearReceiptCaptureReturn) window.clearReceiptCaptureReturn();
+    setStatus("已取消拍照；仍可重新拍攝或選擇手機照片。");
+  });
+  fileInput.addEventListener("cancel", () => {
+    if (window.clearReceiptCaptureReturn) window.clearReceiptCaptureReturn();
+    setStatus("已取消選擇照片；目前資料沒有變更。");
+  });
   clearButton.addEventListener("click", clearPhoto);
   fillButton.addEventListener("click", fillTransactionForm);
   receiptTypeSelect?.addEventListener("change", () => {
