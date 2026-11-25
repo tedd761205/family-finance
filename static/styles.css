@@ -571,3 +571,24 @@ textarea:focus-visible {
 .local-receipt-candidate{padding:8px 11px;border-radius:9px;background:#edf4ef;color:#315c48;font-size:13px}
 .local-receipt-workspace .form-actions{flex-wrap:wrap}
 @media(max-width:760px){.local-receipt-tool{padding:15px}.local-receipt-heading{display:block}.local-receipt-tag{display:inline-block;margin-top:9px}.local-receipt-actions{display:grid;grid-template-columns:1fr 1fr}.local-receipt-actions button{padding:12px 9px;font-size:14px}.local-receipt-workspace .form-actions button{flex:1;min-height:46px}}
+
+
+/* Local receipt OCR review and manual document classification */
+.local-receipt-type-field{max-width:520px;margin-top:15px}
+.local-receipt-type-field select{width:100%;border:1px solid #dce5df;border-radius:10px;padding:12px 14px;background:#fff;color:#243b33;font:inherit}
+.local-receipt-review{border:1px solid #dce8e0;border-radius:14px;padding:16px;margin:14px 0;background:#fbfdfb}
+.local-receipt-review-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;color:#244238}
+.local-receipt-review-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 14px}
+.local-receipt-review-grid .field{min-width:0;margin-bottom:12px}
+.local-receipt-review-grid input,.local-receipt-review .field textarea{width:100%;min-width:0;border:1px solid #dce5df;border-radius:10px;padding:12px 13px;background:#fff;color:#243b33;font:inherit}
+.local-receipt-review-grid input:focus,.local-receipt-review .field textarea:focus{outline:2px solid #478a7240;border-color:#478a72}
+.local-receipt-raw{margin:14px 0;color:#52665d;font-size:13px}
+.local-receipt-raw summary{cursor:pointer;font-weight:700;padding:8px 0}
+.local-receipt-candidates{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}
+.local-receipt-candidate{padding:6px 9px;border-radius:8px;background:#edf4ef;color:#285342;font-size:12px;overflow-wrap:anywhere}
+@media(max-width:760px){
+ .local-receipt-review{padding:13px}
+ .local-receipt-review-grid{grid-template-columns:1fr;gap:0}
+ .local-receipt-review-heading{align-items:flex-start;flex-direction:column}
+ .local-receipt-type-field{max-width:none}
+}
