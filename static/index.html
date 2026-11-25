@@ -7,11 +7,11 @@
   <title>家庭記帳系統</title>
   <link rel="stylesheet" href="/static/styles.css">
   <style>
-    .browser-help{margin-top:26px;padding:16px 18px;border:1px solid #dce8e0;border-radius:14px;background:#fff}
-    .browser-help-title{margin:0 0 6px;color:#1b5142;font-size:14px;font-weight:750}
-    .browser-help-copy{margin:0 0 12px;color:#63756d;font-size:12px;line-height:1.7}
-    .browser-help-button{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;min-height:42px}
-    #browser-help-fallback{margin:12px 0 0}
+    .browser-help{margin-top:26px;padding:20px;border:1px solid #dce8e0;border-radius:14px;background:#fff}
+    .browser-help-title{margin:0 0 8px;color:#1b5142;font-size:17px;font-weight:750}
+    .browser-help-copy{margin:0 0 12px;color:#42564d;font-size:14px;line-height:1.8}
+    .browser-help-steps{margin:8px 0 16px;padding-left:24px;color:#42564d;font-size:14px;line-height:1.9}
+    .browser-help-button{display:flex;align-items:center;justify-content:center;width:100%;box-sizing:border-box;text-decoration:none;min-height:52px;font-size:16px;font-weight:700}
     @media(max-width:760px){.browser-help{margin-top:22px}.intro{padding-left:0}}
   </style>
 
@@ -29,10 +29,14 @@
         <p class="intro-copy">帳戶、帳單與家庭支出集中管理，讓家人一起掌握財務狀況。</p>
         <ul class="benefits"><li>家庭帳務集中管理</li><li>帳單與付款分開記錄</li><li>依家庭角色管理資料權限</li></ul>
         <section id="android-browser-help" class="browser-help hidden" aria-live="polite">
-          <p class="browser-help-title">建議使用 Chrome 開啟</p>
-          <p class="browser-help-copy">若目前是在 LINE 內開啟，請點下方按鈕嘗試切換至 Chrome。</p>
-          <a id="open-in-chrome" class="secondary browser-help-button" href="intent://family-finance-web-grst.onrender.com/#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=https%3A%2F%2Ffamily-finance-web-grst.onrender.com%2F;end">使用 Chrome 開啟</a>
-          <p id="browser-help-fallback" class="browser-help-copy hidden">如果沒有跳轉，請點 LINE 右上角「⋯」，選擇「以其他瀏覽器開啟」，再選 Chrome。</p>
+          <p class="browser-help-title">尚未自動開啟瀏覽器？</p>
+          <p class="browser-help-copy">請依照下面步驟，用 Chrome 開啟家庭記帳系統：</p>
+          <ol class="browser-help-steps">
+            <li>點 LINE 右上角「⋯」</li>
+            <li>選擇「以其他瀏覽器開啟」</li>
+            <li>選擇 Chrome</li>
+          </ol>
+          <a id="open-in-chrome" class="primary browser-help-button" href="intent://family-finance-web-grst.onrender.com/#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=https%3A%2F%2Ffamily-finance-web-grst.onrender.com%2F;end">再試一次開啟 Chrome</a>
         </section>
       </div>
       <section class="panel auth-panel">
@@ -576,12 +580,11 @@
       if (!isAndroid || !isLine) return;
       const panel = document.getElementById("android-browser-help");
       const link = document.getElementById("open-in-chrome");
-      const fallback = document.getElementById("browser-help-fallback");
-      if (!panel || !link || !fallback) return;
-      panel.classList.remove("hidden");
-      link.addEventListener("click", () => {
-        window.setTimeout(() => fallback.classList.remove("hidden"), 1200);
-      }, { once: true });
+      if (!panel || !link) return;
+
+      // 先嘗試直接交給 Android 的 Chrome；若 LINE 阻擋自動開啟，再顯示手動指引。
+      window.location.href = link.href;
+      window.setTimeout(() => panel.classList.remove("hidden"), 1800);
     })();
   </script>
   <script src="/static/app.js" defer></script>
