@@ -4,6 +4,8 @@ const INVITE_TOKEN_KEY = "family_finance_pending_invite";
 let mode = "login";
 let currentUser = null;
 let selectedFamilyId = null;
+let currentFamilyPermissionCodes = new Set();
+let activeMoreCategory = null;
 let accounts = [];
 let accountBalances = new Map();
 let editingAccountId = null;
@@ -17,7 +19,48 @@ function setMode(next){mode=next;$("login-tab").classList.toggle("active",mode==
 function showAuth(){currentUser=null;$("auth-view").classList.remove("hidden");$("app-view").classList.add("hidden");}
 function showApp(){$("auth-view").classList.add("hidden");$("app-view").classList.remove("hidden");}
 async function loadApp(){try{currentUser=await api("/auth/me");}catch(error){showAuth();notice("notice",error.message,"error");return;}$("user-greeting").textContent=currentUser.display_name+"（"+currentUser.email+"）";showApp();try{await loadFamilies();await handlePendingFamilyInvitation();}catch(error){notice("notice-app","已登入，但家庭清單載入失敗："+error.message,"error");}}
-async function loadFamilies(){const result=await api("/families/mine");$("family-count").textContent=result.total+" 個家庭";const list=$("family-list");list.replaceChildren();$("empty-family").classList.toggle("hidden",result.total!==0);if(!selectedFamilyId&&result.families.length){selectedFamilyId=result.families[0].family_id;}for(const family of result.families){const card=document.createElement("button");card.type="button";card.className="family-card"+(selectedFamilyId===family.family_id?" selected":"");const title=document.createElement("strong");title.textContent=family.family_name;const meta=document.createElement("span");meta.textContent=family.currency+" · 家庭成員";card.append(title,meta);card.addEventListener("click",async()=>{selectedFamilyId=family.family_id;for(const node of list.children)node.classList.remove("selected");card.classList.add("selected");notice("notice-app","已切換至「"+family.family_name+"」。","success");if(!$("accounts-view").classList.contains("hidden")){await loadAccounts();}if(!$("transactions-view").classList.contains("hidden")){await showTransactions();}if(!$("transfers-view").classList.contains("hidden")){await showTransfers();}if(!$("credit-card-payments-view").classList.contains("hidden")){await showCreditCardPayments();}if(!$("bills-view").classList.contains("hidden")){await showBills();}if(!$("bill-payments-view").classList.contains("hidden")){$("bill-payments-view").classList.add("hidden");activeBillForPayments=null;}if(!$("recurring-bills-view").classList.contains("hidden")){await showRecurringBills();}if(!$("reports-view").classList.contains("hidden")){await loadFinancialReports();}if(!$("family-members-view").classList.contains("hidden")){await loadFamilyMembers();await loadFamilyInvitations();}if(!$("family-roles-view").classList.contains("hidden")){await loadFamilyRoles();}if(!$("audit-logs-view").classList.contains("hidden")){await loadAuditLogs();}if(!$("bank-reconciliation-view").classList.contains("hidden")&&window.loadBankReconciliationWorkspace){await window.loadBankReconciliationWorkspace();}});list.append(card);}}
+async function loadFamilies(){
+  const result=await api("/families/mine");
+  const families=result.families||[];
+  $("family-count").textContent=result.total+" 個家庭";
+  const list=$("family-list");
+  list.replaceChildren();
+  $("empty-family").classList.toggle("hidden",result.total!==0);
+  if(!families.some(family=>family.family_id===selectedFamilyId)){
+    selectedFamilyId=families[0]?.family_id??null;
+  }
+  for(const family of families){
+    const card=document.createElement("button");
+    card.type="button";
+    card.className="family-card"+(selectedFamilyId===family.family_id?" selected":"");
+    const title=document.createElement("strong");
+    title.textContent=family.family_name;
+    const meta=document.createElement("span");
+    meta.textContent=family.currency+" · 家庭成員";
+    card.append(title,meta);
+    card.addEventListener("click",async()=>{
+      selectedFamilyId=family.family_id;
+      for(const node of list.children)node.classList.remove("selected");
+      card.classList.add("selected");
+      notice("notice-app","已切換至「"+family.family_name+"」。","success");
+      await refreshFamilyNavigationPermissions();
+      if(!$("accounts-view").classList.contains("hidden")){await loadAccounts();}
+      if(!$("transactions-view").classList.contains("hidden")){await showTransactions();}
+      if(!$("transfers-view").classList.contains("hidden")){await showTransfers();}
+      if(!$("credit-card-payments-view").classList.contains("hidden")){await showCreditCardPayments();}
+      if(!$("bills-view").classList.contains("hidden")){await showBills();}
+      if(!$("bill-payments-view").classList.contains("hidden")){$("bill-payments-view").classList.add("hidden");activeBillForPayments=null;}
+      if(!$("recurring-bills-view").classList.contains("hidden")){await showRecurringBills();}
+      if(!$("reports-view").classList.contains("hidden")){await loadFinancialReports();}
+      if(!$("family-members-view").classList.contains("hidden")){await loadFamilyMembers();await loadFamilyInvitations();}
+      if(!$("family-roles-view").classList.contains("hidden")){await loadFamilyRoles();}
+      if(!$("audit-logs-view").classList.contains("hidden")){await loadAuditLogs();}
+      if(!$("bank-reconciliation-view").classList.contains("hidden")&&window.loadBankReconciliationWorkspace){await window.loadBankReconciliationWorkspace();}
+    });
+    list.append(card);
+  }
+  await refreshFamilyNavigationPermissions();
+}
 function accountTypeLabel(type){return({bank:"銀行帳戶",time_deposit:"定期存款",cash:"現金",credit_card:"信用卡",e_wallet:"電子支付",other:"其他"})[type]||type;}
 function money(value,currency){const amount=Number(value||0);try{return new Intl.NumberFormat("zh-TW",{style:"currency",currency:currency||"TWD",minimumFractionDigits:2,maximumFractionDigits:2}).format(amount);}catch{return amount.toFixed(2)+" "+(currency||"");}}
 function toggleCreditFields(){const isCard=$("account-type").value==="credit_card";$("credit-fields").classList.toggle("hidden",!isCard);}
@@ -2751,6 +2794,104 @@ $("bank-import-void").addEventListener("click",async()=>{
 });
 
 
+// Permission-aware navigation and compact "More" tool finder.
+function hasAnyCurrentFamilyPermission(permissionCodes){
+  return permissionCodes.some(code=>currentFamilyPermissionCodes.has(code));
+}
+
+function applyMoreToolsFilter(){
+  const search=$("more-tools-search");
+  const query=(search?.value||"").trim().toLowerCase();
+  const compact=Boolean(window.matchMedia&&window.matchMedia("(max-width: 1200px), (pointer: coarse)").matches);
+  let visibleResults=0;
+
+  document.querySelectorAll(".quick-tool-group").forEach(group=>{
+    let groupResults=0;
+    group.querySelectorAll(".quick-card-button").forEach(card=>{
+      const permissionAllowed=card.dataset.permissionAllowed==="true";
+      const text=card.textContent.toLowerCase();
+      const matches=query?text.includes(query):(activeMoreCategory?group.dataset.category===activeMoreCategory:!compact);
+      const visible=permissionAllowed&&matches;
+      card.classList.toggle("hidden",!visible);
+      if(visible){groupResults+=1;visibleResults+=1;}
+    });
+    group.classList.toggle("hidden",groupResults===0);
+  });
+
+  document.querySelectorAll(".more-category-button").forEach(button=>{
+    button.setAttribute("aria-pressed",String(button.dataset.category===activeMoreCategory&&!query));
+  });
+  const guidance=$("more-tools-guidance");
+  if(guidance){
+    guidance.classList.toggle("hidden",Boolean(query)||Boolean(activeMoreCategory)||!compact);
+    guidance.textContent=activeMoreCategory
+      ?"目前顯示「"+(document.querySelector('.more-category-button[data-category="'+activeMoreCategory+'"]')?.textContent.trim()||"所選分類")+"」的功能。"
+      :"請選擇上方分類，或直接輸入功能名稱搜尋。";
+  }
+  $("more-tools-empty")?.classList.toggle("hidden",!query||visibleResults>0);
+}
+
+function applyFamilyNavigationPermissions(){
+  document.querySelectorAll(".quick-card-button[data-permissions],.quick-card-button[data-permissions-all]").forEach(card=>{
+    const anyCodes=(card.dataset.permissions||"").split(",").map(code=>code.trim()).filter(Boolean);
+    const allCodes=(card.dataset.permissionsAll||"").split(",").map(code=>code.trim()).filter(Boolean);
+    const allowed=(!anyCodes.length||hasAnyCurrentFamilyPermission(anyCodes))&&allCodes.every(code=>currentFamilyPermissionCodes.has(code));
+    card.dataset.permissionAllowed=String(allowed);
+    card.classList.toggle("hidden",!allowed);
+  });
+
+  document.querySelectorAll(".app-nav-button[data-permissions]").forEach(button=>{
+    const codes=button.dataset.permissions.split(",").map(code=>code.trim()).filter(Boolean);
+    button.classList.toggle("hidden",!hasAnyCurrentFamilyPermission(codes));
+  });
+
+  document.querySelectorAll(".quick-tool-group").forEach(group=>{
+    const allowedCount=[...group.querySelectorAll(".quick-card-button")].filter(card=>card.dataset.permissionAllowed==="true").length;
+    group.dataset.allowedCount=String(allowedCount);
+    const categoryButton=document.querySelector('.more-category-button[data-category="'+group.dataset.category+'"]');
+    if(categoryButton){
+      categoryButton.classList.toggle("hidden",allowedCount===0);
+      const count=categoryButton.querySelector(".more-category-count");
+      if(count)count.textContent=allowedCount+" 項";
+    }
+  });
+
+  const moreButton=document.querySelector('#app-navigation [data-nav-action="more"]');
+  const hasMoreTools=[...document.querySelectorAll(".quick-card-button")].some(card=>card.dataset.permissionAllowed==="true");
+  moreButton?.classList.toggle("hidden",!hasMoreTools);
+  $("more-tools-panel")?.classList.toggle("no-authorized-tools",!hasMoreTools);
+  const navigation=$("app-navigation");
+  if(navigation){
+    const visibleButtons=[...navigation.querySelectorAll(".app-nav-button")].filter(button=>!button.classList.contains("hidden"));
+    navigation.style.setProperty("--visible-nav-items",String(Math.max(1,visibleButtons.length)));
+    navigation.classList.toggle("hidden",visibleButtons.length===0);
+  }
+  if(activeMoreCategory){
+    const categoryButton=document.querySelector('.more-category-button[data-category="'+activeMoreCategory+'"]');
+    if(!categoryButton||categoryButton.classList.contains("hidden"))activeMoreCategory=null;
+  }
+  applyMoreToolsFilter();
+}
+
+async function refreshFamilyNavigationPermissions(){
+  activeMoreCategory=null;
+  if($("more-tools-search"))$("more-tools-search").value="";
+  if(!selectedFamilyId){
+    currentFamilyPermissionCodes=new Set();
+    applyFamilyNavigationPermissions();
+    return;
+  }
+  try{
+    const result=await api("/families/"+selectedFamilyId+"/my-permissions");
+    currentFamilyPermissionCodes=new Set(result.permission_codes||[]);
+    applyFamilyNavigationPermissions();
+  }catch(error){
+    currentFamilyPermissionCodes=new Set();
+    applyFamilyNavigationPermissions();
+    notice("notice-app","目前無法確認功能權限，請重新整理後再試。","error");
+  }
+}
+
 // Responsive primary navigation: reuse existing feature buttons and permission checks.
 (() => {
   const navigation = document.getElementById("app-navigation");
@@ -2758,6 +2899,21 @@ $("bank-import-void").addEventListener("click",async()=>{
   if (!navigation || !morePanel) return;
 
   let navigationTriggeredCard = false;
+  const searchInput = document.getElementById("more-tools-search");
+  const categoryPicker = document.getElementById("more-category-picker");
+
+  searchInput?.addEventListener("input", () => {
+    activeMoreCategory = null;
+    applyMoreToolsFilter();
+  });
+
+  categoryPicker?.addEventListener("click", event => {
+    const categoryButton = event.target.closest(".more-category-button");
+    if (!categoryButton || categoryButton.classList.contains("hidden")) return;
+    activeMoreCategory = categoryButton.dataset.category;
+    if (searchInput) searchInput.value = "";
+    applyMoreToolsFilter();
+  });
 
   function setActive(key) {
     navigation.querySelectorAll(".app-nav-button").forEach(button => {
@@ -2784,7 +2940,12 @@ $("bank-import-void").addEventListener("click",async()=>{
       morePanel.classList.toggle("hidden", !opening);
       button.setAttribute("aria-expanded", opening ? "true" : "false");
       setActive("more");
-      if (opening) morePanel.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (opening) {
+        activeMoreCategory = null;
+        if (searchInput) searchInput.value = "";
+        applyMoreToolsFilter();
+        morePanel.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
       return;
     }
 

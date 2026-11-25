@@ -4,7 +4,11 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies.auth import get_current_user
-from app.dependencies.permissions import require_permission
+from app.dependencies.permissions import (
+    get_active_family_member,
+    get_active_family_roles,
+    require_permission,
+)
 from app.models.family import Family
 from app.models.family_member import FamilyMember
 from app.models.member_role import MemberRole
@@ -76,6 +80,36 @@ def _validate_role_payload(db: Session, actor_codes: set[str], data: RoleWrite):
     if set(data.data_scopes) - {code.split(".", 1)[0] for code in requested}:
         raise HTTPException(status_code=422, detail="資料範圍只能設定於此角色已取得權限的功能分類")
     return name, requested
+
+
+@router.get("/{family_id}/my-permissions")
+def list_my_permissions(
+    family_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """回傳目前登入者在指定家庭的有效權限，供前端顯示可用功能。"""
+    try:
+        family_member = get_active_family_member(
+            db=db,
+            user_id=current_user.id,
+            family_id=family_id,
+        )
+        roles = get_active_family_roles(
+            db=db,
+            family_member_id=family_member.id,
+            family_id=family_id,
+        )
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        ) from exc
+
+    return {
+        "success": True,
+        "permission_codes": sorted(_actor_permission_codes(db, roles)),
+    }
 
 
 @router.get("/{family_id}/permissions")
