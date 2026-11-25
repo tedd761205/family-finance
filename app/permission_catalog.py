@@ -198,6 +198,12 @@ PERMISSION_CATALOG = [
         "category": "reconciliation",
     },
     {
+        "code": "reconciliation.update",
+        "name": "處理對帳差異",
+        "description": "分類、更新及結案對帳差異，並保留處理說明與稽核紀錄",
+        "category": "reconciliation",
+    },
+    {
         "code": "reconciliation.unmatch",
         "name": "取消配對",
         "description": "取消既有對帳配對",

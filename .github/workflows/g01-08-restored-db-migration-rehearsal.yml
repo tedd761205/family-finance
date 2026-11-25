@@ -24,7 +24,7 @@ jobs:
       - name: Checkout main
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.ref }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -131,12 +131,39 @@ jobs:
               print(f"  {table}: {count}")
           PY
 
-      - name: Apply pending migrations to isolated restored snapshot
+      - name: Resolve direct Neon endpoint for migration
         env:
           DATABASE_URL: ${{ secrets.NEON_RESTORE_TEST_DATABASE_URL }}
+          EXPECTED_POOLER_HOST: ${{ vars.NEON_RESTORE_TEST_HOST }}
         run: |
           set -euo pipefail
-          python -m alembic upgrade a6b8c0d2e4f6 2>&1 | tee migration-rehearsal-artifacts/alembic-upgrade.log
+          python - <<'PY'
+          import os
+          from sqlalchemy.engine import make_url
+
+          url = make_url(os.environ["DATABASE_URL"])
+          expected_host = os.environ["EXPECTED_POOLER_HOST"]
+          if url.host != expected_host:
+              raise SystemExit("Refusing to resolve a direct endpoint from an unexpected Neon host.")
+          if "-pooler." not in url.host:
+              raise SystemExit("Expected the configured restore-test URL to use the Neon pooler host.")
+          direct_host = url.host.replace("-pooler.", ".", 1)
+          direct_url = url.set(host=direct_host)
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
+              env_file.write(
+                  "DATABASE_URL="
+                  + direct_url.render_as_string(hide_password=False)
+                  + "\n"
+              )
+          print(f"Resolved isolated direct Neon endpoint: {direct_host}")
+          PY
+
+      - name: Apply pending migrations to isolated restored snapshot
+        env:
+          PGOPTIONS: "-c search_path=public"
+        run: |
+          set -euo pipefail
+          python -m alembic upgrade c7d9e1f3a5b7 2>&1 | tee migration-rehearsal-artifacts/alembic-upgrade.log
           python -m alembic current 2>&1 | tee migration-rehearsal-artifacts/alembic-current.txt
 
       - name: Verify upgraded schema and preserved baseline data
@@ -168,7 +195,7 @@ jobs:
                       expected_counts[parts[0]] = int(parts[1])
 
           scripts = ScriptDirectory.from_config(Config("alembic.ini"))
-          expected_revision = {"a6b8c0d2e4f6"}
+          expected_revision = {"c7d9e1f3a5b7"}
           engine = create_engine(make_url(os.environ["DATABASE_URL"]), pool_pre_ping=True)
           try:
               with engine.connect() as connection:
@@ -302,6 +329,30 @@ jobs:
                   if missing_triggers:
                       raise SystemExit(f"Required migration triggers are missing: {missing_triggers}")
 
+
+                  issue_update_permission = connection.execute(text("""
+                      SELECT id FROM permissions WHERE code = 'reconciliation.update' AND is_active = true
+                  """)).scalar_one_or_none()
+                  if issue_update_permission is None:
+                      raise SystemExit("Missing active reconciliation.update permission after migration rehearsal.")
+                  missing_role_grants = connection.execute(text("""
+                      SELECT r.id, r.family_id, r.name
+                      FROM roles r
+                      WHERE r.is_system = true
+                        AND r.name IN ('家庭管理員', '財務管理員', '記帳人員')
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM role_permissions rp
+                            WHERE rp.role_id = r.id
+                              AND rp.permission_id = :permission_id
+                        )
+                  """), {"permission_id": issue_update_permission}).all()
+                  if missing_role_grants:
+                      raise SystemExit(
+                          "Restored snapshot system roles are missing reconciliation.update: "
+                          + repr([(row.id, row.family_id, row.name) for row in missing_role_grants])
+                      )
+
                   print(f"Final Alembic revision: {sorted(current)}")
                   print(f"Public table count after upgrade: {len(tables)}")
                   print(f"G-03 tables verified: {len(expected_new)}")
@@ -310,6 +361,7 @@ jobs:
                   print(f"Required G-03 check constraints verified: {len(required_checks)}")
                   print(f"Required category-scope triggers verified: {len(required_triggers)}")
                   print("Selected baseline data row counts remained unchanged.")
+                  print("Active reconciliation.update permission and all restored finance/bookkeeping system-role grants verified.")
           finally:
               engine.dispose()
           PY
