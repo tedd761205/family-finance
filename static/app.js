@@ -1206,12 +1206,37 @@ function billPaymentAccountLabel(account) {
   return account.name+" · "+account.currency_code;
 }
 
-function populateBillPaymentAccounts(preferredId=null) {
+function populateBillPaymentAccounts(preferredId=null, currencyCode=null) {
   const select=$("bill-payment-account");
   select.replaceChildren();
-  const active=billPaymentAccounts.filter(account=>account.is_active!==false);
+  const active=billPaymentAccounts.filter(account=>account.is_active!==false&&(!currencyCode||account.currency_code===currencyCode));
   for(const account of active)select.add(new Option(billPaymentAccountLabel(account),String(account.id)));
   if(preferredId&&active.some(account=>account.id===Number(preferredId)))select.value=String(preferredId);
+  else if(active.length)select.value=String(active[0].id);
+}
+
+function updateBillPaymentExchangeFields(){
+  const account=billPaymentAccounts.find(row=>row.id===Number($("bill-payment-account").value));
+  const billCurrency=activeBillForPayments?.currency_code||"TWD";
+  const rateField=$("bill-payment-rate-field");
+  const rateInput=$("bill-payment-exchange-rate");
+  const amount=Number($("bill-payment-amount").value||0);
+  const summary=$("bill-payment-currency-summary");
+  const crossCurrency=Boolean(account&&account.currency_code!==billCurrency);
+  rateField.classList.toggle("hidden",!crossCurrency);
+  rateInput.required=crossCurrency;
+  if(!crossCurrency){
+    rateInput.value="";
+    summary.textContent="帳單與付款帳戶都是 "+billCurrency+"，不需要匯率；帳戶交易金額與帳單付款金額相同。";
+    return;
+  }
+  rateField.firstChild.textContent="實際匯率（1 "+billCurrency+" = ? "+account.currency_code+"）";
+  const rate=Number(rateInput.value||0);
+  if(rate>0&&amount>0){
+    summary.textContent="預估帳戶"+(billPaymentMode==="refund"?"入帳":"扣款")+"金額："+money(amount*rate,account.currency_code)+"（實際匯率 1 "+billCurrency+" = "+rate+" "+account.currency_code+"）。";
+  }else{
+    summary.textContent="請輸入實際匯率：1 "+billCurrency+" 可換算 "+account.currency_code+"；確認後會固定保存匯率與換算金額。";
+  }
 }
 
 async function loadBillPaymentSupportData(preferredId=null) {
@@ -1254,6 +1279,14 @@ function renderBillPayments() {
     amount.textContent=(isRefund?"+":"−")+money(item.amount,item.currency_code);
     top.append(main,amount);
     card.append(top);
+    if(item.currency_code!==item.account_currency_code){
+      const exchange=document.createElement("p");
+      exchange.className="tiny muted";
+      exchange.textContent="實際帳戶"+(isRefund?"入帳：":"扣款：")+money(item.account_amount,item.account_currency_code)
+        +" · 匯率 1 "+item.currency_code+" = "+Number(item.exchange_rate)+" "+item.account_currency_code
+        +(isRefund?" · 匯差："+(Number(item.exchange_difference)>0?"+":"")+money(item.exchange_difference,item.account_currency_code):"");
+      card.append(exchange);
+    }
     if(item.description) {
       const description=document.createElement("p");
       description.className="tiny muted";
@@ -1398,6 +1431,9 @@ $("close-bill-payments").addEventListener("click",()=>{
 $("add-bill-payment-button").addEventListener("click",startBillPaymentCreate);
 $("bill-payment-cancel").addEventListener("click",resetBillPaymentForm);
 $("bill-payment-include-voided").addEventListener("change",loadBillPayments);
+$("bill-payment-account").addEventListener("change",updateBillPaymentExchangeFields);
+$("bill-payment-amount").addEventListener("input",updateBillPaymentExchangeFields);
+$("bill-payment-exchange-rate").addEventListener("input",updateBillPaymentExchangeFields);
 $("bill-payment-form").addEventListener("submit",async(event)=>{
   event.preventDefault();
   const button=$("bill-payment-submit");
@@ -1407,7 +1443,6 @@ $("bill-payment-form").addEventListener("submit",async(event)=>{
     if(!activeBillForPayments)throw new Error("請先選擇帳單。");
     const account=billPaymentAccounts.find(row=>row.id===Number($("bill-payment-account").value));
     if(!account||account.is_active===false)throw new Error("請選擇有效的付款帳戶。");
-    if(account.currency_code!==activeBillForPayments.currency_code)throw new Error("付款帳戶幣別必須與帳單幣別一致。");
     const amount=Number($("bill-payment-amount").value);
     if(!(amount>0))throw new Error("付款／退款金額必須大於 0。");
     const payload={
@@ -1418,6 +1453,11 @@ $("bill-payment-form").addEventListener("submit",async(event)=>{
       description:$("bill-payment-description").value.trim()||null,
       note:$("bill-payment-note").value.trim()||null
     };
+    if(account.currency_code!==activeBillForPayments.currency_code){
+      const rate=$("bill-payment-exchange-rate").value.trim();
+      if(!(Number(rate)>0))throw new Error("帳單與付款帳戶幣別不同，請輸入實際匯率。");
+      payload.exchange_rate=rate;
+    }
     const wasRefund=billPaymentMode==="refund";
     if(wasRefund) {
       const original=billPaymentRows.find(row=>row.id===billPaymentOriginalId&&row.payment_type==="payment");
