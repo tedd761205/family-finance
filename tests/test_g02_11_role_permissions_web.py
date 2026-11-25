@@ -104,6 +104,7 @@ def test_more_tools_have_searchable_categories_and_permission_metadata():
     assert 'data-category="accounts"' in html
     assert 'data-category="bank"' in html
     assert 'data-permissions="reconciliation.view"' in html
+    assert 'data-permissions-all="accounts.transfer,transactions.view"' in html
     assert '"/my-permissions"' in javascript
     assert "applyFamilyNavigationPermissions" in javascript
     assert ".more-category-picker" in css
