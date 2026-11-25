@@ -71,7 +71,7 @@ jobs:
           if len(heads) != 1:
               raise SystemExit(f"Expected exactly one Alembic head, found: {heads}")
 
-          baseline_revision = "a7c9e1f3b5d7"
+          baseline_revision = "c7d9e1f3a5b7"
           expected_existing = {
               "accounts", "alembic_version", "audit_logs", "categories",
               "credit_card_payments", "families", "family_members",
@@ -81,13 +81,11 @@ jobs:
               "bills", "recurring_bills", "bill_payments", "attachments",
               "ocr_tasks", "notifications", "export_templates",
               "export_template_versions", "export_schedules", "export_runs",
-          }
-          expected_new = {
               "bank_import_batches", "bank_import_rows",
               "reconciliation_sessions", "reconciliation_matches",
               "reconciliation_exclusions", "reconciliation_issues",
-              "family_invitations",
           }
+          expected_new = {"family_invitations"}
           engine = create_engine(url, pool_pre_ping=True, connect_args={"connect_timeout": 10})
           try:
               with engine.connect() as connection:
