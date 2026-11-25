@@ -78,6 +78,22 @@ def run_migrations_online():
 
     try:
         with connectable.connect() as connection:
+            # Neon restore/test connections may not inherit a default schema
+            # search path. Existing migrations intentionally use unqualified
+            # table names, so pin the migration session to the application
+            # schema before Alembic executes any DDL or SQL.
+            connection.exec_driver_sql("SET search_path TO public")
+            connection.commit()
+
+            current_schema = connection.exec_driver_sql(
+                "SELECT current_schema()"
+            ).scalar_one()
+            if current_schema != "public":
+                raise RuntimeError(
+                    f"Expected PostgreSQL current_schema() to be public; "
+                    f"found {current_schema!r}"
+                )
+
             context.configure(
                 connection=connection,
                 target_metadata=target_metadata,
