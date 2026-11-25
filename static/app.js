@@ -1986,6 +1986,15 @@ const ROLE_CATEGORY_NAMES = {
   backups:"備份管理", exchange_rates:"匯率管理"
 };
 
+function canGrantPermission(code) {
+  return familyPermissionCatalog.some(permission => permission.code === code && permission.grantable === true);
+}
+
+function refreshRolePermissionControls() {
+  $("new-family-role").classList.toggle("hidden", !canGrantPermission("roles.create"));
+  $("family-role-form").classList.add("hidden");
+}
+
 function renderFamilyRoles() {
   const host = $("family-roles-list");
   host.replaceChildren();
@@ -2014,13 +2023,23 @@ function renderFamilyRoles() {
     const actions = document.createElement("div");
     actions.className = "form-actions";
     if (!role.is_system) {
-      const edit = document.createElement("button");
-      edit.type = "button"; edit.className = "secondary small"; edit.textContent = "編輯";
-      edit.addEventListener("click", () => openFamilyRoleEditor(role));
-      const remove = document.createElement("button");
-      remove.type = "button"; remove.className = "danger small"; remove.textContent = "作廢";
-      remove.addEventListener("click", () => voidFamilyRole(role));
-      actions.append(edit, remove);
+      if (canGrantPermission("roles.update")) {
+        const edit = document.createElement("button");
+        edit.type = "button"; edit.className = "secondary small"; edit.textContent = "編輯";
+        edit.addEventListener("click", () => openFamilyRoleEditor(role));
+        actions.append(edit);
+      }
+      if (canGrantPermission("roles.void")) {
+        const remove = document.createElement("button");
+        remove.type = "button"; remove.className = "danger small"; remove.textContent = "作廢";
+        remove.addEventListener("click", () => voidFamilyRole(role));
+        actions.append(remove);
+      }
+      if (!actions.childElementCount) {
+        const locked = document.createElement("span");
+        locked.className = "tiny muted"; locked.textContent = "目前無管理權限";
+        actions.append(locked);
+      }
     } else {
       const locked = document.createElement("span");
       locked.className = "member-role-tag"; locked.textContent = "受保護";
@@ -2043,7 +2062,7 @@ function renderRolePermissionEditor(selectedCodes = [], selectedScopes = {}) {
     const group = document.createElement("section");
     group.className = "role-permission-group";
     const heading = document.createElement("h4");
-    heading.textContent = ROLE_CATEGORY_NAMES[category] || category;
+    heading.textContent = ROLE_CATEGORY_NAMES[category] || "其他功能";
     group.append(heading);
     for (const permission of permissions) {
       const label = document.createElement("label");
@@ -2056,9 +2075,10 @@ function renderRolePermissionEditor(selectedCodes = [], selectedScopes = {}) {
       const textWrap = document.createElement("span");
       const title = document.createElement("strong");
       title.textContent = permission.name;
-      const code = document.createElement("small");
-      code.textContent = permission.code;
-      textWrap.append(title, code);
+      const description = document.createElement("small");
+      description.className = "muted";
+      description.textContent = permission.description || "";
+      textWrap.append(title, description);
       label.append(checkbox, textWrap);
       group.append(label);
     }
@@ -2081,7 +2101,7 @@ function renderRoleScopeEditor(selectedScopes = {}) {
     title.textContent = (ROLE_CATEGORY_NAMES[category] || category) + "資料範圍";
     const select = document.createElement("select");
     select.dataset.scopeResource = category;
-    for (const [value, text] of [["own","僅自己建立（own）"],["family","整個家庭（family）"]]) {
+    for (const [value, text] of [["own","僅自己建立的資料"],["family","整個家庭的資料"]]) {
       const option = document.createElement("option");
       option.value = value; option.textContent = text;
       select.append(option);
@@ -2116,6 +2136,14 @@ function renderRoleMembers() {
     identity.append(name, email);
     const controls = document.createElement("div");
     controls.className = "family-role-member-controls";
+    if (!canGrantPermission("roles.assign")) {
+      const currentRoles = document.createElement("span");
+      currentRoles.className = "tiny muted";
+      currentRoles.textContent = (member.role_names || []).join("、") || "尚未指派角色";
+      card.append(identity, currentRoles);
+      host.append(card);
+      continue;
+    }
     const select = document.createElement("select");
     select.multiple = true;
     select.size = Math.min(Math.max(familyRoles.length, 2), 5);
@@ -2163,6 +2191,7 @@ async function loadFamilyRoles() {
     familyRoles = roleResult.roles || [];
     familyPermissionCatalog = permissionResult.permissions || [];
     familyMembersForRoles = memberResult.members || [];
+    refreshRolePermissionControls();
     renderFamilyRoles();
     renderRoleMembers();
   } catch (error) {
