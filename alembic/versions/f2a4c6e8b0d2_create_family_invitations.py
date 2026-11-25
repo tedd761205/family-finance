@@ -1,7 +1,7 @@
 """create family invitations
 
 Revision ID: f2a4c6e8b0d2
-Revises: 9c3acbe23257
+Revises: c7d9e1f3a5b7
 Create Date: 2026-11-25
 """
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 revision: str = "f2a4c6e8b0d2"
-down_revision: Union[str, Sequence[str], None] = "9c3acbe23257"
+down_revision: Union[str, Sequence[str], None] = "c7d9e1f3a5b7"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
