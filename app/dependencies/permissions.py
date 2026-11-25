@@ -149,7 +149,7 @@ def require_permission(
         permission_code=permission_code,
     ):
         raise PermissionError(
-            f"你沒有執行此操作的權限：{permission_code}"
+            "目前帳號沒有執行此操作的權限"
         )
 
     return family_member, roles
@@ -213,7 +213,7 @@ def require_data_scope(
 
     if scope is None:
         raise PermissionError(
-            f"沒有設定此資料範圍：{resource}"
+            "目前角色尚未設定此類資料的查看範圍"
         )
 
     return scope
