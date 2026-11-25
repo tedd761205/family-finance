@@ -22,6 +22,7 @@
 """
 
 import logging
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func
@@ -50,6 +51,7 @@ from app.schemas.family import (
 from app.services.family_initializer import (
     create_family_with_admin,
 )
+from app.services.audit_log import add_audit_log
 
 
 logger = logging.getLogger(__name__)
@@ -437,6 +439,17 @@ def list_family_members(
             detail="目前帳號沒有查看家庭成員的權限",
         )
 
+    try:
+        require_permission(
+            db=db,
+            user_id=current_user.id,
+            family_id=family_id,
+            permission_code="members.remove",
+        )
+        can_remove_members = True
+    except PermissionError:
+        can_remove_members = False
+
     rows = (
         db.query(FamilyMember, User)
         .join(User, User.id == FamilyMember.user_id)
@@ -486,6 +499,176 @@ def list_family_members(
                 )
             ],
             "is_me": user.id == current_user.id,
+            "can_remove": can_remove_members and user.id != current_user.id,
         })
 
     return {"success": True, "total": len(members), "members": members}
+
+
+@router.delete(
+    "/{family_id}/members/{family_member_id}",
+    status_code=status.HTTP_200_OK,
+)
+def remove_family_member(
+    family_id: int,
+    family_member_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """軟移除家庭成員；保留 User、帳務及歷史紀錄。"""
+    if not current_user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="此帳號已停用，無法移除家庭成員",
+        )
+
+    try:
+        # 先鎖定家庭列，再檢查授權，避免並行移除時沿用已失效的成員權限。
+        family = (
+            db.query(Family)
+            .filter(Family.id == family_id)
+            .with_for_update()
+            .first()
+        )
+        if family is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="找不到指定的家庭",
+            )
+
+        try:
+            require_permission(
+                db=db,
+                user_id=current_user.id,
+                family_id=family_id,
+                permission_code="members.remove",
+            )
+        except PermissionError:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="目前帳號沒有移除家庭成員的權限",
+            )
+
+        member = (
+            db.query(FamilyMember)
+            .filter(
+                FamilyMember.id == family_member_id,
+                FamilyMember.family_id == family_id,
+                FamilyMember.status == "active",
+            )
+            .with_for_update()
+            .first()
+        )
+        if member is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="找不到有效的家庭成員",
+            )
+
+        if member.user_id == current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="不能移除自己的家庭成員資格，請由其他家庭管理員操作",
+            )
+
+        target_user = db.get(User, member.user_id)
+        role_rows = (
+            db.query(Role.id, Role.name)
+            .join(MemberRole, MemberRole.role_id == Role.id)
+            .filter(
+                MemberRole.family_member_id == member.id,
+                MemberRole.family_id == family_id,
+                Role.family_id == family_id,
+                Role.is_active.is_(True),
+            )
+            .order_by(Role.name.asc())
+            .all()
+        )
+        old_role_ids = [row.id for row in role_rows]
+        old_role_names = [row.name for row in role_rows]
+
+        admin_role = (
+            db.query(Role)
+            .filter(
+                Role.family_id == family_id,
+                Role.name == "家庭管理員",
+                Role.is_system.is_(True),
+                Role.is_active.is_(True),
+            )
+            .first()
+        )
+        target_is_admin = bool(
+            admin_role and admin_role.id in old_role_ids
+        )
+        if target_is_admin:
+            active_admin_count = (
+                db.query(FamilyMember.id)
+                .join(MemberRole, MemberRole.family_member_id == FamilyMember.id)
+                .filter(
+                    FamilyMember.family_id == family_id,
+                    FamilyMember.status == "active",
+                    MemberRole.family_id == family_id,
+                    MemberRole.role_id == admin_role.id,
+                )
+                .count()
+            )
+            if active_admin_count <= 1:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="此成員是家庭最後一位管理員，請先將管理員角色指派給其他成員",
+                )
+
+        removed_at = datetime.now(timezone.utc)
+        member.status = "removed"
+        member.left_at = removed_at
+
+        # 移除角色指派以立即撤銷存取權；既有帳務與稽核紀錄不刪除。
+        db.query(MemberRole).filter(
+            MemberRole.family_member_id == member.id,
+            MemberRole.family_id == family_id,
+        ).delete(synchronize_session=False)
+
+        add_audit_log(
+            db,
+            family_id=family_id,
+            actor_user_id=current_user.id,
+            action="member.remove",
+            entity_type="family_member",
+            entity_id=member.id,
+            old_values={
+                "status": "active",
+                "user_id": member.user_id,
+                "email": target_user.email if target_user else None,
+                "roles": old_role_names,
+                "role_ids": old_role_ids,
+            },
+            new_values={
+                "status": "removed",
+                "left_at": removed_at,
+                "role_ids": [],
+            },
+            description="移除家庭成員；保留使用者帳號、帳務及歷史紀錄",
+        )
+
+        db.commit()
+        return {
+            "success": True,
+            "family_id": family_id,
+            "family_member_id": member.id,
+            "message": "已移除家庭成員；帳務及歷史紀錄均已保留",
+        }
+
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "移除家庭成員失敗：family_id=%s family_member_id=%s",
+            family_id,
+            family_member_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="移除家庭成員失敗，請稍後再試",
+        )

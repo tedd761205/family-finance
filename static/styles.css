@@ -139,7 +139,8 @@
 .family-member-identity strong{overflow-wrap:anywhere}
 .family-member-roles{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
 .member-role-tag{display:inline-flex;padding:5px 9px;border-radius:999px;background:var(--surface-soft,#eef3f1);font-size:.82rem;color:var(--text)}
-@media(max-width:760px){.member-invite-form{grid-template-columns:1fr}.family-member-card{align-items:flex-start;flex-direction:column}.family-member-roles{justify-content:flex-start}}
+.family-member-actions{display:flex;align-items:center;justify-content:flex-end;flex-shrink:0}
+@media(max-width:760px){.member-invite-form{grid-template-columns:1fr}.family-member-card{align-items:flex-start;flex-direction:column}.family-member-roles{justify-content:flex-start}.family-member-actions{width:100%;justify-content:flex-start}}
 
 
 /* G-02-11 family roles and fine-grained permissions */

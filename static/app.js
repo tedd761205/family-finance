@@ -1800,6 +1800,40 @@ function renderFamilyMembers(members) {
       roles.append(none);
     }
     card.append(identity, roles);
+
+    if (member.can_remove) {
+      const actions = document.createElement("div");
+      actions.className = "family-member-actions";
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "danger small";
+      remove.textContent = "移除成員";
+      remove.addEventListener("click", async () => {
+        const label = member.display_name || member.email || "這位成員";
+        const accepted = window.confirm(
+          "確定要將「" + label + "」移出目前家庭？\n\n" +
+          "對方將無法再查看此家庭資料，但使用者帳號、既有帳務及歷史紀錄都會保留。\n" +
+          "日後仍可重新邀請，重新加入時會先套用「一般成員」角色。"
+        );
+        if (!accepted) return;
+        remove.disabled = true;
+        try {
+          const result = await api(
+            "/families/" + selectedFamilyId + "/members/" + member.family_member_id,
+            {method: "DELETE"}
+          );
+          await loadFamilyMembers();
+          await loadFamilyInvitations();
+          notice("family-members-notice", result.message || "家庭成員已移除。", "success");
+        } catch (error) {
+          notice("family-members-notice", "移除成員失敗：" + error.message, "error");
+          remove.disabled = false;
+        }
+      });
+      actions.append(remove);
+      card.append(actions);
+    }
+
     host.append(card);
   }
 }

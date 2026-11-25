@@ -25,6 +25,9 @@ def test_family_members_ui_calls_permission_checked_endpoint():
     assert 'body: JSON.stringify({email})' in javascript
     assert 'api("/families/invitations/accept"' in javascript
     assert 'copy-family-invite-link' in javascript
+    assert "if (member.can_remove)" in javascript
+    assert '{method: "DELETE"}' in javascript
+    assert '"/members/" + member.family_member_id' in javascript
 
 
 def test_family_members_endpoint_is_registered_and_secured():
@@ -47,5 +50,23 @@ def test_family_members_ui_has_mobile_styles():
         css = client.get("/static/styles.css").text
 
     assert ".family-member-card" in css
+    assert ".family-member-actions" in css
     assert ".member-invite-form" in css
     assert "@media(max-width:760px)" in css
+
+
+def test_family_member_removal_endpoint_is_registered_and_secured():
+    schema = app.openapi()
+    operation = schema["paths"]["/families/{family_id}/members/{family_member_id}"]["delete"]
+
+    assert "HTTPBearer" in str(operation.get("security", []))
+    assert operation["responses"]["200"]["description"] == "Successful Response"
+
+
+def test_family_member_removal_ui_explains_soft_removal_and_reinvite():
+    with TestClient(app) as client:
+        javascript = client.get("/static/app.js").text
+
+    assert "使用者帳號、既有帳務及歷史紀錄都會保留" in javascript
+    assert "重新邀請" in javascript
+    assert "member.can_remove" in javascript
