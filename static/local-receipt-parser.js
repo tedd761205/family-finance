@@ -66,48 +66,64 @@
   function parseTaiwanInvoiceQr(leftValue, rightValue) {
     const left = String(leftValue || "").trim();
     const right = String(rightValue || "").trim();
-    if (!/^[A-Z]{2}\d{8}\d{7}\d{4}[0-9A-F]{8}[0-9A-F]{8}/i.test(left) || left.length < 77) return null;
+    if (!/^[A-Z]{2}\d{8}\d{7}\d{4}[0-9A-F]{16}/i.test(left)) return null;
+
+    // The official payload has a fixed 45-character header before buyer tax ID,
+    // followed by seller tax ID and a 24-character encrypted verification field.
+    // Locate the separator before the optional item extension so older padded
+    // seller-ID samples remain readable without shifting the remaining fields.
+    const extensionSeparator = left.indexOf(":", 45);
+    if (extensionSeparator < 0) return null;
+    const authStart = extensionSeparator - 24;
+    if (authStart < 53 || authStart > 55) return null;
 
     const invoiceNumber = left.slice(0, 10).toUpperCase();
     const rocDate = left.slice(10, 17);
     const randomCode = left.slice(17, 21);
     const salesHex = left.slice(21, 29);
     const totalHex = left.slice(29, 37);
-    const buyerTaxId = left.slice(37, 45);
-    const sellerTaxId = left.slice(45, 53);
+    const buyerTaxIdRaw = left.slice(37, 45);
+    const sellerTaxIdRaw = left.slice(45, authStart);
     const dateMatch = rocDate.match(/^(\d{3})(\d{2})(\d{2})$/);
     const date = dateMatch
       ? validDate(Number(dateMatch[1]) + 1911, Number(dateMatch[2]), Number(dateMatch[3]))
       : null;
     const parsedTotal = Number.parseInt(totalHex, 16);
     const parsedSales = Number.parseInt(salesHex, 16);
+    const auth = left.slice(authStart, extensionSeparator);
+    if (auth.length !== 24 || !/^[A-Za-z0-9+/=]{24}$/.test(auth)) return null;
 
-    const extension = left.slice(77).replace(/^\s*:/, "");
+    const extension = left.slice(extensionSeparator + 1);
     const extensionParts = extension ? extension.split(":") : [];
     const encoding = extensionParts[3] || "1";
     const items = parseItemTriples(extensionParts, encoding, 4);
-
     let rightItems = [];
     if (right.startsWith("**")) {
       rightItems = parseItemTriples(right.slice(2).split(":"), encoding, 0);
     }
 
-    const allItems = items.concat(rightItems);
+    const normalizeTaxId = (value) => {
+      const digits = String(value || "");
+      if (!/^\d{8,10}$/.test(digits) || /^0+$/.test(digits)) return null;
+      const normalized = digits.slice(-8);
+      return /^\d{8}$/.test(normalized) ? normalized : null;
+    };
+
     return {
       invoiceNumber: invoiceNumber,
       date: date,
       randomCode: randomCode,
       salesAmount: Number.isFinite(parsedSales) && parsedSales > 0 ? String(parsedSales) : null,
       totalAmount: Number.isFinite(parsedTotal) && parsedTotal > 0 ? String(parsedTotal) : null,
-      buyerTaxId: /^\d{8}$/.test(buyerTaxId) && buyerTaxId !== "00000000" ? buyerTaxId : null,
-      sellerTaxId: /^\d{8}$/.test(sellerTaxId) && sellerTaxId !== "00000000" ? sellerTaxId : null,
-      items: allItems,
+      buyerTaxId: normalizeTaxId(buyerTaxIdRaw),
+      sellerTaxId: normalizeTaxId(sellerTaxIdRaw),
+      items: items.concat(rightItems),
       itemCount: Number(extensionParts[2]) || null,
       source: "qr"
     };
   }
 
-  function extractTextDate(text) {
+    function extractTextDate(text) {
     let match = text.match(/(?:^|[^\d])(20\d{2})\s*[./-]\s*(\d{1,2})\s*[./-]\s*(\d{1,2})(?!\d)/);
     if (match) {
       const date = validDate(Number(match[1]), Number(match[2]), Number(match[3]));
@@ -142,7 +158,7 @@
 
   function extractLabeledValue(text, labels, pattern) {
     for (const label of labels) {
-      const expression = new RegExp("(?:" + label + ")\\\\s*[：:]?\\\\s*(" + pattern + ")", "i");
+      const expression = new RegExp("(?:" + label + ")\\s*[：:]?\\s*(" + pattern + ")", "i");
       const match = text.match(expression);
       if (match) return match[1].trim();
     }
@@ -153,7 +169,7 @@
     const explicit = extractLabeledValue(
       text,
       ["商家名稱", "營業人名稱", "賣方名稱", "店家名稱", "店名", "商號"],
-      "[^\\\\r\\\\n]{2,60}"
+      "[^\\r\\n]{2,60}"
     );
     if (explicit) return explicit.replace(/^[：:\s]+/, "").trim().slice(0, 100);
 
