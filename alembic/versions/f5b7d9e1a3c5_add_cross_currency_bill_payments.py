@@ -30,17 +30,17 @@ def upgrade() -> None:
     op.execute(sa.text("""
         UPDATE bill_payments AS payment
         SET account_amount = COALESCE(
-                (SELECT transaction.amount
-                 FROM transactions AS transaction
-                 WHERE transaction.family_id = payment.family_id
-                   AND transaction.bill_payment_id = payment.id),
+                (SELECT linked_tx.amount
+                 FROM transactions AS linked_tx
+                 WHERE linked_tx.family_id = payment.family_id
+                   AND linked_tx.bill_payment_id = payment.id),
                 payment.amount
             ),
             account_currency_code = COALESCE(
-                (SELECT transaction.currency_code
-                 FROM transactions AS transaction
-                 WHERE transaction.family_id = payment.family_id
-                   AND transaction.bill_payment_id = payment.id),
+                (SELECT linked_tx.currency_code
+                 FROM transactions AS linked_tx
+                 WHERE linked_tx.family_id = payment.family_id
+                   AND linked_tx.bill_payment_id = payment.id),
                 account.currency_code
             ),
             exchange_rate = 1,
