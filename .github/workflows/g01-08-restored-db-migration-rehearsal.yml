@@ -71,7 +71,7 @@ jobs:
           if len(heads) != 1:
               raise SystemExit(f"Expected exactly one Alembic head, found: {heads}")
 
-          baseline_revision = "c7d9e1f3a5b7"
+          baseline_revision = "f2a4c6e8b0d2"
           expected_existing = {
               "accounts", "alembic_version", "audit_logs", "categories",
               "credit_card_payments", "families", "family_members",
@@ -85,7 +85,8 @@ jobs:
               "reconciliation_sessions", "reconciliation_matches",
               "reconciliation_exclusions", "reconciliation_issues",
           }
-          expected_new = {"family_invitations"}
+          expected_existing.add("family_invitations")
+          expected_new = set()
           engine = create_engine(url, pool_pre_ping=True, connect_args={"connect_timeout": 10})
           try:
               with engine.connect() as connection:
@@ -100,6 +101,13 @@ jobs:
                   """)).scalars())
                   missing_existing = sorted(expected_existing - tables)
                   already_migrated = sorted(expected_new & tables)
+                  payment_columns = set(connection.execute(text("""
+                      SELECT column_name FROM information_schema.columns
+                      WHERE table_schema='public' AND table_name='bill_payments'
+                  """)).scalars())
+                  unexpected_payment_columns = sorted({
+                      "account_amount", "account_currency_code", "exchange_rate", "exchange_difference"
+                  } & payment_columns)
                   if version_rows != [baseline_revision]:
                       raise SystemExit(
                           "Restored public.alembic_version must contain exactly "
@@ -113,7 +121,12 @@ jobs:
                   if missing_existing:
                       raise SystemExit(f"Restored baseline is missing tables: {missing_existing}")
                   if already_migrated:
-                      raise SystemExit(f"Target appears already migrated; refusing repeat rehearsal: {already_migrated}")
+                      raise SystemExit(f"Unexpected target tables already exist: {already_migrated}")
+                  if unexpected_payment_columns:
+                      raise SystemExit(
+                          "Restored baseline already contains cross-currency payment columns: "
+                          f"{unexpected_payment_columns}"
+                      )
                   counts = {}
                   for table in ("families", "users", "accounts", "categories", "transactions", "transfers", "credit_card_payments"):
                       counts[table] = connection.execute(text(f'SELECT count(*) FROM public."{table}"')).scalar_one()
@@ -162,7 +175,7 @@ jobs:
           PGOPTIONS: "-c search_path=public"
         run: |
           set -euo pipefail
-          python -m alembic upgrade f2a4c6e8b0d2 2>&1 | tee migration-rehearsal-artifacts/alembic-upgrade.log
+          python -m alembic upgrade f5b7d9e1a3c5 2>&1 | tee migration-rehearsal-artifacts/alembic-upgrade.log
           python -m alembic current 2>&1 | tee migration-rehearsal-artifacts/alembic-current.txt
 
       - name: Verify upgraded schema and preserved baseline data
@@ -195,7 +208,7 @@ jobs:
                       expected_counts[parts[0]] = int(parts[1])
 
           scripts = ScriptDirectory.from_config(Config("alembic.ini"))
-          expected_revision = {"f2a4c6e8b0d2"}
+          expected_revision = {"f5b7d9e1a3c5"}
           engine = create_engine(make_url(os.environ["DATABASE_URL"]), pool_pre_ping=True)
           try:
               with engine.connect() as connection:
@@ -337,6 +350,11 @@ jobs:
                       "ck_reconciliation_issues_source_required",
                       "ck_reconciliation_issues_resolution",
                       "ck_reconciliation_issues_reason",
+                      "ck_bill_payments_account_amount_positive",
+                      "ck_bill_payments_exchange_rate_positive",
+                      "ck_bill_payments_account_currency_code",
+                      "ck_bill_payments_payment_exchange_difference_zero",
+                      "ck_bill_payments_same_currency_consistent",
                   }
                   check_constraints = set(connection.execute(text("""
                       SELECT conname FROM pg_constraint
@@ -387,6 +405,13 @@ jobs:
                   print(f"G-03 tables verified: {len(expected_new)}")
                   print(f"Required indexes verified: {len(required_indexes)}")
                   print(f"Required G-03 foreign keys verified: {len(required_foreign_keys)}")
+                  required_payment_columns = {
+                      "account_amount", "account_currency_code", "exchange_rate", "exchange_difference"
+                  }
+                  missing_payment_columns = sorted(required_payment_columns - payment_columns)
+                  if missing_payment_columns:
+                      raise SystemExit(f"Missing cross-currency bill payment columns: {missing_payment_columns}")
+                  print(f"Cross-currency bill payment columns verified: {len(required_payment_columns)}")
                   print(f"Required G-03 check constraints verified: {len(required_checks)}")
                   print(f"Required category-scope triggers verified: {len(required_triggers)}")
                   print("Selected baseline data row counts remained unchanged.")
