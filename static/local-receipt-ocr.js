@@ -319,6 +319,23 @@
     setStatus("已將可辨識的日期、金額及發票號碼帶入記帳表單。請自行核對、選擇帳戶及分類，再按「新增紀錄」。");
   }
 
+  function disposeLocalReceiptSession() {
+    clearPhoto();
+    if (worker) {
+      const currentWorker = worker;
+      worker = null;
+      workerPromise = null;
+      currentWorker.terminate().catch(() => {});
+    }
+  }
+
+  // Do not leave a previous family member's receipt photo in the page after changing family or signing out.
+  $("logout-button")?.addEventListener("click", disposeLocalReceiptSession);
+  $("family-list")?.addEventListener("click", (event) => {
+    if (event.target.closest(".family-card")) clearPhoto();
+  });
+  $("close-transactions")?.addEventListener("click", clearPhoto);
+
   cameraButton.addEventListener("click", () => cameraInput.click());
   chooseButton.addEventListener("click", () => fileInput.click());
   cameraInput.addEventListener("change", () => handleFile(cameraInput.files && cameraInput.files[0]));
