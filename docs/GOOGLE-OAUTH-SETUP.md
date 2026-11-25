@@ -22,6 +22,10 @@
 
 儲存後等待 Render 部署完成，再開啟網站。登入頁會在設定存在時顯示 Google 登入按鈕。
 
+## 資料庫結構
+
+`user_identities` 資料表已由既有 Alembic migration `9c3acbe23257` 建立，並包含 Google 外部身分所需的 `provider`、`provider_subject`、`email` 欄位、唯一約束及使用者索引。此功能不需要再建立第二張同名資料表，也不應修改已套用的歷史 migration。
+
 ## 帳號連結安全規則
 
 - Google 身分以 Google 提供的 `sub` 作為唯一識別。
