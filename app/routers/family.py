@@ -523,20 +523,7 @@ def remove_family_member(
         )
 
     try:
-        require_permission(
-            db=db,
-            user_id=current_user.id,
-            family_id=family_id,
-            permission_code="members.remove",
-        )
-    except PermissionError:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="目前帳號沒有移除家庭成員的權限",
-        )
-
-    try:
-        # 鎖定家庭列，避免同一家庭同時發生多筆管理員移除操作。
+        # 先鎖定家庭列，再檢查授權，避免並行移除時沿用已失效的成員權限。
         family = (
             db.query(Family)
             .filter(Family.id == family_id)
@@ -547,6 +534,19 @@ def remove_family_member(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="找不到指定的家庭",
+            )
+
+        try:
+            require_permission(
+                db=db,
+                user_id=current_user.id,
+                family_id=family_id,
+                permission_code="members.remove",
+            )
+        except PermissionError:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="目前帳號沒有移除家庭成員的權限",
             )
 
         member = (
