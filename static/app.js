@@ -1201,6 +1201,7 @@ let billPaymentRows=[];
 let billPaymentAccounts=[];
 let billPaymentMode="payment";
 let billPaymentOriginalId=null;
+let billPaymentLastAccountCurrencyCode=null;
 
 function billPaymentAccountLabel(account) {
   return account.name+" · "+account.currency_code;
@@ -1222,6 +1223,11 @@ function updateBillPaymentExchangeFields(){
   const rateInput=$("bill-payment-exchange-rate");
   const amount=Number($("bill-payment-amount").value||0);
   const summary=$("bill-payment-currency-summary");
+  const selectedAccountCurrency=account?.currency_code||null;
+  if(selectedAccountCurrency!==billPaymentLastAccountCurrencyCode){
+    rateInput.value="";
+    billPaymentLastAccountCurrencyCode=selectedAccountCurrency;
+  }
   const crossCurrency=Boolean(account&&account.currency_code!==billCurrency);
   rateField.classList.toggle("hidden",!crossCurrency);
   rateInput.required=crossCurrency;
