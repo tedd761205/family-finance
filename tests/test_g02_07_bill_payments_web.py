@@ -29,13 +29,20 @@ def test_bill_payment_ui_uses_existing_create_refund_and_void_apis():
     assert 'api("/bill-payments/"+item.id+"?"+params.toString(),{method:"DELETE"})' in javascript
 
 
-def test_bill_payment_ui_validates_currency_and_remaining_amount():
+def test_bill_payment_ui_supports_cross_currency_rates_and_remaining_amount():
     with TestClient(app) as client:
         javascript = client.get("/static/app.js").text
+        page = client.get("/").text
 
-    assert "付款帳戶幣別必須與帳單幣別一致" in javascript
+    assert "實際匯率" in javascript
+    assert "exchange_rate" in javascript
+    assert "預估帳戶" in javascript
+    assert "實際帳戶" in javascript
+    assert "匯差" in javascript
     assert "付款金額超過帳單未付餘額" in javascript
     assert "退款金額超過可退餘額" in javascript
+    assert 'id="bill-payment-exchange-rate"' in page
+    assert 'id="bill-payment-currency-summary"' in page
 
 
 def test_bill_payment_ui_tracks_refund_balance_and_prevents_parent_void():
