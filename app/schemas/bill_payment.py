@@ -11,6 +11,7 @@ class BillPaymentCreate(BaseModel):
     amount: Decimal = Field(gt=0, max_digits=20, decimal_places=4)
     currency_code: str = Field(min_length=3, max_length=3)
     payment_date: datetime
+    exchange_rate: Decimal | None = Field(default=None, gt=0, max_digits=20, decimal_places=10)
     description: str | None = Field(default=None, max_length=200)
     note: str | None = None
 
@@ -65,6 +66,10 @@ class BillPaymentResponse(BaseModel):
     original_payment_id: int | None
     amount: Decimal
     currency_code: str
+    account_amount: Decimal
+    account_currency_code: str
+    exchange_rate: Decimal
+    exchange_difference: Decimal
     payment_date: datetime
     description: str | None
     note: str | None
