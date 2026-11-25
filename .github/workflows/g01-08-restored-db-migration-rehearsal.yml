@@ -134,7 +134,6 @@ jobs:
       - name: Apply pending migrations to isolated restored snapshot
         env:
           DATABASE_URL: ${{ secrets.NEON_RESTORE_TEST_DATABASE_URL }}
-          PGOPTIONS: "-c search_path=public"
         run: |
           set -euo pipefail
           python -m alembic upgrade c7d9e1f3a5b7 2>&1 | tee migration-rehearsal-artifacts/alembic-upgrade.log
