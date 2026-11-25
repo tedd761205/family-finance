@@ -72,7 +72,7 @@
       workerPromise = (async () => {
         setStatus("第一次使用：正在下載本機辨識引擎與繁體中文模型。這是程式／模型下載，不會上傳照片，也不會呼叫付費 OCR API。");
         const tesseract = await loadScript(TESSERACT_SRC, "Tesseract");
-        const created = await tesseract.createWorker("chi_tra+eng", 1, {
+        const created = await tesseract.createWorker(["chi_tra", "eng"], 1, {
           langPath: LANGUAGE_PATH,
           cacheMethod: "write",
           gzip: true,
