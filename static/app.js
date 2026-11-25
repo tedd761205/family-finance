@@ -2861,6 +2861,7 @@ function applyFamilyNavigationPermissions(){
   const navigation=$("app-navigation");
   if(navigation){
     const visibleButtons=[...navigation.querySelectorAll(".app-nav-button")].filter(button=>!button.classList.contains("hidden"));
+    navigation.style.setProperty("--visible-nav-items",String(Math.max(1,visibleButtons.length)));
     navigation.classList.toggle("hidden",visibleButtons.length===0);
   }
   if(activeMoreCategory){
