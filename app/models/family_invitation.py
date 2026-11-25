@@ -15,6 +15,7 @@ class FamilyInvitation(Base):
         Index(
             "ix_family_invitations_pending_family_email",
             "family_id", "email",
+            unique=True,
             postgresql_where=text("status = 'pending'"),
         ),
     )
