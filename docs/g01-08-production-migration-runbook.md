@@ -37,7 +37,7 @@ Supply three successful GitHub Actions run IDs:
 
 The workflow verifies each run's repository, workflow path, branch, status, conclusion, chronology, and required artifacts. The restore workflow also records a provenance artifact containing the exact backup run ID and the `g01-restore-test` confirmation; the production gate downloads it and requires it to match the selected backup run. It also compares migration source files in the rehearsal commit with current `main`. Documentation-only or workflow-only commits do not force a needless rehearsal; changes to migration sources, dependencies, Alembic configuration, or the role-catalog validator do.
 
-The restore provenance artifact was added by this hardening change. Therefore, the previously successful restore run `44294853198` predates that artifact and cannot be used for a future production migration dispatch. After this PR is merged, run a fresh backup if the existing backup is older than 24 hours, then run Neon Restore Test and the restored-snapshot Migration Rehearsal again. The new restore test resets the isolated branch to the baseline, so the rehearsal must run after it.
+The restore provenance artifact is required for the production gate. Use a fresh backup, restore it to `g01-restore-test`, then rehearse from the restored `f2a4c6e8b0d2` baseline to `f5b7d9e1a3c5`. The restore test resets the isolated branch, so the rehearsal must run after it.
 
 Latest successful evidence at the time this runbook was written:
 
@@ -66,7 +66,7 @@ Before running `alembic upgrade head`, the workflow:
 - Confirms the rehearsal's migration sources match the current `main`.
 - Confirms the Neon API reports the pinned project ID and production branch ID/name, then independently matches the production endpoint hostname and database name `neondb`.
 - Opens a read-only transaction and requires the exact production baseline revision `f2a4c6e8b0d2`.
-- Requires the audited 18-table baseline and refuses if any of the no new tables; four bill-payment conversion columns already exist or unexpected public tables are present.
+- Requires the exact 35-table baseline at `f2a4c6e8b0d2`, refuses if any of the four cross-currency bill-payment columns already exist, and refuses unexpected public tables.
 - Captures selected existing row counts before migration.
 
 After migration, it verifies the repository Alembic head, all existing finance tables and the four new bill-payment conversion columns, existing required indexes and five new bill-payment check constraints, two category-scope triggers, unchanged selected existing row counts, and the role catalog. It uploads a report artifact.
