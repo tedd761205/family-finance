@@ -1908,7 +1908,7 @@ async function loadFamilyInvitations() {
 }
 
 function captureFamilyInvitationToken() {
-  const params = new URLSearchParams(window.location.search);
+  const params = new URLSearchParams(window.location.hash.startsWith("#") ? window.location.hash.slice(1) : "");
   const inviteToken = params.get("invite");
   if (inviteToken) {
     sessionStorage.setItem(INVITE_TOKEN_KEY, inviteToken);
