@@ -597,6 +597,7 @@ jobs:
             psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atc \
             "SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname='public' ORDER BY tablename" \
             > /tmp/actual-public-tables.txt
+          sort -o /tmp/expected-public-tables.txt /tmp/expected-public-tables.txt
           diff -u /tmp/expected-public-tables.txt /tmp/actual-public-tables.txt
           echo "Restored schema matches the 34-table Production baseline at c7d9e1f3a5b7."
 
