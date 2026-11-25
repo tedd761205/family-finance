@@ -473,3 +473,31 @@ textarea:focus-visible {
 @media (max-width: 960px) and (orientation: landscape) {
   .app-navigation .app-nav-button { min-height: 48px; }
 }
+
+/* Keep the original all-functions dashboard visible on wide desktop screens. */
+@media (min-width: 1201px) {
+  .more-tools-panel.hidden { display: block !important; }
+}
+
+/* Large touch-first tablets keep the side navigation even at wide resolutions. */
+@media (min-width: 1201px) and (pointer: coarse) {
+  #app-view { margin-left: 78px; }
+  .app-navigation {
+    position: fixed;
+    z-index: 60;
+    top: 50%;
+    left: 12px;
+    transform: translateY(-50%);
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 7px;
+    width: 64px;
+    padding: 9px 6px;
+    border: 1px solid var(--nav-border);
+    border-radius: 18px;
+    background: rgba(255,255,255,.97);
+    box-shadow: 0 8px 28px rgba(32,58,49,.13);
+  }
+  .app-nav-button { min-height: 64px; padding: 7px 2px; }
+  .app-nav-button .nav-label { font-size: 11px; }
+}
