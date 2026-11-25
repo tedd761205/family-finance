@@ -1223,6 +1223,7 @@ function updateBillPaymentExchangeFields(){
   const rateInput=$("bill-payment-exchange-rate");
   const amount=Number($("bill-payment-amount").value||0);
   const summary=$("bill-payment-currency-summary");
+  $("bill-payment-amount-label").firstChild.textContent="帳單金額（"+billCurrency+"）";
   const selectedAccountCurrency=account?.currency_code||null;
   if(selectedAccountCurrency!==billPaymentLastAccountCurrencyCode){
     rateInput.value="";
