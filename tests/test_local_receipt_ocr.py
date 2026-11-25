@@ -63,3 +63,18 @@ def test_local_receipt_ocr_limits_image_types_and_size():
     assert "MAX_FILE_BYTES = 10 * 1024 * 1024" in script
     assert 'image/jpeg,image/png,image/webp' in page.text
     assert "PDF 與其他格式尚未開放" in script
+
+def test_camera_or_photo_picker_return_restores_receipt_workspace_after_page_reload():
+    with TestClient(app) as client:
+        app_script = client.get("/static/app.js").text
+        ocr_script = client.get("/static/local-receipt-ocr.js").text
+
+    assert "RECEIPT_CAPTURE_RETURN_KEY" in app_script
+    assert "readReceiptCaptureReturn()" in app_script
+    assert "pendingReceiptReturn.familyId" in app_script
+    assert "await showTransactions()" in app_script
+    assert "window.prepareReceiptCaptureReturn" in ocr_script
+    assert "window.clearReceiptCaptureReturn" in ocr_script
+    assert 'addEventListener("cancel"' in ocr_script
+    assert "window.__familyReceiptPhotoReturned = true" in ocr_script
+    assert "不會上傳照片" in ocr_script or "照片不會傳送到伺服器或 Google" in ocr_script
