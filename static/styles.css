@@ -551,3 +551,23 @@ textarea:focus-visible {
  .quick-tool-group .quick-icon{width:34px;height:34px}
  .quick-tool-group .coming{justify-self:start;margin-top:2px}
 }
+
+
+/* Local-only receipt OCR pilot */
+.local-receipt-tool{margin:18px 0 22px;padding:18px 20px;border:1px solid #d9e7dd;border-radius:15px;background:#f8fbf8}
+.local-receipt-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.local-receipt-heading h3{margin:0 0 7px;font-size:17px;color:#24483b}
+.local-receipt-heading p{margin:0;color:#64766c;font-size:13px;line-height:1.7}
+.local-receipt-tag{flex-shrink:0;padding:6px 9px;border-radius:999px;background:#e5f3e9;color:#286246;font-size:11px;font-weight:750}
+.local-receipt-actions{display:flex;gap:10px;flex-wrap:wrap;margin:15px 0 10px}
+.local-receipt-actions button{min-height:46px}
+.local-receipt-status{margin:8px 0 0;color:#64766c;font-size:12px;line-height:1.7}
+.local-receipt-workspace{display:grid;gap:12px;margin-top:16px;padding-top:16px;border-top:1px solid #e1ebe3}
+.local-receipt-preview{display:block;width:auto;max-width:100%;max-height:300px;object-fit:contain;justify-self:start;border:1px solid #dce6df;border-radius:10px;background:white}
+.local-receipt-progress{height:8px;border-radius:999px;background:#e3ebe5;overflow:hidden}
+.local-receipt-progress span{display:block;width:0;height:100%;background:#31785a;transition:width .2s ease}
+.local-receipt-workspace textarea{width:100%;min-height:150px;resize:vertical;border:1px solid #dce5df;border-radius:10px;padding:12px;font:13px/1.7 ui-monospace,monospace;background:white;color:#243b33}
+.local-receipt-candidates{display:flex;gap:8px;flex-wrap:wrap}
+.local-receipt-candidate{padding:8px 11px;border-radius:9px;background:#edf4ef;color:#315c48;font-size:13px}
+.local-receipt-workspace .form-actions{flex-wrap:wrap}
+@media(max-width:760px){.local-receipt-tool{padding:15px}.local-receipt-heading{display:block}.local-receipt-tag{display:inline-block;margin-top:9px}.local-receipt-actions{display:grid;grid-template-columns:1fr 1fr}.local-receipt-actions button{padding:12px 9px;font-size:14px}.local-receipt-workspace .form-actions button{flex:1;min-height:46px}}
