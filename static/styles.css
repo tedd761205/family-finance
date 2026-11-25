@@ -513,7 +513,6 @@ textarea:focus-visible {
 .more-category-count{color:var(--nav-muted);font-size:11px;font-weight:600;white-space:nowrap}
 .more-tools-guidance,.more-tools-empty{margin:0;padding:10px 12px;border-radius:10px;background:#edf4ef;color:#415c4d;font-size:13px;line-height:1.6}
 .more-tools-empty{background:#fff7ea;color:#785923}
-.quick-tool-group .quick-grid{grid-template-columns:1fr}
 .app-navigation{--visible-nav-items:5}
 @media(min-width:761px) and (max-width:1200px){
  .more-category-picker{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -522,6 +521,7 @@ textarea:focus-visible {
 @media(max-width:760px){
  .more-tools-controls{gap:11px;margin-bottom:14px}
  .more-category-picker{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+ .quick-tool-group .quick-grid{grid-template-columns:1fr}
  .more-category-button{justify-content:flex-start;min-height:54px;padding:10px 12px;font-size:14px}
  .more-category-count{margin-left:auto}
  .quick-tool-group .quick-card-button{
