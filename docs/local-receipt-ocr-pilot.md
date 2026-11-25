@@ -7,7 +7,7 @@
 ## 隱私與費用
 
 - 使用者選取的照片只交給目前瀏覽器中的 OCR worker，不呼叫本站 OCR API、Google Cloud Vision 或附件上傳 API。
-- OCR 使用 Tesseract.js 7.0.0、`chi_tra+eng` 繁體中文／英文語言模型。
+- OCR 使用 Tesseract.js 7.0.0、`chi_tra` 繁體中文及 `eng` 英文語言模型。
 - QR Code 優先使用瀏覽器本機解碼；支援 BarcodeDetector 的瀏覽器也會嘗試解碼常見一維條碼。
 - 第一次使用需要從 CDN 下載 OCR 程式、WebAssembly 核心及語言模型。這不是 OCR API 計價，但會使用網路流量；手機電信商是否計收流量依使用者方案而定。
 - Tesseract.js 的模型快取由瀏覽器管理；清除網站資料、使用無痕模式或瀏覽器清除快取後，可能需要重新下載。
