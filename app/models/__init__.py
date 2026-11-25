@@ -10,6 +10,7 @@ from app.models.role_data_scope import RoleDataScope
 from app.models.revoked_token import RevokedToken
 from app.models.password_reset_token import PasswordResetToken
 from app.models.user_identity import UserIdentity
+from app.models.family_invitation import FamilyInvitation
 
 from app.models.account import Account
 from app.models.transaction import Transaction
@@ -30,7 +31,7 @@ from app.models.reconciliation_issue import ReconciliationIssue
 __all__ = [
     "User", "Family", "FamilyMember", "Role", "Permission", "RolePermission",
     "MemberRole", "AuditLog", "RoleDataScope", "RevokedToken",
-    "PasswordResetToken", "UserIdentity", "Account", "Transaction", "Transfer",
+    "PasswordResetToken", "UserIdentity", "FamilyInvitation", "Account", "Transaction", "Transfer",
     "Category", "CreditCardPayment", "Bill", "BillPayment", "Attachment",
     "OcrTask", "RecurringBill", "Notification", "ExportTemplate",
     "ExportTemplateVersion", "ExportSchedule", "ExportRun", "BankImportBatch", "BankImportRow",
