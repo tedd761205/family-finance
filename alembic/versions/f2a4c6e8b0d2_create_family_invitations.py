@@ -44,7 +44,7 @@ def upgrade() -> None:
         "ix_family_invitations_pending_family_email",
         "family_invitations",
         ["family_id", "email"],
-        unique=False,
+        unique=True,
         postgresql_where=sa.text("status = 'pending'"),
     )
 
