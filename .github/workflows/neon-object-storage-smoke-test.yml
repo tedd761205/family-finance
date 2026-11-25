@@ -2,6 +2,12 @@ name: Neon Object Storage Smoke Test
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/neon-backup.yml"
+      - ".github/workflows/neon-restore-test.yml"
+      - ".github/workflows/alembic-upgrade.yml"
+      - ".github/workflows/neon-object-storage-smoke-test.yml"
 
 permissions:
   contents: read
@@ -12,7 +18,8 @@ concurrency:
 
 jobs:
   storage-smoke-test:
-    name: Private object storage upload/download/delete
+    name: Attachment storage upload/download/delete
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -57,3 +64,133 @@ jobs:
           fi
 
           python scripts/check_attachment_storage.py
+
+  backup-storage-smoke-test:
+    name: Private backup bucket write/read round-trip
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.pull_request.head.ref == 'security/neon-private-backup-storage' &&
+        github.event.pull_request.head.repo.full_name == github.repository
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install S3 client dependency
+        run: |
+          python -m pip install --disable-pip-version-check "boto3>=1.35,<2.0"
+
+      - name: Verify private backup bucket with separate write and read credentials
+        env:
+          NEON_STORAGE_ENDPOINT: ${{ vars.NEON_STORAGE_ENDPOINT }}
+          NEON_STORAGE_REGION: ${{ vars.NEON_STORAGE_REGION }}
+          NEON_BACKUP_BUCKET: ${{ vars.NEON_BACKUP_BUCKET }}
+          NEON_BACKUP_S3_ACCESS_KEY_ID: ${{ secrets.NEON_BACKUP_S3_ACCESS_KEY_ID }}
+          NEON_BACKUP_S3_SECRET_ACCESS_KEY: ${{ secrets.NEON_BACKUP_S3_SECRET_ACCESS_KEY }}
+          NEON_RESTORE_S3_ACCESS_KEY_ID: ${{ secrets.NEON_RESTORE_S3_ACCESS_KEY_ID }}
+          NEON_RESTORE_S3_SECRET_ACCESS_KEY: ${{ secrets.NEON_RESTORE_S3_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+
+          python - <<'PY'
+          import hashlib
+          import os
+          import uuid
+          from datetime import datetime, timezone
+
+          import boto3
+          from botocore.config import Config
+
+          required = (
+              "NEON_STORAGE_ENDPOINT",
+              "NEON_STORAGE_REGION",
+              "NEON_BACKUP_BUCKET",
+              "NEON_BACKUP_S3_ACCESS_KEY_ID",
+              "NEON_BACKUP_S3_SECRET_ACCESS_KEY",
+              "NEON_RESTORE_S3_ACCESS_KEY_ID",
+              "NEON_RESTORE_S3_SECRET_ACCESS_KEY",
+          )
+          missing = [name for name in required if not os.environ.get(name, "").strip()]
+          if missing:
+              raise SystemExit(
+                  "Missing required GitHub Actions variables/secrets: " + ", ".join(missing)
+              )
+
+          endpoint = os.environ["NEON_STORAGE_ENDPOINT"].strip()
+          region = os.environ["NEON_STORAGE_REGION"].strip()
+          bucket = os.environ["NEON_BACKUP_BUCKET"].strip()
+          if not endpoint.startswith("https://"):
+              raise SystemExit("NEON_STORAGE_ENDPOINT must use HTTPS.")
+
+          config = Config(
+              signature_version="s3v4",
+              s3={"addressing_style": "path"},
+              retries={"max_attempts": 3, "mode": "standard"},
+          )
+
+          def client(access_key, secret_key):
+              return boto3.client(
+                  "s3",
+                  endpoint_url=endpoint,
+                  region_name=region,
+                  aws_access_key_id=access_key.strip(),
+                  aws_secret_access_key=secret_key,
+                  config=config,
+              )
+
+          writer = client(
+              os.environ["NEON_BACKUP_S3_ACCESS_KEY_ID"],
+              os.environ["NEON_BACKUP_S3_SECRET_ACCESS_KEY"],
+          )
+          reader = client(
+              os.environ["NEON_RESTORE_S3_ACCESS_KEY_ID"],
+              os.environ["NEON_RESTORE_S3_SECRET_ACCESS_KEY"],
+          )
+
+          payload = (
+              "family-finance private backup storage smoke test\n"
+              f"created_at={datetime.now(timezone.utc).isoformat()}\n"
+          ).encode("utf-8")
+          digest = hashlib.sha256(payload).hexdigest()
+          key = f"ci-smoke/{uuid.uuid4().hex}.txt"
+          uploaded = False
+
+          try:
+              writer.put_object(
+                  Bucket=bucket,
+                  Key=key,
+                  Body=payload,
+                  ContentType="text/plain; charset=utf-8",
+                  Metadata={"sha256": digest},
+              )
+              uploaded = True
+
+              head = reader.head_object(Bucket=bucket, Key=key)
+              if head.get("ContentLength") != len(payload):
+                  raise SystemExit("Read credential returned an unexpected object size.")
+              if head.get("Metadata", {}).get("sha256") != digest:
+                  raise SystemExit("Read credential returned unexpected SHA-256 metadata.")
+
+              response = reader.get_object(Bucket=bucket, Key=key)
+              body = response["Body"]
+              try:
+                  downloaded = body.read()
+              finally:
+                  body.close()
+
+              if downloaded != payload:
+                  raise SystemExit("Private backup object download did not match the uploaded test file.")
+
+              print("Private backup bucket write/read round-trip succeeded.")
+              print("Separate writer and reader credentials both worked.")
+              print("Test object content and SHA-256 metadata matched.")
+          finally:
+              if uploaded:
+                  writer.delete_object(Bucket=bucket, Key=key)
+                  print("Temporary ci-smoke object deleted.")
+          PY

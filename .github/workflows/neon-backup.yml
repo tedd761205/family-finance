@@ -19,42 +19,6 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Refuse database backups while the repository is public
-        env:
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_API_URL: ${{ github.api_url }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import json, os, urllib.error, urllib.request
-          repository = os.environ["GITHUB_REPOSITORY"]
-          api_url = os.environ["GITHUB_API_URL"].rstrip("/")
-          token = os.environ["GH_TOKEN"]
-          if not token:
-              raise SystemExit("Missing GitHub token for repository visibility check.")
-          request = urllib.request.Request(
-              f"{api_url}/repos/{repository}",
-              headers={
-                  "Accept": "application/vnd.github+json",
-                  "Authorization": f"Bearer {token}",
-                  "X-GitHub-Api-Version": "2022-11-28",
-              },
-          )
-          try:
-              with urllib.request.urlopen(request, timeout=20) as response:
-                  repo = json.load(response)
-          except (urllib.error.HTTPError, urllib.error.URLError) as exc:
-              raise SystemExit("Could not verify repository visibility; refusing to access Production backup credentials.") from exc
-          visibility = repo.get("visibility")
-          if visibility != "private":
-              raise SystemExit(
-                  "Refusing Production backup: GitHub Actions artifacts are downloadable by repository readers, "
-                  "but this repository is not private. Make the repository private or configure a private backup destination."
-              )
-          print("Repository visibility is private; GitHub backup artifacts will not be publicly readable.")
-          PY
-
       - name: Validate current approved backup workflow ref
         env:
           WORKFLOW_REF: ${{ github.ref }}
@@ -68,7 +32,7 @@ jobs:
           case "$WORKFLOW_REF:$WORKFLOW_EVENT" in
             refs/heads/main:schedule|refs/heads/main:workflow_dispatch)
               ;;
-            refs/heads/fix/restore-backup-row-count-manifest:workflow_dispatch)
+            refs/heads/security/neon-private-backup-storage:workflow_dispatch)
               ;;
             *)
               echo "Refusing backup from an unapproved branch or event: $WORKFLOW_REF / $WORKFLOW_EVENT"
@@ -95,12 +59,12 @@ jobs:
               if current_sha != workflow_sha:
                   raise SystemExit("Refusing backup: queued main workflow is not running the current main commit.")
           else:
-              url = f"{api_url}/repos/{repository}/pulls/59"
+              url = f"{api_url}/repos/{repository}/pulls/61"
               try:
                   with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=20) as response:
                       pr = json.load(response)
               except (urllib.error.HTTPError, urllib.error.URLError) as exc:
-                  raise SystemExit("Could not verify PR #59 before accessing Production backup credentials.") from exc
+                  raise SystemExit("Could not verify PR #61 before accessing Production backup credentials.") from exc
               head = pr.get("head") or {}
               base = pr.get("base") or {}
               head_repo = head.get("repo") or {}
@@ -112,8 +76,8 @@ jobs:
                   or base.get("ref") != "main"
                   or head.get("sha") != workflow_sha
               ):
-                  raise SystemExit("Refusing backup: PR #59 is not open as a draft at the exact workflow commit.")
-          print("Workflow ref is the current main commit or the exact open draft PR #59 head.")
+                  raise SystemExit("Refusing backup: PR #61 is not open as a draft at the exact workflow commit.")
+          print("Workflow ref is the current main commit or the exact open draft PR #61 head.")
           PY
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -301,10 +265,118 @@ jobs:
             postgres:18-bookworm \
             sh -c 'pg_restore --list "/backups/$BACKUP_FILE" > /tmp/restore-list.txt && test -s /tmp/restore-list.txt && head -n 20 /tmp/restore-list.txt'
 
-      - name: Upload backup artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: family-finance-neon-backup-${{ github.run_number }}
-          path: backups/*
-          if-no-files-found: error
-          retention-days: 14
+      - name: Install S3 client
+        run: |
+          python -m pip install --disable-pip-version-check "boto3>=1.35,<2.0"
+
+      - name: Upload and verify snapshot dump and row-count manifest in private Neon Object Storage
+        env:
+          BACKUP_FILE: ${{ steps.dump.outputs.backup_file }}
+          NEON_STORAGE_ENDPOINT: ${{ vars.NEON_STORAGE_ENDPOINT }}
+          NEON_STORAGE_REGION: ${{ vars.NEON_STORAGE_REGION }}
+          NEON_BACKUP_BUCKET: ${{ vars.NEON_BACKUP_BUCKET }}
+          NEON_BACKUP_S3_ACCESS_KEY_ID: ${{ secrets.NEON_BACKUP_S3_ACCESS_KEY_ID }}
+          NEON_BACKUP_S3_SECRET_ACCESS_KEY: ${{ secrets.NEON_BACKUP_S3_SECRET_ACCESS_KEY }}
+          NEON_RESTORE_S3_ACCESS_KEY_ID: ${{ secrets.NEON_RESTORE_S3_ACCESS_KEY_ID }}
+          NEON_RESTORE_S3_SECRET_ACCESS_KEY: ${{ secrets.NEON_RESTORE_S3_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv
+          import hashlib
+          import os
+          import re
+          import tempfile
+          from pathlib import Path
+
+          import boto3
+          from botocore.config import Config
+
+          endpoint = os.environ["NEON_STORAGE_ENDPOINT"].strip()
+          region = os.environ["NEON_STORAGE_REGION"].strip()
+          bucket = os.environ["NEON_BACKUP_BUCKET"].strip()
+          write_access_key = os.environ["NEON_BACKUP_S3_ACCESS_KEY_ID"].strip()
+          write_secret_key = os.environ["NEON_BACKUP_S3_SECRET_ACCESS_KEY"]
+          read_access_key = os.environ["NEON_RESTORE_S3_ACCESS_KEY_ID"].strip()
+          read_secret_key = os.environ["NEON_RESTORE_S3_SECRET_ACCESS_KEY"]
+          filename = os.environ["BACKUP_FILE"].strip()
+
+          if not endpoint.startswith("https://") or not region or not bucket:
+              raise SystemExit("Missing private Neon Object Storage endpoint, region, or bucket.")
+          if not write_access_key or not write_secret_key or not read_access_key or not read_secret_key:
+              raise SystemExit("Missing scoped Neon Object Storage write/read credentials.")
+          if not re.fullmatch(r"family-finance-[0-9]{8}T[0-9]{6}Z\.dump", filename):
+              raise SystemExit("Unexpected backup filename; refusing to upload.")
+
+          dump_path = Path("backups") / filename
+          manifest_path = Path("backups") / "row-counts.tsv"
+          for path in (dump_path, manifest_path):
+              if not path.is_file() or path.stat().st_size <= 0:
+                  raise SystemExit(f"Required backup file is missing or empty: {path}")
+
+          with manifest_path.open(encoding="utf-8", newline="") as manifest_file:
+              rows = list(csv.reader(manifest_file, delimiter="\t"))
+          if not rows or any(len(row) != 2 or not row[0] or not row[1].isdigit() for row in rows):
+              raise SystemExit("Snapshot row-count manifest has an invalid format.")
+          if len({row[0] for row in rows}) != len(rows):
+              raise SystemExit("Snapshot row-count manifest contains duplicate table names.")
+
+          def sha256_file(path):
+              digest = hashlib.sha256()
+              with path.open("rb") as stream:
+                  for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                      digest.update(chunk)
+              return digest.hexdigest()
+
+          config = Config(
+              signature_version="s3v4",
+              s3={"addressing_style": "path"},
+              retries={"max_attempts": 3, "mode": "standard"},
+          )
+          writer = boto3.client(
+              "s3",
+              endpoint_url=endpoint,
+              region_name=region,
+              aws_access_key_id=write_access_key,
+              aws_secret_access_key=write_secret_key,
+              config=config,
+          )
+          reader = boto3.client(
+              "s3",
+              endpoint_url=endpoint,
+              region_name=region,
+              aws_access_key_id=read_access_key,
+              aws_secret_access_key=read_secret_key,
+              config=config,
+          )
+
+          objects = [
+              (dump_path, f"production/{filename}"),
+              (manifest_path, f"production/{Path(filename).stem}.row-counts.tsv"),
+          ]
+          with tempfile.TemporaryDirectory() as temp_dir:
+              for source, key in objects:
+                  digest = sha256_file(source)
+                  size = source.stat().st_size
+                  writer.upload_file(
+                      str(source),
+                      bucket,
+                      key,
+                      ExtraArgs={
+                          "ContentType": "application/octet-stream",
+                          "Metadata": {"sha256": digest},
+                      },
+                  )
+                  head = reader.head_object(Bucket=bucket, Key=key)
+                  if head.get("ContentLength") != size or head.get("Metadata", {}).get("sha256") != digest:
+                      raise SystemExit(f"Private object metadata does not match source file: {key}")
+
+                  downloaded = Path(temp_dir) / source.name
+                  reader.download_file(bucket, key, str(downloaded))
+                  if downloaded.stat().st_size != size or sha256_file(downloaded) != digest:
+                      raise SystemExit(f"Private object round-trip verification failed: {key}")
+
+                  print(f"Verified private object: {key}")
+                  print(f"Size: {size} bytes")
+                  print(f"SHA-256: {digest}")
+          PY
