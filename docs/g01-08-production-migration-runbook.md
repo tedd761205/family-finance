@@ -4,9 +4,9 @@
 
 This runbook documents the guarded production migration workflow. It does not authorize or execute a production migration.
 
-- Production baseline observed by the read-only preflight: `49ed3855c31c`.
-- Repository Alembic head: `a7c9e1f3b5d7`.
-- The six pending revisions have successfully upgraded a restored Neon snapshot from the production baseline.
+- Production baseline for this migration: `f2a4c6e8b0d2` (family invitations already deployed).
+- Repository Alembic target: `f5b7d9e1a3c5` (cross-currency bill payment fields).
+- The cross-currency bill payment revision must be rehearsed on a fresh restored snapshot from `f2a4c6e8b0d2` before production execution.
 - The production migration workflow is manual-only and requires a fresh backup, a successful restore test, a successful restored-snapshot rehearsal, a host allowlist, and an exact target confirmation.
 
 ## Required GitHub configuration
@@ -65,11 +65,11 @@ Before running `alembic upgrade head`, the workflow:
 - Verifies successful backup, restore-test, and rehearsal runs and the available backup/rehearsal artifacts.
 - Confirms the rehearsal's migration sources match the current `main`.
 - Confirms the Neon API reports the pinned project ID and production branch ID/name, then independently matches the production endpoint hostname and database name `neondb`.
-- Opens a read-only transaction and requires the exact production baseline revision `49ed3855c31c`.
-- Requires the audited 18-table baseline and refuses if any of the ten new G-01 tables already exist or unexpected public tables are present.
+- Opens a read-only transaction and requires the exact production baseline revision `f2a4c6e8b0d2`.
+- Requires the audited 18-table baseline and refuses if any of the no new tables; four bill-payment conversion columns already exist or unexpected public tables are present.
 - Captures selected existing row counts before migration.
 
-After migration, it verifies the repository Alembic head, all ten new tables, six required indexes, two category-scope triggers, unchanged selected existing row counts, and the role catalog. It uploads a report artifact.
+After migration, it verifies the repository Alembic head, all existing finance tables and the four new bill-payment conversion columns, existing required indexes and five new bill-payment check constraints, two category-scope triggers, unchanged selected existing row counts, and the role catalog. It uploads a report artifact.
 
 ## Failure and rollback policy
 
