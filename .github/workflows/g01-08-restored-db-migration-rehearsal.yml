@@ -315,7 +315,8 @@ jobs:
                   """)).one_or_none()
                   if not token_unique:
                       raise SystemExit("Missing validated unique token_hash constraint.")
-                  if pending_index is None or not pending_index.indisunique or "status = 'pending'" not in (pending_index.predicate or ""):
+                  normalized_predicate = (pending_index.predicate or "").replace("::character varying", "").replace("::text", "").replace("(", "").replace(")", "").replace(" ", "") if pending_index is not None else ""
+                  if pending_index is None or not pending_index.indisunique or normalized_predicate != "status='pending'":
                       raise SystemExit("Pending family/email index is not unique or does not enforce status = pending.")
 
                   required_checks = {
