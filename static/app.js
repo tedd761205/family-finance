@@ -2749,3 +2749,68 @@ $("bank-import-void").addEventListener("click",async()=>{
  try{await api("/imports/batches/"+selectedImportBatchId+"/void?family_id="+selectedFamilyId,{method:"POST"});notice("bank-imports-notice","匯入批次已取消。");await loadBankImportBatches();await loadBankImportBatch(selectedImportBatchId);}
  catch(error){notice("bank-imports-notice","取消批次失敗："+error.message,"error");}
 });
+
+
+// Responsive primary navigation: reuse existing feature buttons and permission checks.
+(() => {
+  const navigation = document.getElementById("app-navigation");
+  const morePanel = document.getElementById("more-tools-panel");
+  if (!navigation || !morePanel) return;
+
+  let navigationTriggeredCard = false;
+
+  function setActive(key) {
+    navigation.querySelectorAll(".app-nav-button").forEach(button => {
+      const active = button.dataset.navKey === key;
+      button.classList.toggle("active", active);
+      if (active) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
+    });
+  }
+
+  function closeMorePanel() {
+    morePanel.classList.add("hidden");
+    const moreButton = navigation.querySelector('[data-nav-action="more"]');
+    if (moreButton) moreButton.setAttribute("aria-expanded", "false");
+  }
+
+  navigation.addEventListener("click", event => {
+    const button = event.target.closest(".app-nav-button");
+    if (!button) return;
+
+    const action = button.dataset.navAction;
+    if (action === "more") {
+      const opening = morePanel.classList.contains("hidden");
+      morePanel.classList.toggle("hidden", !opening);
+      button.setAttribute("aria-expanded", opening ? "true" : "false");
+      setActive("more");
+      if (opening) morePanel.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+
+    closeMorePanel();
+    if (action === "overview") {
+      setActive("overview");
+      document.querySelector(".family-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+
+    const target = button.dataset.navTarget;
+    if (target) {
+      setActive(button.dataset.navKey);
+      const existingButton = document.getElementById(target);
+      if (existingButton) {
+        navigationTriggeredCard = true;
+        existingButton.click();
+        navigationTriggeredCard = false;
+      }
+    }
+  });
+
+  morePanel.addEventListener("click", event => {
+    const card = event.target.closest(".quick-card-button");
+    if (!card || navigationTriggeredCard) return;
+    closeMorePanel();
+    setActive("more");
+  });
+})();
