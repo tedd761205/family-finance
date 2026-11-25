@@ -81,3 +81,27 @@ def test_invitation_accept_requires_google_identity(monkeypatch):
     assert result.success is True
     assert result.family_id == 8
     assert db.committed is True
+
+def test_family_invitation_routes_are_registered_and_authenticated():
+    from main import app
+
+    schema = app.openapi()
+    create = schema["paths"]["/families/{family_id}/invitations"]["post"]
+    accept = schema["paths"]["/families/invitations/accept"]["post"]
+    revoke = schema["paths"]["/families/{family_id}/invitations/{invitation_id}"]["delete"]
+
+    assert "HTTPBearer" in str(create.get("security", []))
+    assert "HTTPBearer" in str(accept.get("security", []))
+    assert "HTTPBearer" in str(revoke.get("security", []))
+
+
+def test_invitation_requires_matching_google_identity():
+    from app.routers.family_invitations import _require_verified_google_email
+
+    user = SimpleNamespace(id=5, email="family@example.com")
+    db = FakeDB()
+
+    with pytest.raises(HTTPException) as exc:
+        _require_verified_google_email(db, user, "family@example.com")
+
+    assert exc.value.status_code == 403
