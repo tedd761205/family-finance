@@ -2139,7 +2139,7 @@ function renderRoleMembers() {
     if (!canGrantPermission("roles.assign")) {
       const currentRoles = document.createElement("span");
       currentRoles.className = "tiny muted";
-      currentRoles.textContent = (member.role_names || []).join("、") || "尚未指派角色";
+      currentRoles.textContent = (member.roles || []).join("、") || "尚未指派角色";
       card.append(identity, currentRoles);
       host.append(card);
       continue;
