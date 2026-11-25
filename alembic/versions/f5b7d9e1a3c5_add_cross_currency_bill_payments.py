@@ -70,6 +70,21 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
+    has_cross_currency_records = bind.execute(sa.text("""
+        SELECT EXISTS (
+            SELECT 1 FROM bill_payments
+            WHERE currency_code <> account_currency_code
+               OR exchange_rate <> 1
+               OR exchange_difference <> 0
+        )
+    """)).scalar_one()
+    if has_cross_currency_records:
+        raise RuntimeError(
+            "Cannot downgrade cross-currency bill payments while converted payment records exist; "
+            "restore from a verified backup or write a separately reviewed data-preserving migration."
+        )
+
     op.drop_constraint("ck_bill_payments_same_currency_consistent", "bill_payments", type_="check")
     op.drop_constraint("ck_bill_payments_payment_exchange_difference_zero", "bill_payments", type_="check")
     op.drop_constraint("ck_bill_payments_account_currency_code", "bill_payments", type_="check")
