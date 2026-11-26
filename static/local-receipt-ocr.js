@@ -423,29 +423,24 @@
         if (!context) return;
         context.drawImage(invoiceVideo, 0, 0, width, height);
 
-        // Split the frame into two generous, slightly overlapping regions.
-        // The older 40%-wide crops left a 14% blind strip in the middle, which
-        // could cut off part of the left QR on compact mobile camera previews.
-        const boxWidth = Math.max(1, Math.min(Math.round(width * 0.49), Math.round(height * 0.90)));
-        const boxHeight = boxWidth;
-        const top = Math.max(0, Math.round((height - boxHeight) / 2));
-        const edge = Math.max(0, Math.round(width * 0.005));
+        // Scan each half at full frame height. The previous centered square crop
+        // could clip QR codes printed lower on the invoice or held near the edge
+        // of the phone preview. The 58% overlap is intentional; payload validation
+        // decides whether a decoded value is the left or right invoice code.
         const regions = [
-          { side: "left", x: edge, y: top, width: boxWidth, height: boxHeight },
-          { side: "right", x: Math.max(0, width - boxWidth - edge), y: top, width: boxWidth, height: boxHeight }
+          { side: "left", x: 0, width: Math.round(width * 0.58) },
+          { side: "right", x: Math.round(width * 0.42), width: Math.round(width * 0.58) }
         ];
         for (const region of regions) {
           if (region.side === "left" && invoiceLeftQrValue) continue;
           if (region.side === "right" && invoiceRightQrValue) continue;
           const x = Math.max(0, Math.min(width - 1, region.x));
-          const y = Math.max(0, Math.min(height - 1, region.y));
           const cropWidth = Math.max(1, Math.min(region.width, width - x));
-          const cropHeight = Math.max(1, Math.min(region.height, height - y));
-          const pixels = context.getImageData(x, y, cropWidth, cropHeight);
+          const pixels = context.getImageData(x, 0, cropWidth, height);
           const decoded = window.jsQR(pixels.data, pixels.width, pixels.height, {
-            // The left invoice QR is denser and can be printed with lower contrast.
-            // Give it the full polarity retry; keep the already reliable right QR fast.
-            inversionAttempts: region.side === "left" ? "attemptBoth" : "dontInvert"
+            // Both sides use full polarity retry. The left code is denser and
+            // particularly sensitive to glare, low contrast and partial framing.
+            inversionAttempts: "attemptBoth"
           });
           if (decoded && decoded.data) acceptInvoiceQrPayload(decoded.data);
         }
@@ -827,7 +822,11 @@
       setStatus(error && error.message ? error.message : "本機辨識失敗，請重新拍照或稍後再試。", true);
     } finally {
       setBusy(false);
-      if (parsedFields) fillButton.disabled = !hasReviewData();
+      if (parsedFields) {
+        fillButton.disabled = !hasReviewData();
+        // Bring the review fields into view automatically after live scanning.
+        workspace.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
     }
   }
 
