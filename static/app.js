@@ -1785,10 +1785,21 @@ function downloadMonthlyReportCsv() {
   const expense=reportAmountMap(data.total_expense);
   const net=reportAmountMap(data.net_amount);
   const period=String(data.year)+"-"+String(data.month).padStart(2,"0");
-  const rows=reportCurrencies(data.total_income,data.total_expense,data.net_amount).map(currency=>[
-    period,currency,income.get(currency)||0,expense.get(currency)||0,net.get(currency)||0
-  ]);
-  downloadReportCsv("家庭財務報表_月份_"+period+".csv",["期間","幣別","總收入","總支出","淨收支"],rows);
+  const monthStart=period+"-01";
+  const monthEndDate=new Date(data.year,data.month,0);
+  const monthEnd=String(data.year)+"-"+String(data.month).padStart(2,"0")+"-"+String(monthEndDate.getDate()).padStart(2,"0");
+  const rows=[];
+  for(const currency of reportCurrencies(data.total_income,data.total_expense,data.net_amount)) {
+    rows.push(["月份合計",monthStart+"～"+monthEnd,currency,income.get(currency)||0,expense.get(currency)||0,net.get(currency)||0,data.transaction_count||0]);
+  }
+  for(const item of data.daily_reports||[]) {
+    rows.push(["每日明細",reportDateIso(item.report_date),item.currency_code,item.total_income,item.total_expense,item.net_amount,item.transaction_count||0]);
+  }
+  downloadReportCsv(
+    "家庭財務報表_月份_"+period+".csv",
+    ["資料類型","日期","幣別","總收入","總支出","淨收支","交易筆數"],
+    rows
+  );
 }
 
 function downloadYearlyReportCsv() {
@@ -1830,6 +1841,46 @@ function downloadCategoryReportCsv() {
   ]);
   const suffix=[data.start_date||"不限開始日",data.end_date||"不限結束日"].join("_");
   downloadReportCsv("家庭財務報表_分類_"+suffix+".csv",["收支類型","分類名稱","幣別","金額","交易筆數","同幣別類型占比(%)"],rows);
+}
+
+function reportDateIso(value) {
+  const text=String(value||"");
+  return /^\\d{4}-\\d{2}-\\d{2}$/.test(text)?text:"—";
+}
+
+function renderMonthlyDailyReport(data) {
+  const host=$("monthly-daily-report-list");
+  host.replaceChildren();
+  const rows=data.daily_reports||[];
+  $("monthly-daily-report-empty").classList.toggle("hidden",rows.length>0);
+  if(!rows.length)return;
+  const wrap=document.createElement("div");wrap.className="monthly-daily-table-wrap";
+  const table=document.createElement("table");table.className="monthly-daily-table";
+  const thead=document.createElement("thead"),headRow=document.createElement("tr");
+  for(const label of ["日期","幣別","收入","支出","淨收支","筆數"]) {
+    const th=document.createElement("th");th.scope="col";th.textContent=label;headRow.append(th);
+  }
+  thead.append(headRow);
+  const tbody=document.createElement("tbody");
+  for(const item of rows) {
+    const tr=document.createElement("tr");
+    const values=[
+      reportDateIso(item.report_date),
+      item.currency_code,
+      money(item.total_income,item.currency_code),
+      money(item.total_expense,item.currency_code),
+      money(item.net_amount,item.currency_code),
+      String(item.transaction_count||0)
+    ];
+    for(let index=0;index<values.length;index++) {
+      const td=document.createElement("td");td.textContent=String(values[index]);
+      if(index===0)td.className="monthly-daily-date";
+      if(index>=2&&index<=4)td.className="numeric";
+      tr.append(td);
+    }
+    tbody.append(tr);
+  }
+  table.append(thead,tbody);wrap.append(table);host.append(wrap);
 }
 
 function renderMonthlyReport(data) {
@@ -1925,7 +1976,7 @@ async function loadFinancialReports() {
       api("/reports/category-summary?"+categoryParams.toString())
     ]);
     monthlyReportData=monthly;yearlyReportData=yearly;categoryReportData=categories;
-    renderMonthlyReport(monthly);renderYearlyReport(yearly);renderCategoryReport(categories);
+    renderMonthlyReport(monthly);renderMonthlyDailyReport(monthly);renderYearlyReport(yearly);renderCategoryReport(categories);
     setReportExportAvailability(true);
     notice("reports-notice","財務報表已更新。","success");
     return true;
