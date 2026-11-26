@@ -517,16 +517,32 @@
         }
       }
 
-      if (rightValue && !leftValue) {
-        setInvoiceScanStatus("已拍照，但目前只讀到商品明細碼；還需要發票基本資料碼才能帶入日期與金額。請調整角度再拍一次。", true);
-      } else {
-        setInvoiceScanStatus(
-          "已拍照，但沒有讀到有效的發票基本資料 QR Code。請靠近一點、避免反光，再按「拍照辨識」。",
-          true
-        );
-      }
+      // Keep the captured image even when the QR decoder misses the basic
+      // payload. Local OCR/manual review is a useful fallback; never discard
+      // the user's photo or force another camera launch.
+      setInvoiceScanStatus(
+        rightValue && !leftValue
+          ? "目前只讀到商品明細碼；先保留照片，繼續本機文字辨識與人工核對。"
+          : "尚未讀到有效的發票基本 QR Code；先保留照片，繼續本機文字辨識與人工核對。"
+      );
+      stopInvoiceScanner();
+      await handleFile(file, codes);
+      return;
     } catch (error) {
-      setInvoiceScanStatus(error && error.message ? error.message : "拍照或 QR 解析失敗，請再試一次。", true);
+      // QR decoding is optional: preserve the captured frame and let the
+      // existing on-device OCR/manual review flow continue.
+      setInvoiceScanStatus(
+        (error && error.message ? error.message : "QR 解析失敗") + "；保留照片並改用本機文字辨識。",
+        true
+      );
+      try {
+        const file = await captureInvoiceCameraFrame();
+        stopInvoiceScanner();
+        await handleFile(file);
+        return;
+      } catch (fallbackError) {
+        setInvoiceScanStatus(fallbackError && fallbackError.message ? fallbackError.message : "無法保留照片，請重新拍攝。", true);
+      }
     } finally {
       invoiceCaptureRequested = false;
       // The live scan callback owns invoiceScanBusy and will release it in its
@@ -579,7 +595,7 @@
         setInvoiceScanStatus("已讀取發票基本資料，正在帶入記帳欄位…");
         await completeInvoiceQrScan();
       } else if (invoiceRightQrValue) {
-        setInvoiceScanStatus("已找到商品明細碼，正在尋找發票基本資料碼…");
+        setInvoiceScanStatus("目前只讀到商品明細；發票日期與金額尚未辨識。請按下方「拍照辨識（備用）」保留畫面繼續辨識；商品明細不是記帳必要資料。");
       } else {
         setInvoiceScanStatus("正在自動搜尋整個畫面的 QR Code。先讀到發票基本資料碼即可完成，不必等商品明細碼。");
       }
@@ -807,32 +823,14 @@
   });
   invoiceCaptureButton?.addEventListener("click", (event) => {
     event.preventDefault();
-    if (isProcessing || pendingInvoiceCameraCapture) {
-      setInvoiceScanStatus("目前正在處理資料，請稍候。");
+    if (isProcessing || invoiceCaptureRequested || !invoiceCameraStream) {
+      setInvoiceScanStatus("相機尚未就緒或資料仍在處理，請稍候。");
       return;
     }
-    // Use the phone's native camera app for the reliable fallback. This avoids
-    // taking a still frame from a video stream that may be frozen or unsupported
-    // by an in-app browser. The image stays local and is decoded on this device.
-    pendingInvoiceCameraCapture = true;
-    // Save the current family + transactions workspace before leaving the page
-    // for Android/iOS native camera. Some browsers reload the tab on return.
-    const canRestoreTransaction = typeof window.prepareReceiptCaptureReturn === "function"
-      && window.prepareReceiptCaptureReturn();
-    if (!canRestoreTransaction) {
-      pendingInvoiceCameraCapture = false;
-      setInvoiceScanStatus("無法保存目前記帳頁面，請返回記帳頁後重新拍攝。", true);
-      return;
-    }
-    stopInvoiceScanner();
-    setStatus("已切換至手機相機。拍攝發票後，系統會返回記帳頁並在本機讀取 QR Code，不會上傳照片。");
-    try {
-      cameraInput.value = "";
-      cameraInput.click();
-    } catch (_error) {
-      pendingInvoiceCameraCapture = false;
-      setStatus("無法開啟手機相機，請改用「選擇照片／收據」。", true);
-    }
+    // Capture the already-open video stream in this page. Do not launch the
+    // Android/iOS camera app: switching apps can discard/reload the browser tab
+    // and lose the transaction workspace before the photo is returned.
+    void captureAndDecodeInvoicePhoto();
   });
   invoiceStopButton?.addEventListener("click", () => {
     stopInvoiceScanner();
