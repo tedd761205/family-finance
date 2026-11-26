@@ -95,7 +95,8 @@
       : null;
     const parsedTotal = Number.parseInt(totalHex, 16);
     const parsedSales = Number.parseInt(salesHex, 16);
-    const auth = left.slice(authStart, extensionSeparator);
+    const authEnd = extensionSeparator >= 0 ? extensionSeparator : fixedHeaderEnd;
+    const auth = left.slice(authStart, authEnd);
     if (auth.length !== 24 || !/^[A-Za-z0-9+/=]{24}$/.test(auth)) return null;
 
     const extension = extensionSeparator >= 0 ? left.slice(extensionSeparator + 1) : "";
