@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
@@ -84,8 +84,7 @@ def _check_bill_access(db: Session, user: User, family_id: int, bill: Bill):
 
 
 def _validate_account(
-    db: Session, family_id: int, account_id: int, currency_code: str,
-    current_user: User,
+    db: Session, family_id: int, account_id: int, current_user: User,
 ):
     account = db.query(Account).filter(
         Account.family_id == family_id, Account.id == account_id,
@@ -94,8 +93,6 @@ def _validate_account(
         raise HTTPException(status_code=404, detail="找不到此家庭帳戶")
     if not account.is_active:
         raise HTTPException(status_code=409, detail="付款帳戶已停用")
-    if account.currency_code != currency_code:
-        raise HTTPException(status_code=422, detail="付款幣別必須與帳戶幣別一致")
     try:
         _, roles = require_permission(
             db=db, user_id=current_user.id, family_id=family_id,
@@ -111,6 +108,32 @@ def _validate_account(
     return account
 
 
+def _resolve_exchange(
+    bill_amount: Decimal,
+    bill_currency: str,
+    account_currency: str,
+    supplied_rate: Decimal | None,
+) -> tuple[Decimal, Decimal]:
+    """Return the locked account-currency-per-bill-currency rate and account amount."""
+    if bill_currency == account_currency:
+        if supplied_rate is not None and supplied_rate != Decimal("1"):
+            raise HTTPException(status_code=422, detail="同幣別付款不需要輸入匯率")
+        return Decimal("1"), bill_amount.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+    if supplied_rate is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"帳單幣別 {bill_currency} 與付款帳戶幣別 {account_currency} 不同，請輸入實際付款匯率",
+        )
+    if supplied_rate <= 0:
+        raise HTTPException(status_code=422, detail="匯率必須大於 0")
+    account_amount = (bill_amount * supplied_rate).quantize(
+        Decimal("0.0001"), rounding=ROUND_HALF_UP
+    )
+    if account_amount <= 0:
+        raise HTTPException(status_code=422, detail="換算後的帳戶金額必須大於 0")
+    return supplied_rate, account_amount
+
+
 def _audit_values(payment: BillPayment):
     return {
         "bill_id": payment.bill_id,
@@ -119,6 +142,10 @@ def _audit_values(payment: BillPayment):
         "original_payment_id": payment.original_payment_id,
         "amount": payment.amount,
         "currency_code": payment.currency_code,
+        "account_amount": payment.account_amount,
+        "account_currency_code": payment.account_currency_code,
+        "exchange_rate": payment.exchange_rate,
+        "exchange_difference": payment.exchange_difference,
         "payment_date": payment.payment_date,
         "is_voided": payment.is_voided,
     }
@@ -129,8 +156,8 @@ def _create_linked_transaction(db: Session, payment: BillPayment, bill: Bill):
         family_id=payment.family_id,
         account_id=payment.account_id,
         transaction_type="expense" if payment.payment_type == "payment" else "income",
-        amount=payment.amount,
-        currency_code=payment.currency_code,
+        amount=payment.account_amount,
+        currency_code=payment.account_currency_code,
         transaction_date=payment.payment_date,
         description=payment.description or (
             f"帳單付款：{bill.title}" if payment.payment_type == "payment"
@@ -161,7 +188,10 @@ def create_bill_payment(
             raise HTTPException(status_code=409, detail="帳單已作廢，不可付款")
         if payload.currency_code != bill.currency_code:
             raise HTTPException(status_code=422, detail="付款幣別必須與帳單幣別一致")
-        _validate_account(db, family_id, payload.account_id, payload.currency_code, current_user)
+        account = _validate_account(db, family_id, payload.account_id, current_user)
+        exchange_rate, account_amount = _resolve_exchange(
+            payload.amount, bill.currency_code, account.currency_code, payload.exchange_rate
+        )
 
         total = bill.original_amount + bill.tax_amount - bill.discount_amount
         paid = get_bill_paid_amount(db, family_id, bill.id)
@@ -175,7 +205,10 @@ def create_bill_payment(
         payment = BillPayment(
             family_id=family_id, bill_id=bill.id, account_id=payload.account_id,
             payment_type="payment", amount=payload.amount,
-            currency_code=payload.currency_code, payment_date=payload.payment_date,
+            currency_code=payload.currency_code,
+            account_amount=account_amount, account_currency_code=account.currency_code,
+            exchange_rate=exchange_rate, exchange_difference=Decimal("0"),
+            payment_date=payload.payment_date,
             description=payload.description, note=payload.note,
             created_by=current_user.id,
         )
@@ -225,8 +258,24 @@ def refund_bill_payment(
         if bill.is_voided:
             raise HTTPException(status_code=409, detail="帳單已作廢，不可退款")
         if payload.currency_code != original.currency_code or payload.currency_code != bill.currency_code:
-            raise HTTPException(status_code=422, detail="退款幣別必須與原始付款及帳單一致")
-        _validate_account(db, family_id, payload.account_id, payload.currency_code, current_user)
+            raise HTTPException(status_code=422, detail="退款金額幣別必須與原始付款及帳單一致")
+        account = _validate_account(db, family_id, payload.account_id, current_user)
+        if account.currency_code != original.account_currency_code:
+            raise HTTPException(
+                status_code=422,
+                detail=f"退款帳戶幣別必須與原付款帳戶幣別一致（{original.account_currency_code}），才能正確計算匯差",
+            )
+        refund_rate, account_amount = _resolve_exchange(
+            payload.amount, bill.currency_code, account.currency_code, payload.exchange_rate
+        )
+        original_rate_basis = (payload.amount * original.exchange_rate).quantize(
+            Decimal("0.0001"), rounding=ROUND_HALF_UP
+        )
+        exchange_difference = (
+            account_amount - original_rate_basis
+            if account.currency_code != bill.currency_code
+            else Decimal("0")
+        )
 
         refunded = get_payment_refunded_amount(db, family_id, original.id)
         refundable = original.amount - refunded
@@ -240,6 +289,8 @@ def refund_bill_payment(
             family_id=family_id, bill_id=bill.id, account_id=payload.account_id,
             payment_type="refund", original_payment_id=original.id,
             amount=payload.amount, currency_code=payload.currency_code,
+            account_amount=account_amount, account_currency_code=account.currency_code,
+            exchange_rate=refund_rate, exchange_difference=exchange_difference,
             payment_date=payload.payment_date, description=payload.description,
             note=payload.note, created_by=current_user.id,
         )
