@@ -86,7 +86,7 @@ def test_paper_einvoice_uses_full_frame_multi_qr_detection_and_local_pair_valida
         styles = client.get("/static/styles.css")
 
     assert page.status_code == 200
-    assert '/static/local-receipt-ocr.js?v=20261126-11' in page.text
+    assert '/static/local-receipt-ocr.js?v=20261126-12' in page.text
     assert 'id="local-receipt-invoice-scan"' in page.text
     assert 'id="local-receipt-invoice-video"' in page.text
     assert 'id="local-receipt-left-guide"' not in page.text
