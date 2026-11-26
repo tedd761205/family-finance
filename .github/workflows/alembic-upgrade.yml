@@ -270,7 +270,7 @@ jobs:
               "reconciliation_sessions", "reconciliation_matches",
               "reconciliation_exclusions", "reconciliation_issues", "family_invitations",
           }
-          new_tables = set()
+          new_tables = {"purchase_line_items"}
           scripts = ScriptDirectory.from_config(Config("alembic.ini"))
           expected_chain = [
               "a7c9e1f3b5d7",
@@ -327,7 +327,7 @@ jobs:
           print(f"Production endpoint matched Neon API endpoint and configured host: {expected_host}")
           print(f"Neon API confirmed project {project_id}, branch {branch_id} (production).")
           print(f"Current Alembic baseline: {baseline}")
-          print("Authorized Alembic target: f5b7d9e1a3c5")
+          print("Authorized Alembic target: a8c4e2f6b1d3")
           print(f"Verified baseline tables: {len(existing)}")
           print("Selected production row counts:")
           for table, count in counts.items():
@@ -340,7 +340,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           set -euo pipefail
-          python -m alembic upgrade f5b7d9e1a3c5 2>&1 | tee production-alembic-upgrade.log
+          python -m alembic upgrade a8c4e2f6b1d3 2>&1 | tee production-alembic-upgrade.log
           python -m alembic current 2>&1 | tee production-alembic-current.txt
 
       - name: Verify production schema and preserved data
@@ -360,7 +360,7 @@ jobs:
               "bills", "recurring_bills", "bill_payments", "attachments",
               "ocr_tasks", "notifications", "export_templates",
               "export_template_versions", "export_schedules", "export_runs",
-              "family_invitations",
+              "family_invitations", "purchase_line_items",
           }
           counts_before = {}
           with open("production-migration-preflight.txt", encoding="utf-8") as report:
@@ -373,7 +373,7 @@ jobs:
                       counts_before[parts[0]] = int(parts[1])
 
           scripts = ScriptDirectory.from_config(Config("alembic.ini"))
-          expected_revision = {"f5b7d9e1a3c5"}
+          expected_revision = {"a8c4e2f6b1d3"}
           engine = create_engine(make_url(os.environ["DATABASE_URL"]), pool_pre_ping=True, connect_args={"connect_timeout": 10})
           try:
               with engine.connect() as connection:
@@ -423,6 +423,8 @@ jobs:
                       "ix_family_invitations_family_id",
                       "ix_family_invitations_email",
                       "ix_family_invitations_pending_family_email",
+                      "ix_purchase_line_items_family_transaction",
+                      "uq_purchase_line_items_family_id_id",
                   }
                   indexes = set(connection.execute(text("""
                       SELECT indexname FROM pg_indexes WHERE schemaname='public'
@@ -460,6 +462,8 @@ jobs:
                       "family_invitations_family_id_fkey",
                       "family_invitations_invited_by_user_id_fkey",
                       "family_invitations_accepted_by_user_id_fkey",
+                      "fk_purchase_line_items_family_transaction",
+                      "fk_purchase_line_items_created_by_user",
                   }
                   foreign_keys = set(connection.execute(text("""
                       SELECT conname FROM pg_constraint
@@ -517,6 +521,10 @@ jobs:
                       "ck_bill_payments_account_currency_code",
                       "ck_bill_payments_payment_exchange_difference_zero",
                       "ck_bill_payments_same_currency_consistent",
+                      "ck_purchase_line_items_item_name_not_blank",
+                      "ck_purchase_line_items_quantity_positive",
+                      "ck_purchase_line_items_unit_price_nonnegative",
+                      "ck_purchase_line_items_line_total_nonnegative",
                   }
                   check_constraints = set(connection.execute(text("""
                       SELECT conname FROM pg_constraint
