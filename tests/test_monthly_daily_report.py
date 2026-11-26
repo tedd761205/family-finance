@@ -82,4 +82,5 @@ def test_monthly_report_groups_daily_rows_by_taiwan_date_and_currency():
     ]
     assert result["total_expense"] == [
         {"currency_code": "TWD", "amount": Decimal("35.00")},
+        {"currency_code": "USD", "amount": Decimal("0.0000")},
     ]
