@@ -633,7 +633,11 @@ textarea:focus-visible {
 .local-receipt-invoice-scan-status{margin:0;color:#fff;font-size:14px;font-weight:650;line-height:1.6}
 .local-receipt-invoice-scan-status.error{color:#ffb8ae}
 .local-receipt-invoice-scan-actions{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}.local-receipt-invoice-scan-actions #local-receipt-invoice-capture{margin-right:auto}
-.local-receipt-invoice-scan-actions button{min-height:44px;background:#eaf1ed;color:#285342}
+.local-receipt-invoice-scan-actions button{min-height:44px;background:#eaf1ed;color:#285342;transition:transform .08s ease,filter .08s ease,background .12s ease}
+.local-receipt-invoice-scan-actions button:active:not(:disabled){transform:translateY(1px) scale(.98);filter:brightness(.92)}
+.local-receipt-invoice-scan-actions #local-receipt-invoice-capture.is-capturing{background:#c5dfd3;color:#173b35;animation:invoice-capture-pulse .9s ease-in-out infinite alternate;cursor:wait}
+@keyframes invoice-capture-pulse{from{box-shadow:0 0 0 0 rgba(91,190,146,.15)}to{box-shadow:0 0 0 5px rgba(91,190,146,.32)}}
+.local-receipt-invoice-scan-actions button:disabled{opacity:.9}
 @media(max-width:760px){
  .local-receipt-actions{grid-template-columns:1fr}
  .local-receipt-actions button{min-height:50px}
