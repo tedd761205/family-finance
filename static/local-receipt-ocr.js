@@ -260,8 +260,8 @@
         }
       }
 
-      // jsQR is a single-symbol fallback only. The primary ZBar detector above
-      // scans the whole invoice and can return both QR payloads in one pass.
+      // jsQR is a single-symbol fallback only.
+      // The ZBar detector above scans the whole invoice and can return both QR payloads in one pass.
       if (found.filter((item) => item.format === "QR Code" || item.format === "qr_code").length < 2) {
         const jsQR = await loadScript(JSQR_SRC, "jsQR");
         const context = canvas.getContext("2d", { willReadFrequently: true });
@@ -462,41 +462,13 @@
   }
 
   async function scanInvoiceCameraFrame() {
-    if (!invoiceCameraStream || invoiceScanBusy || !invoiceVideo.videoWidth) return;
-    if (!invoiceBarcodeDetector && !window.jsQR) return;
+    if (!invoiceCameraStream || invoiceScanBusy || !invoiceVideo.videoWidth || !invoiceBarcodeDetector) return;
     invoiceScanBusy = true;
     try {
-      // One detector scans the complete video frame and can return multiple QR
-      // values in any position/orientation. Classify by payload content, not screen side.
-      if (invoiceBarcodeDetector && (!invoiceLeftQrValue || !invoiceRightQrValue)) {
-        try {
-          const detected = await invoiceBarcodeDetector.detect(invoiceVideo);
-          for (const code of detected || []) acceptInvoiceQrPayload(code.rawValue);
-        } catch (_error) {
-          invoiceBarcodeDetector = null;
-        }
-      }
-
-      // Last-resort compatibility path for browsers where ZBar/native detector
-      // cannot start: jsQR scans the entire frame (single-result fallback).
-      if (!invoiceBarcodeDetector && window.jsQR && (!invoiceLeftQrValue || !invoiceRightQrValue)) {
-        const sourceWidth = invoiceVideo.videoWidth;
-        const sourceHeight = invoiceVideo.videoHeight;
-        const maxEdge = 2400;
-        const scale = Math.min(1, maxEdge / Math.max(sourceWidth, sourceHeight));
-        const width = Math.max(1, Math.round(sourceWidth * scale));
-        const height = Math.max(1, Math.round(sourceHeight * scale));
-        if (invoiceScanCanvas.width !== width || invoiceScanCanvas.height !== height) {
-          invoiceScanCanvas.width = width;
-          invoiceScanCanvas.height = height;
-        }
-        const context = invoiceScanCanvas.getContext("2d", { willReadFrequently: true });
-        if (!context) return;
-        context.drawImage(invoiceVideo, 0, 0, width, height);
-        const pixels = context.getImageData(0, 0, width, height);
-        const decoded = window.jsQR(pixels.data, width, height, { inversionAttempts: "attemptBoth" });
-        if (decoded && decoded.data) acceptInvoiceQrPayload(decoded.data);
-      }
+      // Scan the whole video frame and accept every QR returned. Payload content,
+      // rather than on-screen position, identifies the two invoice QR records.
+      const detected = await invoiceBarcodeDetector.detect(invoiceVideo);
+      for (const code of detected || []) acceptInvoiceQrPayload(code.rawValue);
 
       if (invoiceLeftQrValue && invoiceRightQrValue) {
         setInvoiceScanStatus("已自動找到兩組 QR Code，正在確認發票資料…");
@@ -509,7 +481,9 @@
         setInvoiceScanStatus("正在自動搜尋整個畫面的 QR Code。兩個 QR Code 同時進入畫面即可，不必對框或拿正。");
       }
     } catch (_error) {
-      // A single blurry or partially covered frame is normal while the user positions the invoice.
+      setInvoiceScanStatus("多 QR 辨識器暫時無法讀取畫面，請重新啟動掃描。", true);
+      stopInvoiceScanner(false);
+      if (invoiceScanButton) invoiceScanButton.disabled = false;
     } finally {
       invoiceScanBusy = false;
     }
@@ -654,7 +628,7 @@
 
     try {
       invoiceBarcodeDetector = await createNativeInvoiceBarcodeDetector();
-      if (!invoiceBarcodeDetector) await loadScript(JSQR_SRC, "jsQR");
+      if (!invoiceBarcodeDetector) throw new Error("無法載入全畫面多 QR 辨識引擎，請確認網路後重新開啟掃描。");
       await applyInvoiceCamera("");
       const availableCameras = await navigator.mediaDevices.enumerateDevices();
       const activeDeviceId = invoiceCameraTrack?.getSettings?.().deviceId || "";
@@ -676,7 +650,7 @@
       const currentZoom = Number(invoiceCameraTrack?.getSettings?.().zoom);
       const zoomLabel = Number.isFinite(currentZoom) ? currentZoom.toFixed(1) + "×" : "預設倍率";
       setInvoiceScanStatus(
-        (invoiceBarcodeDetector ? "已啟用全畫面多 QR 辨識。" : "已啟用單碼相容模式。") +
+        "已啟用全畫面多 QR 辨識。" +
         "目前鏡頭：" + activeCameraLabel + "，" + zoomLabel +
         "；下次會沿用你手動選過的後置鏡頭。"
       );
