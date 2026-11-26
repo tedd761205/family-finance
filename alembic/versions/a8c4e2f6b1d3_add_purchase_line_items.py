@@ -74,6 +74,16 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
+    has_purchase_items = bind.execute(
+        sa.text("SELECT EXISTS (SELECT 1 FROM purchase_line_items)")
+    ).scalar_one()
+    if has_purchase_items:
+        raise RuntimeError(
+            "Cannot downgrade while purchase line items exist; "
+            "export or back up the records before removing this table."
+        )
+
     op.drop_index(
         "ix_purchase_line_items_family_transaction",
         table_name="purchase_line_items",
