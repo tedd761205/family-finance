@@ -227,6 +227,19 @@ function transactionDateTime(value, endOfDay=false) {
   return value ? value+(endOfDay ? "T23:59:59+08:00" : "T00:00:00+08:00") : "";
 }
 
+function validateDateRange(startFieldId, endFieldId, noticeTarget, sectionLabel) {
+  const start = $(startFieldId)?.value || "";
+  const end = $(endFieldId)?.value || "";
+  if (!start || !end || start <= end) return true;
+  notice(
+    noticeTarget,
+    sectionLabel + "的結束日期不可早於開始日期，請調整日期範圍後再查詢。",
+    "error"
+  );
+  $(endFieldId)?.focus();
+  return false;
+}
+
 function populateTransactionAccountSelects() {
   const formSelect=$("transaction-account");
   const filterSelect=$("transaction-filter-account");
@@ -265,6 +278,25 @@ async function loadTransactionSupportData() {
   }
 }
 
+function transactionFiltersActive() {
+  return Boolean(
+    $("transaction-filter-type").value ||
+    $("transaction-filter-account").value ||
+    $("transaction-filter-start").value ||
+    $("transaction-filter-end").value ||
+    $("transaction-include-voided").checked
+  );
+}
+
+function clearTransactionFilters() {
+  $("transaction-filter-type").value = "";
+  $("transaction-filter-account").value = "";
+  $("transaction-filter-start").value = "";
+  $("transaction-filter-end").value = "";
+  $("transaction-include-voided").checked = false;
+  loadTransactions();
+}
+
 function transactionQuery() {
   const params=new URLSearchParams({family_id:String(selectedFamilyId),limit:"200"});
   const type=$("transaction-filter-type").value;
@@ -283,7 +315,15 @@ function renderTransactions() {
   const list=$("transactions-list");
   list.replaceChildren();
   $("transactions-count").textContent=transactionRows.length+" 筆紀錄";
+  const hasFilters = transactionFiltersActive();
   $("transactions-empty").classList.toggle("hidden",transactionRows.length!==0);
+  $("transaction-empty-title").textContent = hasFilters
+    ? "找不到符合條件的紀錄"
+    : "尚無收支紀錄";
+  $("transaction-empty-description").textContent = hasFilters
+    ? "目前日期、類型或帳戶條件沒有相符資料。請調整條件，或按「清除篩選」查看全部紀錄。"
+    : "新增第一筆收入或支出，開始記錄家庭財務。";
+  $("clear-transaction-filters").disabled = !hasFilters;
   for(const item of transactionRows) {
     const account=transactionAccounts.find(row=>row.id===item.account_id);
     const category=transactionCategories.find(row=>row.id===item.category_id);
@@ -332,7 +372,13 @@ function renderTransactions() {
 }
 
 async function loadTransactions() {
-  if(!selectedFamilyId)return;
+  if(!selectedFamilyId)return false;
+  if (!validateDateRange(
+    "transaction-filter-start",
+    "transaction-filter-end",
+    "transaction-notice",
+    "收支紀錄"
+  )) return false;
   clearNotice("transaction-notice");
   $("transactions-loading").classList.remove("hidden");
   try {
@@ -621,6 +667,7 @@ $("purchase-items-apply-total").addEventListener("click",()=>{
 }); 
 $("transaction-amount").addEventListener("input",()=>{purchaseAmountAuto=false;});
 $("apply-transaction-filters").addEventListener("click",loadTransactions);
+$("clear-transaction-filters").addEventListener("click",clearTransactionFilters);
 $("transaction-filter-type").addEventListener("change",loadTransactions);
 $("transaction-filter-account").addEventListener("change",loadTransactions);
 $("transaction-include-voided").addEventListener("change",loadTransactions);
@@ -816,6 +863,7 @@ function renderTransfers() {
 
 async function loadTransfers() {
   if(!selectedFamilyId)return false;
+  if (!validateDateRange("transfer-filter-start","transfer-filter-end","transfer-notice","轉帳紀錄")) return false;
   clearNotice("transfer-notice");
   $("transfers-loading").classList.remove("hidden");
   try {
@@ -1074,6 +1122,7 @@ function renderCreditCardPayments() {
 
 async function loadCreditCardPayments() {
   if(!selectedFamilyId)return false;
+  if (!validateDateRange("credit-payment-filter-start","credit-payment-filter-end","credit-payment-notice","信用卡繳款")) return false;
   clearNotice("credit-payment-notice");
   $("credit-card-payments-loading").classList.remove("hidden");
   try {
@@ -1323,6 +1372,7 @@ function renderBills() {
 
 async function loadBills() {
   if(!selectedFamilyId)return false;
+  if (!validateDateRange("bill-filter-start","bill-filter-end","bill-notice","帳單列表")) return false;
   clearNotice("bill-notice");
   $("bills-loading").classList.remove("hidden");
   try {
