@@ -94,6 +94,16 @@ async function loadFamilies(){
     meta.textContent=family.currency+" · 家庭成員";
     card.append(title,meta);
     card.addEventListener("click",async()=>{
+      if (selectedFamilyId !== family.family_id) {
+        if (transactionFormHasUnsavedChanges() &&
+            !window.confirm("目前的收支表單有尚未儲存的內容。切換家庭會清除這些內容，確定要切換嗎？")) {
+          return;
+        }
+        // Never carry an open draft or edit target into another family's scope.
+        if (!$("transaction-form-panel").classList.contains("hidden")) {
+          resetTransactionForm();
+        }
+      }
       selectedFamilyId=family.family_id;
       for(const node of list.children)node.classList.remove("selected");
       card.classList.add("selected");
@@ -444,6 +454,39 @@ window.setTransactionPurchaseItems = (items, options = {}) => {
   setPurchaseItems(items, { autoAmount: options.autoAmount === true });
 };
 
+let transactionFormTouched = false;
+
+function transactionFormHasUnsavedChanges() {
+  const panel = $("transaction-form-panel");
+  if (!panel || panel.classList.contains("hidden")) return false;
+  if (transactionFormTouched) return true;
+  if (editingTransactionId) return false;
+
+  const hasValue = (id) => Boolean($(id)?.value?.trim());
+  return hasValue("transaction-amount") ||
+    hasValue("transaction-description") ||
+    hasValue("transaction-reference") ||
+    hasValue("transaction-note") ||
+    hasValue("transaction-category") ||
+    ($("purchase-items-list")?.children.length || 0) > 0;
+}
+
+function confirmDiscardTransactionForm(action) {
+  if (!transactionFormHasUnsavedChanges()) return true;
+  return window.confirm("收支表單還有尚未儲存的內容。確定要" + action + "並清除嗎？");
+}
+
+const transactionFormElement = $("transaction-form");
+transactionFormElement?.addEventListener("input", () => {
+  transactionFormTouched = true;
+});
+transactionFormElement?.addEventListener("change", () => {
+  transactionFormTouched = true;
+});
+transactionFormElement?.addEventListener("reset", () => {
+  transactionFormTouched = false;
+});
+
 function resetTransactionForm() {
   editingTransactionId=null;
   $("transaction-form").reset();
@@ -481,16 +524,21 @@ function startEditTransaction(item) {
 
 $("open-transactions").addEventListener("click",showTransactions);
 $("close-transactions").addEventListener("click",()=>{
+  if (!confirmDiscardTransactionForm("收起")) return;
   $("transactions-view").classList.add("hidden");
   resetTransactionForm();
 });
 $("add-transaction-button").addEventListener("click",()=>{
+  if (!confirmDiscardTransactionForm("放棄目前內容並開始新增")) return;
   resetTransactionForm();
   if(!transactionAccounts.length){notice("transaction-notice","請先建立至少一個啟用中的帳戶。","error");return;}
   $("transaction-form-panel").classList.remove("hidden");
   $("transaction-form-panel").scrollIntoView({behavior:"smooth",block:"start"});
 });
-$("transaction-cancel").addEventListener("click",resetTransactionForm);
+$("transaction-cancel").addEventListener("click",()=>{
+  if (!confirmDiscardTransactionForm("取消")) return;
+  resetTransactionForm();
+});
 $("transaction-type").addEventListener("change",()=>{
   populateTransactionCategories($("transaction-type").value);
   setPurchaseItemsVisibility();
