@@ -497,6 +497,23 @@
     }
   }
 
+  async function enableContinuousCameraFocus(track) {
+    if (!track || typeof track.getCapabilities !== "function" || typeof track.applyConstraints !== "function") return;
+    try {
+      const capabilities = track.getCapabilities() || {};
+      const advanced = {};
+      if (Array.isArray(capabilities.focusMode) && capabilities.focusMode.includes("continuous")) {
+        advanced.focusMode = "continuous";
+      }
+      if (Array.isArray(capabilities.exposureMode) && capabilities.exposureMode.includes("continuous")) {
+        advanced.exposureMode = "continuous";
+      }
+      if (Object.keys(advanced).length) await track.applyConstraints({ advanced: [advanced] });
+    } catch (_error) {
+      // Many browsers manage focus automatically and do not expose manual focus controls.
+    }
+  }
+
   async function applyInvoiceCamera(deviceId = "") {
     if (invoiceScanTimer) { window.clearInterval(invoiceScanTimer); invoiceScanTimer = null; }
     if (invoiceCameraStream) invoiceCameraStream.getTracks().forEach((track) => track.stop());
@@ -511,10 +528,11 @@
     invoiceCameraStream = await navigator.mediaDevices.getUserMedia({ audio: false, video });
     invoiceCameraTrack = invoiceCameraStream.getVideoTracks()[0] || null;
     invoiceCameraDeviceId = invoiceCameraTrack?.getSettings?.().deviceId || deviceId;
+    await enableContinuousCameraFocus(invoiceCameraTrack);
     invoiceVideo.srcObject = invoiceCameraStream;
     await invoiceVideo.play();
     await refreshInvoiceCameraControls();
-    invoiceScanTimer = window.setInterval(scanInvoiceCameraFrame, 260);
+    invoiceScanTimer = window.setInterval(scanInvoiceCameraFrame, 160);
   }
 
   async function startInvoiceScanner() {
@@ -539,6 +557,7 @@
 
     try {
       await loadScript(JSQR_SRC, "jsQR");
+      invoiceBarcodeDetector = await createNativeInvoiceBarcodeDetector();
       await applyInvoiceCamera("");
       const availableCameras = await navigator.mediaDevices.enumerateDevices();
       const preferredCamera = preferredRearCamera(availableCameras);
@@ -547,7 +566,11 @@
         await applyInvoiceCamera(preferredCamera.deviceId);
       }
       invoiceCameraPanel.classList.remove("camera-unavailable");
-      setInvoiceScanStatus("相機已啟動。若畫面太遠，可切換後置鏡頭或拉近縮放；請讓兩個 QR Code 完整入框。");
+      setInvoiceScanStatus(
+        invoiceBarcodeDetector
+          ? "相機已啟動，已使用手機原生 QR 加速辨識；若畫面太遠，可切換後置鏡頭或拉近縮放。"
+          : "相機已啟動，使用相容掃描模式；若畫面太遠，可切換後置鏡頭或拉近縮放。"
+      );
       cameraButton.disabled = true;
       chooseButton.disabled = true;
       invoiceStopButton.disabled = false;
