@@ -1060,12 +1060,40 @@
     }
   }
 
+  let transactionDateWasEdited = false;
+  const transactionDateField = $("transaction-date");
+  const transactionForm = $("transaction-form");
+
+  // App resets the date to today when a new draft starts. Track actual user
+  // edits separately so importing a receipt can replace that untouched default.
+  transactionForm?.addEventListener("reset", () => {
+    transactionDateWasEdited = false;
+  });
+  transactionDateField?.addEventListener("input", () => {
+    transactionDateWasEdited = true;
+  });
+  transactionDateField?.addEventListener("change", () => {
+    transactionDateWasEdited = true;
+  });
+
   function fillTransactionForm() {
     if (!hasReviewData()) return;
-    if (typeof window.resetTransactionForm === "function") window.resetTransactionForm();
+
+    // Receipt import always creates a new expense. Never let it overwrite an
+    // existing transaction that is currently being edited.
+    const editingExistingTransaction =
+      $("transaction-form-title")?.textContent.includes("修改") ||
+      $("transaction-submit")?.textContent.includes("儲存修改");
+    if (editingExistingTransaction) {
+      setStatus("目前正在修改既有交易。為避免發票資料覆蓋原紀錄，請先儲存或取消這次修改，再重新按「帶入記帳表單」。");
+      return;
+    }
+
     const type = $("transaction-type");
-    type.value = "expense";
-    type.dispatchEvent(new Event("change", { bubbles: true }));
+    if (type.value !== "expense") {
+      type.value = "expense";
+      type.dispatchEvent(new Event("change", { bubbles: true }));
+    }
 
     const merchant = merchantInput.value.trim();
     const amount = amountInput.value.trim();
@@ -1074,12 +1102,48 @@
     const sellerTaxId = sellerTaxIdInput.value.trim();
     const buyerTaxId = buyerTaxIdInput.value.trim();
     const itemLines = itemsInput.value.trim();
+    const amountField = $("transaction-amount");
+    const dateField = $("transaction-date");
+    const referenceField = $("transaction-reference");
+    const descriptionField = $("transaction-description");
+    const noteField = $("transaction-note");
+    const purchaseItemsList = $("purchase-items-list");
     const structuredItems = Array.isArray(parsedFields && parsedFields.items)
       ? parsedFields.items
       : [];
+    const preservedFields = [];
 
-    if (amount) $("transaction-amount").value = amount;
-    if (window.setTransactionPurchaseItems) {
+    // Merge into the current draft rather than resetting it. Existing account,
+    // category, notes and manually entered values remain untouched.
+    if (amount && !amountField.value.trim()) {
+      amountField.value = amount;
+    } else if (amountField.value.trim()) {
+      preservedFields.push("原有金額");
+    }
+
+    if (date && !transactionDateWasEdited) {
+      dateField.value = date;
+    } else if (dateField.value.trim()) {
+      preservedFields.push("原有日期");
+    }
+
+    if (invoiceNumber && !referenceField.value.trim()) {
+      referenceField.value = invoiceNumber;
+    } else if (referenceField.value.trim()) {
+      preservedFields.push("原有單號");
+    }
+
+    if (merchant && !descriptionField.value.trim()) {
+      descriptionField.value = merchant.slice(0, 255);
+    } else if (descriptionField.value.trim()) {
+      preservedFields.push("原有說明");
+    }
+    if (!merchant && !descriptionField.value.trim()) {
+      descriptionField.value = "發票／收據消費（請補商家名稱）";
+    }
+
+    if (window.setTransactionPurchaseItems && structuredItems.length &&
+        (!purchaseItemsList || purchaseItemsList.children.length === 0)) {
       window.setTransactionPurchaseItems(
         structuredItems.map((item) => ({
           item_name: item.name,
@@ -1089,11 +1153,9 @@
         })),
         { autoAmount: false }
       );
+    } else if (purchaseItemsList?.children.length) {
+      preservedFields.push("原有商品明細");
     }
-    if (date) $("transaction-date").value = date;
-    if (invoiceNumber) $("transaction-reference").value = invoiceNumber;
-    if (merchant) $("transaction-description").value = merchant.slice(0, 255);
-    else if (!$("transaction-description").value.trim()) $("transaction-description").value = "發票／收據消費（請補商家名稱）";
 
     const noteParts = [];
     noteParts.push("憑證種類：" + receiptTypeLabel());
@@ -1102,13 +1164,18 @@
     if (itemLines && !structuredItems.length) {
       noteParts.push("OCR 商品明細文字（尚未拆成結構化明細，請人工核對）：\\n" + itemLines);
     }
-    if (noteParts.length && !$("transaction-note").value.trim()) {
-      $("transaction-note").value = noteParts.join("\n");
+    if (noteParts.length && !noteField.value.trim()) {
+      noteField.value = noteParts.join("\n");
+    } else if (noteField.value.trim()) {
+      preservedFields.push("原有備註");
     }
 
     $("transaction-form-panel").classList.remove("hidden");
     $("transaction-form-panel").scrollIntoView({ behavior: "smooth", block: "start" });
-    setStatus("已將可辨識資料帶入記帳表單。請再核對金額、商家、帳戶及分類，最後按「新增紀錄」才會正式入帳。");
+    const preservedMessage = preservedFields.length
+      ? "已保留你先前輸入的" + Array.from(new Set(preservedFields)).join("、") + "；本次只補入空白欄位。"
+      : "已帶入辨識資料並保留目前帳戶與分類選擇。";
+    setStatus(preservedMessage + "請再核對金額、商家、帳戶及分類，最後按「新增紀錄」才會正式入帳。");
   }
 
     function disposeLocalReceiptSession() {
