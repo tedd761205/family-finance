@@ -59,6 +59,7 @@
   let invoiceScanTimer = null;
   let invoiceScanBusy = false;
   let invoiceCaptureRequested = false;
+  let invoiceCaptureGeneration = 0;
   let invoiceLeftQrValue = null;
   let invoiceRightQrValue = null;
   const invoiceScanCanvas = document.createElement("canvas");
@@ -465,6 +466,7 @@
     // Pause the continuous scanner immediately. The previous implementation returned
     // silently whenever invoiceScanBusy was true, which is almost always during live
     // detection and made the button appear to do nothing.
+    invoiceCaptureGeneration += 1;
     invoiceCaptureRequested = true;
     if (invoiceScanTimer) {
       window.clearInterval(invoiceScanTimer);
@@ -552,13 +554,14 @@
     if (!invoiceCameraStream || invoiceScanBusy || invoiceCaptureRequested || !invoiceVideo.videoWidth) return;
     if (!invoiceBarcodeDetector && typeof window.jsQR !== "function") return;
     invoiceScanBusy = true;
+    const scanGeneration = invoiceCaptureGeneration;
     try {
       // Prefer multi-QR detection, but never let one video/WASM decoder failure
       // turn off the camera or disable the user's manual capture fallback.
       if (invoiceBarcodeDetector) {
         try {
           const detected = await invoiceBarcodeDetector.detect(invoiceVideo);
-          if (invoiceCaptureRequested) return;
+          if (invoiceCaptureRequested || scanGeneration !== invoiceCaptureGeneration) return;
           for (const code of detected || []) acceptInvoiceQrPayload(code.rawValue);
         } catch (_error) {
           invoiceBarcodeDetector = null;
@@ -570,7 +573,7 @@
       // keep checking the full frame until the primary payload appears.
       if (!invoiceLeftQrValue && typeof window.jsQR === "function") {
         const fallbackValue = await decodeInvoiceVideoFrameWithJsQr();
-        if (invoiceCaptureRequested) return;
+        if (invoiceCaptureRequested || scanGeneration !== invoiceCaptureGeneration) return;
         if (fallbackValue) acceptInvoiceQrPayload(fallbackValue);
       }
 
