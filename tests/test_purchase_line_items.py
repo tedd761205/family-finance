@@ -318,9 +318,6 @@ def test_purchase_item_visibility_follows_parent_transaction_own_scope(purchase_
     _, owner_headers, family_id, account_id = setup_purchase_family(
         purchase_api_client, suffix, "owner",
     )
-    _, member_headers, _, _ = setup_purchase_family(
-        purchase_api_client, suffix + "-other-family", "separate",
-    )
     # Register a second user, then join the owner's family.
     email = f"purchase-member-{suffix}@example.com"
     password = "Purchase-line-item-test-password-123!"
