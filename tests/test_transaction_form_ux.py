@@ -102,3 +102,11 @@ def test_warm_family_theme_uses_cream_sage_palette_with_readable_semantic_states
     assert "var(--success-bg)" in styles
     assert ".local-receipt-invoice-camera{display:grid" in styles
     assert "prefers-reduced-transparency: reduce" in styles
+
+
+def test_warm_visual_theme_stylesheet_cache_is_refreshed():
+    with TestClient(app) as client:
+        page = client.get("/")
+
+    assert page.status_code == 200
+    assert '/static/styles.css?v=20261126-8' in page.text
