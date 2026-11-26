@@ -117,8 +117,8 @@ def test_paper_einvoice_uses_full_frame_multi_qr_detection_and_local_pair_valida
     assert "advanced.zoom = Math.min(maxZoom, Math.max(minZoom, 1))" in script.text
     assert "INVOICE_CAMERA_STORAGE_KEY" in script.text
     assert "rememberInvoiceCameraId(invoiceCameraSelect.value)" in script.text
-    assert "The ZBar detector above scans the whole invoice" in script.text
-    assert "rather than on-screen position" in script.text
+    assert "for (const code of detected || []) acceptInvoiceQrPayload(code.rawValue);" in script.text
+    assert "if (!invoiceLeftQrValue && typeof window.jsQR === \"function\")" in script.text
     assert "async function captureAndDecodeInvoicePhoto()" in script.text
     assert "const codes = await decodeInvoicePhotoWithJsQr(file)" in script.text
     assert "async function decodeInvoicePhotoWithJsQr(file)" in script.text
