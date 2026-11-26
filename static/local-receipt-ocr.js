@@ -52,6 +52,7 @@
   let invoiceCameraStream = null;
   let invoiceCameraDeviceId = "";
   let invoiceCameraTrack = null;
+  let invoiceBarcodeDetector = null;
   let invoiceScanTimer = null;
   let invoiceScanBusy = false;
   let invoiceLeftQrValue = null;
@@ -355,54 +356,90 @@
     }
   }
 
+  function acceptInvoiceQrPayload(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return;
+    if (raw.startsWith("**")) {
+      if (!invoiceRightQrValue) {
+        invoiceRightQrValue = raw;
+        setInvoiceGuideScanned("right", true);
+      }
+      return;
+    }
+    if (!invoiceLeftQrValue && window.FamilyReceiptParser.parseTaiwanInvoiceQr(raw, null)) {
+      invoiceLeftQrValue = raw;
+      setInvoiceGuideScanned("left", true);
+    }
+  }
+
+  async function createNativeInvoiceBarcodeDetector() {
+    if (typeof window.BarcodeDetector !== "function") return null;
+    try {
+      const supported = typeof window.BarcodeDetector.getSupportedFormats === "function"
+        ? await window.BarcodeDetector.getSupportedFormats()
+        : ["qr_code"];
+      if (!supported.includes("qr_code")) return null;
+      return new window.BarcodeDetector({ formats: ["qr_code"] });
+    } catch (_error) {
+      // BarcodeDetector is not available in every mobile browser. jsQR remains the fallback.
+      return null;
+    }
+  }
+
   async function scanInvoiceCameraFrame() {
-    if (!invoiceCameraStream || invoiceScanBusy || !invoiceVideo.videoWidth || !window.jsQR) return;
+    if (!invoiceCameraStream || invoiceScanBusy || !invoiceVideo.videoWidth) return;
+    if (!window.jsQR && !invoiceBarcodeDetector) return;
     invoiceScanBusy = true;
     try {
       const sourceWidth = invoiceVideo.videoWidth;
       const sourceHeight = invoiceVideo.videoHeight;
-      const maxEdge = 1400;
-      const scale = Math.min(1, maxEdge / Math.max(sourceWidth, sourceHeight));
-      const width = Math.max(1, Math.round(sourceWidth * scale));
-      const height = Math.max(1, Math.round(sourceHeight * scale));
-      if (invoiceScanCanvas.width !== width || invoiceScanCanvas.height !== height) {
-        invoiceScanCanvas.width = width;
-        invoiceScanCanvas.height = height;
+
+      // Prefer the browser's native camera/barcode implementation. It can return
+      // both QR codes from one frame; jsQR below remains the cross-browser fallback.
+      if (invoiceBarcodeDetector && (!invoiceLeftQrValue || !invoiceRightQrValue)) {
+        try {
+          const detected = await invoiceBarcodeDetector.detect(invoiceVideo);
+          for (const code of detected || []) acceptInvoiceQrPayload(code.rawValue);
+        } catch (_error) {
+          invoiceBarcodeDetector = null;
+        }
       }
-      const context = invoiceScanCanvas.getContext("2d", { willReadFrequently: true });
-      if (!context) return;
-      context.drawImage(invoiceVideo, 0, 0, width, height);
 
-      // The red guide boxes use the same normalized coordinates as these local scan regions.
-      const boxWidth = Math.round(width * 0.35);
-      const boxHeight = boxWidth;
-      const top = Math.round(height * 0.30);
-      const regions = [
-        { side: "left", x: Math.round(width * 0.05), y: top, width: boxWidth, height: boxHeight },
-        { side: "right", x: Math.round(width * 0.60), y: top, width: boxWidth, height: boxHeight }
-      ];
-      for (const region of regions) {
-        if (region.side === "left" && invoiceLeftQrValue) continue;
-        if (region.side === "right" && invoiceRightQrValue) continue;
-        const x = Math.max(0, Math.min(width - 1, region.x));
-        const y = Math.max(0, Math.min(height - 1, region.y));
-        const cropWidth = Math.max(1, Math.min(region.width, width - x));
-        const cropHeight = Math.max(1, Math.min(region.height, height - y));
-        const pixels = context.getImageData(x, y, cropWidth, cropHeight);
-        const decoded = window.jsQR(pixels.data, pixels.width, pixels.height, {
-          inversionAttempts: "attemptBoth"
-        });
-        if (!decoded || !decoded.data) continue;
+      // Only decode the missing side(s) with jsQR. Standard printed invoice QR
+      // codes are dark-on-light, so dontInvert avoids an expensive second pass.
+      if (window.jsQR && (!invoiceLeftQrValue || !invoiceRightQrValue)) {
+        const maxEdge = 1600;
+        const scale = Math.min(1, maxEdge / Math.max(sourceWidth, sourceHeight));
+        const width = Math.max(1, Math.round(sourceWidth * scale));
+        const height = Math.max(1, Math.round(sourceHeight * scale));
+        if (invoiceScanCanvas.width !== width || invoiceScanCanvas.height !== height) {
+          invoiceScanCanvas.width = width;
+          invoiceScanCanvas.height = height;
+        }
+        const context = invoiceScanCanvas.getContext("2d", { willReadFrequently: true });
+        if (!context) return;
+        context.drawImage(invoiceVideo, 0, 0, width, height);
 
-        if (region.side === "left") {
-          const leftParsed = window.FamilyReceiptParser.parseTaiwanInvoiceQr(decoded.data, null);
-          if (leftParsed) {
-            invoiceLeftQrValue = decoded.data;
-            setInvoiceGuideScanned("left", true);
-          }
-        } else if (String(decoded.data).startsWith("**")) {
-          invoiceRightQrValue = decoded.data;
-          setInvoiceGuideScanned("right", true);
+        // These larger centred guide regions match the on-screen red boxes.
+        const boxWidth = Math.round(width * 0.40);
+        const boxHeight = boxWidth;
+        const top = Math.max(0, Math.round((height - boxHeight) / 2));
+        const regions = [
+          { side: "left", x: Math.round(width * 0.03), y: top, width: boxWidth, height: boxHeight },
+          { side: "right", x: Math.round(width * 0.57), y: top, width: boxWidth, height: boxHeight }
+        ];
+        for (const region of regions) {
+          if (region.side === "left" && invoiceLeftQrValue) continue;
+          if (region.side === "right" && invoiceRightQrValue) continue;
+          const x = Math.max(0, Math.min(width - 1, region.x));
+          const y = Math.max(0, Math.min(height - 1, region.y));
+          const cropWidth = Math.max(1, Math.min(region.width, width - x));
+          const cropHeight = Math.max(1, Math.min(region.height, height - y));
+          const pixels = context.getImageData(x, y, cropWidth, cropHeight);
+          const decoded = window.jsQR(pixels.data, pixels.width, pixels.height, {
+            inversionAttempts: "dontInvert"
+          });
+          if (decoded && decoded.data) acceptInvoiceQrPayload(decoded.data);
         }
       }
 
@@ -410,11 +447,11 @@
         setInvoiceScanStatus("左右 QR Code 都已讀取，正在確認資料配對…");
         await completeInvoiceQrScan();
       } else if (invoiceLeftQrValue) {
-        setInvoiceScanStatus("左側 QR Code 已讀取。請再將右側 QR Code 對準右邊紅框。");
+        setInvoiceScanStatus("左側 QR Code 已讀取。請再將右側 QR Code 對準右邊綠框。");
       } else if (invoiceRightQrValue) {
         setInvoiceScanStatus("右側 QR Code 已讀取。請再將左側 QR Code 對準左邊紅框。");
       } else {
-        setInvoiceScanStatus("正在尋找左右 QR Code，請保持發票平整並對準紅框。");
+        setInvoiceScanStatus("正在快速尋找左右 QR Code，請將兩碼置中並保持發票平整。");
       }
     } catch (_error) {
       // A single blurry or partially covered frame is normal while the user is positioning the invoice.
