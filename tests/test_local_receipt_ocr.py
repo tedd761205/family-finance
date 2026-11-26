@@ -90,7 +90,7 @@ def test_paper_einvoice_uses_full_frame_multi_qr_detection_and_local_pair_valida
     assert 'id="local-receipt-left-guide"' not in page.text
     assert 'id="local-receipt-right-guide"' not in page.text
     assert "不必分左右、不必對框或拿正" in page.text
-    assert "兩個 QR Code 同時進入畫面即可" in page.text
+    assert "另一個 QR 若有讀到，會再補上商品明細" in page.text
 
     assert "navigator.mediaDevices.getUserMedia" in script.text
     assert "function preferredRearCamera(devices, rememberedId = \"\", activeDeviceId = \"\")" in script.text
@@ -119,14 +119,19 @@ def test_paper_einvoice_uses_full_frame_multi_qr_detection_and_local_pair_valida
     assert "The ZBar detector above scans the whole invoice" in script.text
     assert "rather than on-screen position" in script.text
     assert "async function captureAndDecodeInvoicePhoto()" in script.text
-    assert "const codes = await decodeLocalCodes(file)" in script.text
+    assert "const codes = await decodeLocalCodes(file, invoiceBarcodeDetector, true)" in script.text
+    assert "let invoiceCaptureRequested = false" in script.text
+    assert "while (invoiceScanBusy && Date.now() - waitStarted < 2500)" in script.text
+    assert 'invoiceCaptureButton.textContent = "正在拍攝…"' in script.text
+    assert 'setInvoiceScanStatus("已拍照，正在解析發票 QR Code…")' in script.text
+    assert "if (!leftValue || isProcessing) return;" in script.text
     assert 'id="local-receipt-invoice-capture"' in page.text
-    assert "拍照補掃（備用）" in page.text
+    assert "拍照辨識（備用）" in page.text
     assert "MAX_BARCODE_IMAGE_EDGE = 2600" in script.text
     assert "workspace.scrollIntoView({ behavior: \"smooth\", block: \"start\" })" in script.text
     assert 'inversionAttempts: "attemptBoth"' in script.text
     assert "parseTaiwanInvoiceQr(leftValue, rightValue)" in script.text
-    assert "handleFile(file, codes)" in script.text
+    assert "handleFile(file, pair)" in script.text
 
 
 def test_live_invoice_camera_stops_cleanly_and_keeps_receipt_photo_fallback():
