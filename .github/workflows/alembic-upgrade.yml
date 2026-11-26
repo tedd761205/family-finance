@@ -256,7 +256,7 @@ jobs:
           if url.database != "neondb":
               raise SystemExit("Refusing to proceed: unexpected production database name.")
 
-          baseline = "f2a4c6e8b0d2"
+          baseline = "f5b7d9e1a3c5"
           existing = {
               "accounts", "alembic_version", "audit_logs", "categories",
               "credit_card_payments", "families", "family_members",
