@@ -70,29 +70,35 @@ def setup_family_and_account(client, suffix):
     return headers, family_id, account.json()["id"]
 
 
-def create_test_bill(client, headers, family_id, number="BILL-001", amount="1000.0000"):
+def create_test_bill(client, headers, family_id, number="BILL-001", amount="1000.0000", currency_code="TWD"):
     response = client.post(f"/bills?family_id={family_id}", headers=headers, json={
         "bill_number": number, "title": "測試水電費", "bill_date": "2026-11-01",
         "due_date": "2026-11-30", "original_amount": amount,
-        "tax_amount": "0", "discount_amount": "0", "currency_code": "TWD",
+        "tax_amount": "0", "discount_amount": "0", "currency_code": currency_code,
     })
     assert response.status_code == 201, response.text
     return response.json()
 
 
-def payment_payload(bill_id, account_id, amount):
-    return {
+def payment_payload(bill_id, account_id, amount, currency_code="TWD", exchange_rate=None):
+    payload = {
         "bill_id": bill_id, "account_id": account_id, "amount": amount,
-        "currency_code": "TWD", "payment_date": "2026-11-18T10:00:00+08:00",
+        "currency_code": currency_code, "payment_date": "2026-11-18T10:00:00+08:00",
         "description": "測試帳單付款",
     }
+    if exchange_rate is not None:
+        payload["exchange_rate"] = exchange_rate
+    return payload
 
 
-def refund_payload(account_id, amount):
-    return {
-        "account_id": account_id, "amount": amount, "currency_code": "TWD",
+def refund_payload(account_id, amount, currency_code="TWD", exchange_rate=None):
+    payload = {
+        "account_id": account_id, "amount": amount, "currency_code": currency_code,
         "payment_date": "2026-11-19T10:00:00+08:00", "description": "測試退款",
     }
+    if exchange_rate is not None:
+        payload["exchange_rate"] = exchange_rate
+    return payload
 
 
 def test_partial_payments_refunds_and_bill_balance_are_atomic(bill_payment_client):
@@ -117,6 +123,10 @@ def test_partial_payments_refunds_and_bill_balance_are_atomic(bill_payment_clien
     )
     assert first.status_code == 201, first.text
     assert first.json()["payment_type"] == "payment"
+    assert first.json()["account_amount"] == "400.0000"
+    assert first.json()["account_currency_code"] == "TWD"
+    assert first.json()["exchange_rate"] == "1.0000000000"
+    assert first.json()["exchange_difference"] == "0.0000"
 
     partial = bill_payment_client.get(
         f"/bills/{bill_id}?family_id={family_id}", headers=headers,
@@ -259,3 +269,105 @@ def test_payment_rejects_foreign_family_account(bill_payment_client):
         json=payment_payload(bill["id"], account_b, "100.0000"),
     )
     assert response.status_code == 404
+
+def test_cross_currency_bill_payment_and_partial_refunds_preserve_actual_rates(bill_payment_client):
+    from sqlalchemy.orm import Session
+    from app.database import engine
+    from app.models.transaction import Transaction
+    from decimal import Decimal
+
+    suffix = uuid4().hex
+    headers, family_id, twd_account_id = setup_family_and_account(bill_payment_client, suffix)
+    usd_account = bill_payment_client.post(
+        f"/accounts?family_id={family_id}", headers=headers,
+        json={"name": "美元帳戶", "account_type": "bank", "currency_code": "USD"},
+    )
+    assert usd_account.status_code == 201, usd_account.text
+    usd_account_id = usd_account.json()["id"]
+    bill = create_test_bill(
+        bill_payment_client, headers, family_id,
+        number="BILL-USD-" + suffix[:8], amount="100.0000", currency_code="USD",
+    )
+
+    missing_rate = bill_payment_client.post(
+        f"/bill-payments?family_id={family_id}", headers=headers,
+        json=payment_payload(bill["id"], twd_account_id, "100.0000", "USD"),
+    )
+    assert missing_rate.status_code == 422
+    assert "實際付款匯率" in missing_rate.json()["detail"]
+
+    payment = bill_payment_client.post(
+        f"/bill-payments?family_id={family_id}", headers=headers,
+        json=payment_payload(bill["id"], twd_account_id, "100.0000", "USD", "32.1000000000"),
+    )
+    assert payment.status_code == 201, payment.text
+    payment_data = payment.json()
+    assert payment_data["amount"] == "100.0000"
+    assert payment_data["currency_code"] == "USD"
+    assert payment_data["account_amount"] == "3210.0000"
+    assert payment_data["account_currency_code"] == "TWD"
+    assert payment_data["exchange_rate"] == "32.1000000000"
+    assert payment_data["exchange_difference"] == "0.0000"
+
+    bill_after_payment = bill_payment_client.get(
+        f"/bills/{bill['id']}?family_id={family_id}", headers=headers,
+    )
+    assert bill_after_payment.json()["paid_amount"] == "100.0000"
+    assert bill_after_payment.json()["currency_code"] == "USD"
+
+    payment_detail = bill_payment_client.get(
+        f"/bill-payments/{payment_data['id']}?family_id={family_id}", headers=headers,
+    )
+    assert payment_detail.status_code == 200
+    transaction = payment_detail.json()["transactions"][0]
+    assert Decimal(str(transaction["amount"])) == Decimal("3210.0000")
+    assert transaction["currency_code"] == "TWD"
+
+    wrong_refund_currency_account = bill_payment_client.post(
+        f"/bill-payments/{payment_data['id']}/refund?family_id={family_id}",
+        headers=headers,
+        json=refund_payload(usd_account_id, "20.0000", "USD", "1.0000000000"),
+    )
+    assert wrong_refund_currency_account.status_code == 422
+    assert "退款帳戶幣別" in wrong_refund_currency_account.json()["detail"]
+
+    first_refund = bill_payment_client.post(
+        f"/bill-payments/{payment_data['id']}/refund?family_id={family_id}",
+        headers=headers,
+        json=refund_payload(twd_account_id, "20.0000", "USD", "31.8000000000"),
+    )
+    assert first_refund.status_code == 201, first_refund.text
+    refund_data = first_refund.json()
+    assert refund_data["amount"] == "20.0000"
+    assert refund_data["currency_code"] == "USD"
+    assert refund_data["account_amount"] == "636.0000"
+    assert refund_data["account_currency_code"] == "TWD"
+    assert refund_data["exchange_rate"] == "31.8000000000"
+    assert refund_data["exchange_difference"] == "-6.0000"
+
+    second_refund = bill_payment_client.post(
+        f"/bill-payments/{payment_data['id']}/refund?family_id={family_id}",
+        headers=headers,
+        json=refund_payload(twd_account_id, "30.0000", "USD", "32.5000000000"),
+    )
+    assert second_refund.status_code == 201, second_refund.text
+    assert second_refund.json()["account_amount"] == "975.0000"
+    assert second_refund.json()["exchange_rate"] == "32.5000000000"
+    assert second_refund.json()["exchange_difference"] == "12.0000"
+
+    final_bill = bill_payment_client.get(
+        f"/bills/{bill['id']}?family_id={family_id}", headers=headers,
+    )
+    assert final_bill.json()["paid_amount"] == "50.0000"
+    assert final_bill.json()["remaining_amount"] == "50.0000"
+
+    with Session(engine) as db:
+        transactions = db.query(Transaction).filter(
+            Transaction.family_id == family_id,
+            Transaction.bill_payment_id.is_not(None),
+        ).order_by(Transaction.id).all()
+        assert [(row.transaction_type, row.amount, row.currency_code) for row in transactions] == [
+            ("expense", Decimal("3210.0000"), "TWD"),
+            ("income", Decimal("636.0000"), "TWD"),
+            ("income", Decimal("975.0000"), "TWD"),
+        ]
