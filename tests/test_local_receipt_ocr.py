@@ -101,8 +101,12 @@ def test_paper_einvoice_has_live_dual_qr_guides_and_local_pair_validation():
     assert 'id="local-receipt-invoice-zoom"' in page.text
     assert "getCapabilities?.()" in script.text
     assert "applyConstraints({ advanced: [{ zoom }] })" in script.text
-    assert "parseTaiwanInvoiceQr(decoded.data, null)" in script.text
-    assert 'String(decoded.data).startsWith("**")' in script.text
+    assert "function acceptInvoiceQrPayload(value)" in script.text
+    assert "parseTaiwanInvoiceQr(raw, null)" in script.text
+    assert 'raw.startsWith("**")' in script.text
+    assert "new window.BarcodeDetector({ formats: [\"qr_code\"] })" in script.text
+    assert "invoiceBarcodeDetector.detect(invoiceVideo)" in script.text
+    assert "window.setInterval(scanInvoiceCameraFrame, 160)" in script.text
     assert "parseTaiwanInvoiceQr(leftValue, rightValue)" in script.text
     assert "handleFile(file, codes)" in script.text
 
