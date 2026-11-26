@@ -815,8 +815,17 @@
     // taking a still frame from a video stream that may be frozen or unsupported
     // by an in-app browser. The image stays local and is decoded on this device.
     pendingInvoiceCameraCapture = true;
+    // Save the current family + transactions workspace before leaving the page
+    // for Android/iOS native camera. Some browsers reload the tab on return.
+    const canRestoreTransaction = typeof window.prepareReceiptCaptureReturn === "function"
+      && window.prepareReceiptCaptureReturn();
+    if (!canRestoreTransaction) {
+      pendingInvoiceCameraCapture = false;
+      setInvoiceScanStatus("無法保存目前記帳頁面，請返回記帳頁後重新拍攝。", true);
+      return;
+    }
     stopInvoiceScanner();
-    setStatus("已切換至手機相機。拍攝發票後，系統會在本機讀取 QR Code，不會上傳照片。");
+    setStatus("已切換至手機相機。拍攝發票後，系統會返回記帳頁並在本機讀取 QR Code，不會上傳照片。");
     try {
       cameraInput.value = "";
       cameraInput.click();

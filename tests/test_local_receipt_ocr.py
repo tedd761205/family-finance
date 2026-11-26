@@ -165,3 +165,13 @@ def test_live_invoice_camera_stops_cleanly_and_keeps_receipt_photo_fallback():
     assert "相機權限未開啟" in script.text
     assert "不會上傳照片" in page.text or "照片不會傳送到伺服器或 Google" in script.text
 
+def test_invoice_native_camera_saves_transaction_workspace_before_opening_camera():
+    with TestClient(app) as client:
+        script = client.get("/static/local-receipt-ocr.js").text
+
+    start = script.index('invoiceCaptureButton?.addEventListener("click"')
+    end = script.index('invoiceStopButton?.addEventListener("click"', start)
+    handler = script[start:end]
+
+    assert "window.prepareReceiptCaptureReturn()" in handler
+    assert handler.index("window.prepareReceiptCaptureReturn()") < handler.index("cameraInput.click()")
