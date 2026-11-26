@@ -59,6 +59,7 @@
   let invoiceScanTimer = null;
   let invoiceScanBusy = false;
   let invoiceCaptureRequested = false;
+  let pendingInvoiceCameraCapture = false;
   let invoiceCaptureGeneration = 0;
   let invoiceLeftQrValue = null;
   let invoiceRightQrValue = null;
@@ -324,15 +325,12 @@
         }
       }
 
-      // jsQR is a single-symbol fallback only.
-      // The ZBar detector above scans the whole invoice and can return both QR payloads in one pass.
+      // Robust still-photo fallback: scan the full image and overlapping regions.
+      // This is especially useful when a phone camera captures the invoice at an angle
+      // or when one of the two printed QR codes is much smaller than the other.
       if (found.filter((item) => item.format === "QR Code" || item.format === "qr_code").length < 2) {
-        const jsQR = await loadScript(JSQR_SRC, "jsQR");
-        const context = canvas.getContext("2d", { willReadFrequently: true });
-        if (!context) return found;
-        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-        const full = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "attemptBoth" });
-        if (full && full.data) addCode(full.data, "QR Code");
+        const fallbackCodes = await decodeInvoicePhotoWithJsQr(file);
+        for (const item of fallbackCodes) addCode(item.value, item.format || "QR Code", item.side || null);
       }
     } catch (error) {
       if (strict) throw error;
@@ -809,7 +807,23 @@
   });
   invoiceCaptureButton?.addEventListener("click", (event) => {
     event.preventDefault();
-    captureAndDecodeInvoicePhoto();
+    if (isProcessing || pendingInvoiceCameraCapture) {
+      setInvoiceScanStatus("目前正在處理資料，請稍候。");
+      return;
+    }
+    // Use the phone's native camera app for the reliable fallback. This avoids
+    // taking a still frame from a video stream that may be frozen or unsupported
+    // by an in-app browser. The image stays local and is decoded on this device.
+    pendingInvoiceCameraCapture = true;
+    stopInvoiceScanner();
+    setStatus("已切換至手機相機。拍攝發票後，系統會在本機讀取 QR Code，不會上傳照片。");
+    try {
+      cameraInput.value = "";
+      cameraInput.click();
+    } catch (_error) {
+      pendingInvoiceCameraCapture = false;
+      setStatus("無法開啟手機相機，請改用「選擇照片／收據」。", true);
+    }
   });
   invoiceStopButton?.addEventListener("click", () => {
     stopInvoiceScanner();
@@ -1056,9 +1070,44 @@
       setStatus(label + "已取消；目前資料沒有變更。");
     }
   };
-  cameraInput.addEventListener("change", () => handleFileInputChange(cameraInput, "拍照"));
+  cameraInput.addEventListener("change", async () => {
+    const file = cameraInput.files && cameraInput.files[0];
+    if (!file) {
+      if (pendingInvoiceCameraCapture) setStatus("沒有取得照片；你可以重新拍攝或選擇手機照片。", true);
+      pendingInvoiceCameraCapture = false;
+      if (window.clearReceiptCaptureReturn) window.clearReceiptCaptureReturn();
+      return;
+    }
+    if (!pendingInvoiceCameraCapture) {
+      handleFile(file);
+      return;
+    }
+    pendingInvoiceCameraCapture = false;
+    setStatus("照片已取得，正在本機尋找發票 QR Code…");
+    try {
+      const codes = await decodeInvoicePhotoWithJsQr(file);
+      const basic = codes.find((item) => window.FamilyReceiptParser.parseTaiwanInvoiceQr(item.value, null));
+      if (!basic) {
+        setStatus("照片已拍好，但未讀到發票基本 QR Code。請讓 QR Code 佔畫面大一點、避開反光，再拍一次。", true);
+        await handleFile(file, codes);
+        return;
+      }
+      const detail = codes.find((item) => String(item.value || "").startsWith("**"));
+      const verified = window.FamilyReceiptParser.parseTaiwanInvoiceQr(basic.value, detail?.value || null);
+      if (!verified) {
+        setStatus("已讀到 QR Code，但發票資料格式不完整；仍會保留照片供本機辨識與人工核對。", true);
+      } else {
+        setStatus("已讀取發票基本 QR Code，正在帶入日期、金額與發票號碼…");
+      }
+      await handleFile(file, codes);
+    } catch (error) {
+      setStatus(error && error.message ? error.message : "照片 QR Code 辨識失敗，請重新拍攝或選擇照片。", true);
+      await handleFile(file);
+    }
+  });
   fileInput.addEventListener("change", () => handleFileInputChange(fileInput, "選擇照片"));
   cameraInput.addEventListener("cancel", () => {
+    pendingInvoiceCameraCapture = false;
     if (window.clearReceiptCaptureReturn) window.clearReceiptCaptureReturn();
     setStatus("已取消拍照；仍可重新拍攝或選擇手機照片。");
   });
