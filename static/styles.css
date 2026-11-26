@@ -616,7 +616,7 @@ textarea:focus-visible {
 @media(max-width:760px){.workspace-shortcuts{top:4px;margin:8px 0 14px;padding:7px;gap:6px;border-radius:12px}.workspace-shortcuts-label{font-size:11px}.workspace-shortcut{min-height:38px;padding:8px 12px;font-size:13px}}
 
 
-/* Live dual-QR electronic-invoice camera scanner */
+/* Full-frame multi-QR electronic-invoice camera scanner */
 .local-receipt-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
 .local-receipt-actions button{min-width:0;min-height:52px;line-height:1.45}
 .local-receipt-invoice-camera{display:grid;gap:12px;margin-top:16px;padding:15px;border:1px solid #d9e7dd;border-radius:14px;background:#17221e}
@@ -624,12 +624,7 @@ textarea:focus-visible {
 .local-receipt-invoice-camera-heading .tiny{color:#d3ddd7}
 .local-receipt-video-stage{position:relative;display:block;width:100%;overflow:hidden;border-radius:11px;background:#080d0b;line-height:0}
 .local-receipt-video-stage video{display:block;width:100%;height:auto}
-.local-receipt-qr-guide{position:absolute;top:50%;transform:translateY(-50%);width:49%;aspect-ratio:1/1;border:3px solid #f04444;border-radius:10px;background:rgba(240,68,68,.07);transition:border-color .15s ease,background .15s ease}
-.local-receipt-qr-guide.left{left:.5%}
-.local-receipt-qr-guide.right{right:.5%}
-.local-receipt-qr-guide span{position:absolute;left:50%;top:-27px;transform:translateX(-50%);padding:4px 9px;border-radius:7px;background:#cf3434;color:#fff;font-size:12px;font-weight:800;line-height:1.3;white-space:nowrap}
-.local-receipt-qr-guide.scanned{border-color:#31d17c;background:rgba(49,209,124,.12)}
-.local-receipt-qr-guide.scanned span{background:#208653}
+.local-receipt-qr-guide{display:none!important}
 .local-receipt-camera-controls{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px 12px;padding:12px;border:1px solid rgba(255,255,255,.18);border-radius:10px;background:#22332c;color:#fff}
 .local-receipt-camera-controls label{font-size:13px;font-weight:700}
 .local-receipt-camera-controls select{min-width:0;min-height:42px;padding:7px 10px;border:1px solid #a9bbb1;border-radius:8px;background:#fff;color:#17221e}
@@ -645,8 +640,6 @@ textarea:focus-visible {
  .local-receipt-actions button{min-height:50px}
  .local-receipt-invoice-camera{padding:11px}
  .local-receipt-video-stage video{max-height:none}
- .local-receipt-qr-guide{border-width:2px;border-radius:7px}
- .local-receipt-qr-guide span{top:-24px;font-size:11px;padding:4px 7px}
  .local-receipt-invoice-scan-status{font-size:13px}.local-receipt-invoice-scan-actions{display:grid;grid-template-columns:1fr 1fr}.local-receipt-invoice-scan-actions button{width:100%}
 }
 
