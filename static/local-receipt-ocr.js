@@ -44,6 +44,12 @@
   const buyerTaxIdInput = $("local-receipt-buyer-tax-id");
   const itemsInput = $("local-receipt-items");
   const reviewHint = $("local-receipt-review-hint");
+  const reviewSourceHints = {
+    merchant: $("local-receipt-merchant-source"),
+    amount: $("local-receipt-amount-source"),
+    date: $("local-receipt-date-source"),
+    invoiceNumber: $("local-receipt-invoice-number-source")
+  };
 
   if (!cameraButton || !chooseButton || !cameraInput || !fileInput || !window.FamilyReceiptParser) return;
 
@@ -895,6 +901,32 @@
     return labels[effectiveReceiptType()] || labels.unknown || "尚待判斷";
   }
 
+  function receiptSourceLabel(source) {
+    return ({
+      qr: "來源：發票 QR Code",
+      ocr: "來源：照片文字辨識候選，請核對",
+      barcode: "來源：條碼辨識",
+      none: "尚未辨識，請自行填寫",
+      manual: "來源：手動修改"
+    })[source] || "尚待核對";
+  }
+
+  function setReviewSource(field, source) {
+    const hint = reviewSourceHints[field];
+    if (!hint) return;
+    hint.textContent = receiptSourceLabel(source);
+    hint.dataset.source = source;
+  }
+
+  function bindManualReviewSource(input, field) {
+    input?.addEventListener("input", () => setReviewSource(field, "manual"));
+  }
+
+  bindManualReviewSource(merchantInput, "merchant");
+  bindManualReviewSource(amountInput, "amount");
+  bindManualReviewSource(dateInput, "date");
+  bindManualReviewSource(invoiceNumberInput, "invoiceNumber");
+
   function renderReview(fields) {
     if (!reviewPanel || !fields) return;
     merchantInput.value = fields.merchant || "";
@@ -906,6 +938,10 @@
     itemsInput.value = (fields.items || []).map((item) =>
       item.name + " × " + item.quantity + "，單價 " + item.unitPrice
     ).join("\n");
+    const sources = fields.fieldSources || {};
+    for (const field of Object.keys(reviewSourceHints)) {
+      setReviewSource(field, sources[field] || (fields[field] ? "ocr" : "none"));
+    }
     receiptTypeSelect.value = "auto";
     reviewPanel.classList.remove("hidden");
     updateReviewReadiness();
