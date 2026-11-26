@@ -391,3 +391,63 @@ def test_purchase_item_editor_and_invoice_bridge_are_wired_for_mobile_transactio
     assert "structuredItems.map((item)" in receipt_script
     assert ".purchase-item-row" in css
     assert "@media(max-width:760px)" in css
+
+
+def test_transaction_api_remains_available_before_purchase_item_migration(
+    purchase_api_client,
+    monkeypatch,
+):
+    from app.routers import transaction as transaction_router
+
+    monkeypatch.setattr(
+        transaction_router,
+        "purchase_items_schema_available",
+        lambda db: False,
+    )
+    suffix = uuid4().hex
+    _, headers, family_id, account_id = setup_purchase_family(
+        purchase_api_client, suffix,
+    )
+
+    created = purchase_api_client.post(
+        f"/transactions?family_id={family_id}",
+        headers=headers,
+        json=purchase_payload(account_id),
+    )
+    assert created.status_code == 201, created.text
+    transaction_id = created.json()["id"]
+    assert created.json()["purchase_items"] == []
+
+    listed = purchase_api_client.get(
+        f"/transactions?family_id={family_id}",
+        headers=headers,
+    )
+    assert listed.status_code == 200, listed.text
+    assert listed.json()["transactions"][0]["purchase_items"] == []
+
+    detail = purchase_api_client.get(
+        f"/transactions/{transaction_id}?family_id={family_id}",
+        headers=headers,
+    )
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["purchase_items"] == []
+
+    blocked = purchase_api_client.post(
+        f"/transactions?family_id={family_id}",
+        headers=headers,
+        json=purchase_payload(
+            account_id,
+            items=[
+                {"item_name": "暫停中的明細", "quantity": "1", "unit_price": "10"},
+            ],
+        ),
+    )
+    assert blocked.status_code == 503
+    assert "尚未完成資料庫升級" in blocked.json()["detail"]
+
+
+def test_purchase_items_are_opt_in_until_production_migration(purchase_api_client):
+    client = purchase_api_client
+    config = client.get("/app-config")
+    assert config.status_code == 200
+    assert "purchase_line_items_enabled" in config.json()
