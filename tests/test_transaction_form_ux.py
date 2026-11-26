@@ -27,7 +27,7 @@ def test_recent_transaction_category_default_is_separate_for_income_and_expense(
     assert "saved.categories[type]" in script
     assert "item.category_type === type" in script
     assert 'populateTransactionCategories($("transaction-type").value);\n  applyRecentTransactionDefaults();' in script
-    assert "/static/app.js?v=20261126-2" in page.text
+    assert "/static/app.js?v=20261126-3" in page.text
 
 
 def test_transaction_defaults_storage_errors_do_not_block_transaction_entry():
@@ -41,3 +41,48 @@ def test_transaction_defaults_storage_errors_do_not_block_transaction_entry():
     assert "try {" in remember_function
     assert "catch (_error)" in remember_function
     assert "Remembering defaults is optional" in remember_function
+
+
+
+def test_date_filters_reject_reversed_ranges_before_requesting_data():
+    with TestClient(app) as client:
+        script = client.get("/static/app.js").text
+
+    assert "function validateDateRange(startFieldId, endFieldId, noticeTarget, sectionLabel)" in script
+    assert "start <= end" in script
+    assert "結束日期不可早於開始日期" in script
+    assert 'validateDateRange(\n    "transaction-filter-start"' in script
+    assert 'validateDateRange("transfer-filter-start","transfer-filter-end"' in script
+    assert 'validateDateRange("credit-payment-filter-start","credit-payment-filter-end"' in script
+    assert 'validateDateRange("bill-filter-start","bill-filter-end"' in script
+
+
+def test_transaction_filter_has_clear_action_and_contextual_no_results_message():
+    with TestClient(app) as client:
+        page = client.get("/")
+        script = client.get("/static/app.js").text
+
+    assert page.status_code == 200
+    assert 'id="clear-transaction-filters"' in page.text
+    assert 'id="transaction-empty-title"' in page.text
+    assert 'id="transaction-empty-description"' in page.text
+    assert "找不到符合條件的紀錄" in script
+    assert "目前日期、類型或帳戶條件沒有相符資料" in script
+    assert 'clear-transaction-filters").addEventListener("click",clearTransactionFilters)' in script
+    assert "function clearTransactionFilters()" in script
+    assert 'id="clear-transaction-filters"' in page.text
+    assert "/static/app.js?v=20261126-3" in page.text
+
+
+
+def test_clear_filter_remains_available_when_date_range_validation_fails():
+    with TestClient(app) as client:
+        script = client.get("/static/app.js").text
+
+    start = script.index("async function loadTransactions()")
+    end = script.index("async function showTransactions()", start)
+    loader = script[start:end]
+
+    assert loader.index('$("clear-transaction-filters").disabled = !transactionFiltersActive();') < loader.index("validateDateRange(")
+    assert "if (!validateDateRange(" in loader
+    assert '$(endFieldId)?.focus();' in script
