@@ -145,7 +145,7 @@ def test_paper_einvoice_uses_full_frame_multi_qr_detection_and_local_pair_valida
     assert "#local-receipt-invoice-capture.is-capturing" in styles.text
     assert "不必等兩個都讀到才完成" in page.text
     assert 'id="local-receipt-invoice-capture"' in page.text
-    assert "改用手機相機拍照" in page.text
+    assert "拍照辨識（備用）" in page.text
     assert "MAX_BARCODE_IMAGE_EDGE = 2600" in script.text
     assert "workspace.scrollIntoView({ behavior: \"smooth\", block: \"start\" })" in script.text
     assert 'inversionAttempts: "attemptBoth"' in script.text
@@ -178,4 +178,4 @@ def test_invoice_fallback_capture_uses_live_camera_stream_without_leaving_worksp
 
     assert "captureAndDecodeInvoicePhoto()" in handler
     assert "cameraInput.click()" not in handler
-    assert "native camera" in handler.lower()
+    assert "android/ios camera app" in handler.lower()
