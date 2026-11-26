@@ -117,7 +117,7 @@ def test_paper_einvoice_uses_full_frame_multi_qr_detection_and_local_pair_valida
     assert "INVOICE_CAMERA_STORAGE_KEY" in script.text
     assert "rememberInvoiceCameraId(invoiceCameraSelect.value)" in script.text
     assert "The ZBar detector above scans the whole invoice" in script.text
-    assert "Classify by payload content, not screen side" in script.text
+    assert "rather than on-screen position" in script.text
     assert "async function captureAndDecodeInvoicePhoto()" in script.text
     assert "const codes = await decodeLocalCodes(file)" in script.text
     assert 'id="local-receipt-invoice-capture"' in page.text
