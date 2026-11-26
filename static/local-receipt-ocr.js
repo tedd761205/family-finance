@@ -82,7 +82,7 @@
 
   function loadScript(src, globalName) {
     const readyValue = () => globalName ? window[globalName] : true;
-    if (readyValue()) return Promise.resolve(readyValue());
+    if (globalName && readyValue()) return Promise.resolve(readyValue());
     return new Promise((resolve, reject) => {
       const existing = document.querySelector('script[data-local-receipt-src="' + src + '"]');
       if (existing) {
@@ -251,7 +251,10 @@
       if (detector) {
         try {
           const detected = await detector.detect(canvas);
-          for (const code of detected || []) addCode(code.rawValue, code.format || "條碼");
+          for (const code of detected || []) {
+            const format = code.format === "qr_code" ? "QR Code" : (code.format || "條碼");
+            addCode(code.rawValue, format);
+          }
         } catch (_error) {
           // A single decoder failure should not prevent trying the local fallback.
         }
@@ -347,7 +350,7 @@
 
     const parsedPair = window.FamilyReceiptParser.parseTaiwanInvoiceQr(leftValue, rightValue);
     if (!parsedPair) {
-      setInvoiceScanStatus("已找到兩組 QR Code，但資料無法配對。請讓整張發票完整入鏡，再試一次。", true);
+      setInvoiceScanStatus("已找到兩組 QR Code，但資料無法配對。請確認兩個 QR Code 都清楚可見，再試一次。", true);
       invoiceLeftQrValue = null;
       invoiceRightQrValue = null;
       setInvoiceGuideScanned("left", false);
@@ -503,7 +506,7 @@
       } else if (invoiceRightQrValue) {
         setInvoiceScanStatus("已找到發票另一組資料，正在自動尋找基本資料…");
       } else {
-        setInvoiceScanStatus("正在自動搜尋整個畫面的 QR Code。整張發票入鏡即可，不必分左右或拿正。");
+        setInvoiceScanStatus("正在自動搜尋整個畫面的 QR Code。兩個 QR Code 同時進入畫面即可，不必對框或拿正。");
       }
     } catch (_error) {
       // A single blurry or partially covered frame is normal while the user positions the invoice.
