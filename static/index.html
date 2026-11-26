@@ -302,8 +302,8 @@
                 <label class="field">賣方統一編號<input id="local-receipt-seller-tax-id" type="text" inputmode="numeric" maxlength="10" placeholder="選填"></label>
                 <label class="field">買方統一編號<input id="local-receipt-buyer-tax-id" type="text" inputmode="numeric" maxlength="10" placeholder="選填"></label>
               </div>
-              <label class="field">商品明細（可編輯）
-                <textarea id="local-receipt-items" rows="3" placeholder="若有辨識到商品，會列在這裡"></textarea>
+              <label class="field">辨識到的商品明細（帶入後可逐項修改）
+                <textarea id="local-receipt-items" rows="3" readonly placeholder="若發票 QR Code 有提供商品資料，會列在這裡"></textarea>
               </label>
             </section>
             <details class="local-receipt-raw">
@@ -343,6 +343,29 @@
               <label class="field">交易說明<input id="transaction-description" maxlength="255" placeholder="例如：超市採買、薪資"></label>
               <label class="field">外部單號<input id="transaction-reference" maxlength="100" placeholder="選填"></label>
             </div>
+            <section id="purchase-items-panel" class="purchase-items-panel hidden" aria-label="採買商品明細">
+              <div class="purchase-items-heading">
+                <div>
+                  <strong>採買商品明細</strong>
+                  <p class="tiny muted">一張收據仍是一筆支出；商品會逐項保存，可輸入市場採買或核對發票辨識結果。</p>
+                </div>
+                <button class="secondary small" id="purchase-item-add" type="button">＋ 新增商品</button>
+              </div>
+              <datalist id="purchase-unit-options">
+                <option value="個"></option><option value="顆"></option><option value="包"></option>
+                <option value="斤"></option><option value="台斤"></option><option value="公斤"></option>
+                <option value="兩"></option><option value="台兩"></option><option value="瓶"></option>
+                <option value="罐"></option><option value="盒"></option><option value="份"></option>
+                <option value="串"></option><option value="條"></option><option value="把"></option>
+                <option value="袋"></option><option value="組"></option><option value="件"></option>
+              </datalist>
+              <div id="purchase-items-list" class="purchase-items-list"></div>
+              <div class="purchase-items-footer">
+                <span>商品小計 <strong id="purchase-items-total">NT$ 0.00</strong></span>
+                <button class="secondary small" id="purchase-items-apply-total" type="button">將商品小計帶入交易金額</button>
+              </div>
+              <p class="tiny muted">單位可自行輸入（例如把、台斤、台兩）；商品小計不會自動覆蓋收據總額，需按右側按鈕才會帶入。</p>
+            </section>
             <label class="field">備註<textarea id="transaction-note" rows="2" placeholder="選填"></textarea></label>
             <div class="form-actions"><button class="primary" id="transaction-submit" type="submit">新增紀錄</button><button class="secondary" id="transaction-cancel" type="button">取消</button></div>
           </form>
