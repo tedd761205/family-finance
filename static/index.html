@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#173b35">
   <title>家庭記帳系統</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261126-4">
+  <link rel="stylesheet" href="/static/styles.css?v=20261126-5">
   <style>
     .browser-help{margin-top:26px;padding:20px;border:1px solid #dce8e0;border-radius:14px;background:#fff}
     .browser-help-title{margin:0 0 8px;color:#1b5142;font-size:17px;font-weight:750}
@@ -271,6 +271,7 @@
               <span class="tiny muted">優先使用一般主鏡頭；若手機支援光學／數位縮放，可在此拉近。若 QR Code 仍太小，可切換其他後置鏡頭。</span>
             </div>
             <div class="local-receipt-invoice-scan-actions">
+              <button class="primary" id="local-receipt-invoice-capture" type="button" disabled>拍照辨識左右碼</button>
               <button class="secondary" id="local-receipt-invoice-stop" type="button">停止掃描</button>
             </div>
           </section>
@@ -763,6 +764,6 @@
   <script src="/static/app.js" defer></script>
   <script src="/static/reconciliation.js" defer></script>
   <script src="/static/local-receipt-parser.js?v=20261126-2" defer></script>
-  <script src="/static/local-receipt-ocr.js?v=20261126-3" defer></script>
+  <script src="/static/local-receipt-ocr.js?v=20261126-4" defer></script>
 </body>
 </html>

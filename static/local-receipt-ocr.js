@@ -5,7 +5,7 @@
   const JSQR_SRC = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js";
   const LANGUAGE_PATH = "https://tessdata.projectnaptha.com/4.0.0";
   const MAX_FILE_BYTES = 10 * 1024 * 1024;
-  const MAX_BARCODE_IMAGE_EDGE = 1800;
+  const MAX_BARCODE_IMAGE_EDGE = 2600;
   const MAX_OCR_IMAGE_EDGE = 2600;
   const INVOICE_CAMERA_STORAGE_KEY = "family_invoice_preferred_rear_camera_v1";
 
@@ -19,6 +19,7 @@
   const invoiceLeftGuide = $("local-receipt-left-guide");
   const invoiceRightGuide = $("local-receipt-right-guide");
   const invoiceStopButton = $("local-receipt-invoice-stop");
+  const invoiceCaptureButton = $("local-receipt-invoice-capture");
   const invoiceCameraSelect = $("local-receipt-invoice-camera-select");
   const invoiceZoomControl = $("local-receipt-invoice-zoom");
   const invoiceZoomValue = $("local-receipt-invoice-zoom-value");
@@ -71,6 +72,7 @@
     chooseButton.disabled = busy;
     invoiceScanButton.disabled = busy || Boolean(invoiceCameraStream);
     invoiceStopButton.disabled = busy || !invoiceCameraStream;
+    if (invoiceCaptureButton) invoiceCaptureButton.disabled = busy || !invoiceCameraStream;
     fillButton.disabled = busy || !hasReviewData();
     clearButton.disabled = busy;
   }
@@ -284,6 +286,7 @@
     if (chooseButton) chooseButton.disabled = isProcessing;
     if (invoiceScanButton) invoiceScanButton.disabled = isProcessing;
     if (invoiceStopButton) invoiceStopButton.disabled = true;
+    if (invoiceCaptureButton) invoiceCaptureButton.disabled = true;
   }
 
   function setInvoiceGuideScanned(side, scanned) {
@@ -373,6 +376,68 @@
     }
   }
 
+  async function captureAndDecodeInvoicePhoto() {
+    if (!invoiceCameraStream || invoiceScanBusy) return;
+    invoiceScanBusy = true;
+    if (invoiceScanTimer) {
+      window.clearInterval(invoiceScanTimer);
+      invoiceScanTimer = null;
+    }
+    if (invoiceCaptureButton) invoiceCaptureButton.disabled = true;
+    setInvoiceScanStatus("已拍下整張發票，正在逐區解析左右 QR Code…");
+    try {
+      const file = await captureInvoiceCameraFrame();
+      const codes = await decodeLocalCodes(file);
+      const leftCode = codes.find((item) =>
+        Boolean(window.FamilyReceiptParser.parseTaiwanInvoiceQr(item.value, null))
+      );
+      const rightCode = codes.find((item) => String(item.value || "").startsWith("**"));
+
+      if (leftCode) {
+        invoiceLeftQrValue = leftCode.value;
+        setInvoiceGuideScanned("left", true);
+      }
+      if (rightCode) {
+        invoiceRightQrValue = rightCode.value;
+        setInvoiceGuideScanned("right", true);
+      }
+
+      if (invoiceLeftQrValue && invoiceRightQrValue) {
+        setInvoiceScanStatus("左右 QR Code 都已拍照讀取，正在核對資料…");
+        const verified = window.FamilyReceiptParser.parseTaiwanInvoiceQr(invoiceLeftQrValue, invoiceRightQrValue);
+        if (verified) {
+          const pair = [
+            { format: "QR Code", value: invoiceLeftQrValue, side: "left" },
+            { format: "QR Code", value: invoiceRightQrValue, side: "right" }
+          ];
+          stopInvoiceScanner();
+          await handleFile(file, pair);
+          return;
+        }
+        invoiceLeftQrValue = null;
+        invoiceRightQrValue = null;
+        setInvoiceGuideScanned("left", false);
+        setInvoiceGuideScanned("right", false);
+        setInvoiceScanStatus("兩碼都有讀到，但資料無法配對。請重新拍攝，讓發票完整入鏡。", true);
+      } else {
+        const missing = [];
+        if (!invoiceLeftQrValue) missing.push("左側");
+        if (!invoiceRightQrValue) missing.push("右側");
+        setInvoiceScanStatus(
+          "這次照片尚未讀到" + missing.join("與") + " QR Code。可以調整距離、避免反光，再按「重新拍照辨識」；不用一直舉著等。",
+          true
+        );
+      }
+    } catch (error) {
+      setInvoiceScanStatus(error && error.message ? error.message : "拍照解析失敗，請重新拍攝。", true);
+    } finally {
+      invoiceScanBusy = false;
+      if (invoiceCaptureButton) invoiceCaptureButton.disabled = !invoiceCameraStream;
+      // The still-image pass is user-triggered; do not silently restart a
+      // long-running loop that forces the user to keep holding the phone.
+    }
+  }
+
   async function createNativeInvoiceBarcodeDetector() {
     if (typeof window.BarcodeDetector !== "function") return null;
     try {
@@ -423,13 +488,14 @@
         if (!context) return;
         context.drawImage(invoiceVideo, 0, 0, width, height);
 
-        // Scan each half at full frame height. The previous centered square crop
-        // could clip QR codes printed lower on the invoice or held near the edge
-        // of the phone preview. The 58% overlap is intentional; payload validation
-        // decides whether a decoded value is the left or right invoice code.
+        // Keep the left and right search areas separate. jsQR returns only one
+        // QR per crop; overlapping regions let the easy right QR win twice and
+        // starve the denser left QR. These bounds match the visible guide boxes.
+        const edge = Math.round(width * 0.005);
+        const guideWidth = Math.max(1, Math.round(width * 0.49));
         const regions = [
-          { side: "left", x: 0, width: Math.round(width * 0.58) },
-          { side: "right", x: Math.round(width * 0.42), width: Math.round(width * 0.58) }
+          { side: "left", x: edge, width: guideWidth },
+          { side: "right", x: Math.round(width * 0.505), width: guideWidth }
         ];
         for (const region of regions) {
           if (region.side === "left" && invoiceLeftQrValue) continue;
@@ -631,6 +697,7 @@
       cameraButton.disabled = true;
       chooseButton.disabled = true;
       invoiceStopButton.disabled = false;
+      if (invoiceCaptureButton) invoiceCaptureButton.disabled = false;
       invoiceScanButton.disabled = true;
     } catch (error) {
       stopInvoiceScanner(false);
@@ -670,6 +737,7 @@
       setInvoiceScanStatus("此鏡頭暫時無法調整縮放，請切換鏡頭。", true);
     }
   });
+  invoiceCaptureButton?.addEventListener("click", captureAndDecodeInvoicePhoto);
   invoiceStopButton?.addEventListener("click", () => {
     stopInvoiceScanner();
     setInvoiceScanStatus("已停止掃描。你可以重新啟動相機，或改用收據拍照。");
