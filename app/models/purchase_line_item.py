@@ -110,7 +110,7 @@ class PurchaseLineItem(Base):
 
     created_by: Mapped[int] = mapped_column(
         BigInteger,
-        ForeignKey("users.id", ondelete="RESTRICT"),
+        ForeignKey("users.id", ondelete="RESTRICT", name="fk_purchase_line_items_created_by_user"),
         nullable=False,
     )
 
