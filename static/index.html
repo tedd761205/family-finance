@@ -260,6 +260,15 @@
                 <span>右 QR Code</span>
               </div>
             </div>
+            <div class="local-receipt-camera-controls" aria-label="相機鏡頭與縮放設定">
+              <label for="local-receipt-invoice-camera-select">使用鏡頭</label>
+              <select id="local-receipt-invoice-camera-select" disabled>
+                <option>正在偵測後置鏡頭…</option>
+              </select>
+              <label for="local-receipt-invoice-zoom">近拍縮放 <strong id="local-receipt-invoice-zoom-value">1.0×</strong></label>
+              <input id="local-receipt-invoice-zoom" type="range" min="1" max="1" step="0.1" value="1" disabled>
+              <span class="tiny muted">優先使用一般主鏡頭；若手機支援光學／數位縮放，可在此拉近。若 QR Code 仍太小，可切換其他後置鏡頭。</span>
+            </div>
             <p id="local-receipt-invoice-scan-status" class="local-receipt-invoice-scan-status" role="status" aria-live="polite">正在準備相機…</p>
             <div class="local-receipt-invoice-scan-actions">
               <button class="secondary" id="local-receipt-invoice-stop" type="button">停止掃描</button>

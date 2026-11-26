@@ -18,6 +18,9 @@
   const invoiceLeftGuide = $("local-receipt-left-guide");
   const invoiceRightGuide = $("local-receipt-right-guide");
   const invoiceStopButton = $("local-receipt-invoice-stop");
+  const invoiceCameraSelect = $("local-receipt-invoice-camera-select");
+  const invoiceZoomControl = $("local-receipt-invoice-zoom");
+  const invoiceZoomValue = $("local-receipt-invoice-zoom-value");
   const cameraInput = $("local-receipt-camera-input");
   const fileInput = $("local-receipt-file-input");
   const status = $("local-receipt-status");
@@ -47,6 +50,8 @@
   let parsedFields = null;
   let isProcessing = false;
   let invoiceCameraStream = null;
+  let invoiceCameraDeviceId = "";
+  let invoiceCameraTrack = null;
   let invoiceScanTimer = null;
   let invoiceScanBusy = false;
   let invoiceLeftQrValue = null;
@@ -264,6 +269,10 @@
       invoiceCameraStream.getTracks().forEach((track) => track.stop());
       invoiceCameraStream = null;
     }
+    invoiceCameraTrack = null;
+    if (invoiceCameraSelect) invoiceCameraSelect.disabled = true;
+    if (invoiceZoomControl) { invoiceZoomControl.disabled = true; invoiceZoomControl.value = "1"; }
+    if (invoiceZoomValue) invoiceZoomValue.textContent = "1.0×";
     if (invoiceVideo) {
       invoiceVideo.pause();
       invoiceVideo.srcObject = null;
@@ -414,13 +423,70 @@
     }
   }
 
+  function preferredRearCamera(devices) {
+    const rear = devices.filter((device) => device.kind === "videoinput" && !/front|user|前置/i.test(device.label));
+    const mainLens = rear.find((device) => /back|rear|main|主鏡頭|後置/i.test(device.label) && !/ultra.?wide|超廣角|0[.,]5x|0[.,]6x/i.test(device.label));
+    return mainLens || rear.find((device) => !/ultra.?wide|超廣角|0[.,]5x|0[.,]6x/i.test(device.label)) || rear[0] || null;
+  }
+
+  async function refreshInvoiceCameraControls() {
+    if (!invoiceCameraSelect || !navigator.mediaDevices?.enumerateDevices) return;
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const cameras = devices.filter((device) => device.kind === "videoinput" && !/front|user|前置/i.test(device.label));
+    const selectedId = invoiceCameraTrack?.getSettings?.().deviceId || invoiceCameraDeviceId;
+    invoiceCameraSelect.replaceChildren();
+    cameras.forEach((device, index) => {
+      const option = document.createElement("option");
+      option.value = device.deviceId;
+      option.textContent = device.label || ("後置鏡頭 " + (index + 1));
+      invoiceCameraSelect.appendChild(option);
+    });
+    if (selectedId && cameras.some((device) => device.deviceId === selectedId)) {
+      invoiceCameraSelect.value = selectedId;
+    }
+    invoiceCameraSelect.disabled = cameras.length < 2;
+    const capabilities = invoiceCameraTrack?.getCapabilities?.() || {};
+    if (invoiceZoomControl && capabilities.zoom) {
+      invoiceZoomControl.min = String(capabilities.zoom.min ?? 1);
+      invoiceZoomControl.max = String(capabilities.zoom.max ?? 1);
+      invoiceZoomControl.step = String(capabilities.zoom.step ?? 0.1);
+      invoiceZoomControl.value = String(Math.min(capabilities.zoom.max ?? 1, Math.max(capabilities.zoom.min ?? 1, capabilities.zoom.min ?? 1)));
+      invoiceZoomControl.disabled = (capabilities.zoom.max ?? 1) <= (capabilities.zoom.min ?? 1);
+      if (invoiceZoomValue) invoiceZoomValue.textContent = Number(invoiceZoomControl.value).toFixed(1) + "×";
+    } else if (invoiceZoomControl) {
+      invoiceZoomControl.disabled = true;
+      invoiceZoomControl.value = "1";
+      if (invoiceZoomValue) invoiceZoomValue.textContent = "裝置不支援";
+    }
+  }
+
+  async function applyInvoiceCamera(deviceId = "") {
+    if (invoiceScanTimer) { window.clearInterval(invoiceScanTimer); invoiceScanTimer = null; }
+    if (invoiceCameraStream) invoiceCameraStream.getTracks().forEach((track) => track.stop());
+    invoiceCameraStream = null;
+    invoiceCameraTrack = null;
+    const video = {
+      width: { ideal: 1920 },
+      height: { ideal: 1080 }
+    };
+    if (deviceId) video.deviceId = { exact: deviceId };
+    else video.facingMode = { ideal: "environment" };
+    invoiceCameraStream = await navigator.mediaDevices.getUserMedia({ audio: false, video });
+    invoiceCameraTrack = invoiceCameraStream.getVideoTracks()[0] || null;
+    invoiceCameraDeviceId = invoiceCameraTrack?.getSettings?.().deviceId || deviceId;
+    invoiceVideo.srcObject = invoiceCameraStream;
+    await invoiceVideo.play();
+    await refreshInvoiceCameraControls();
+    invoiceScanTimer = window.setInterval(scanInvoiceCameraFrame, 260);
+  }
+
   async function startInvoiceScanner() {
     if (invoiceCameraStream) return;
     clearPhoto();
     invoiceCameraPanel.classList.remove("hidden");
     invoiceCameraPanel.classList.remove("camera-unavailable");
     invoiceScanButton.disabled = true;
-    setInvoiceScanStatus("正在啟動相機…");
+    setInvoiceScanStatus("正在啟動一般後置鏡頭…");
     invoiceLeftQrValue = null;
     invoiceRightQrValue = null;
     setInvoiceGuideScanned("left", false);
@@ -436,25 +502,19 @@
 
     try {
       await loadScript(JSQR_SRC, "jsQR");
-      invoiceCameraStream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: {
-          facingMode: { ideal: "environment" },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
-        }
-      });
+      await applyInvoiceCamera("");
+      const availableCameras = await navigator.mediaDevices.enumerateDevices();
+      const preferredCamera = preferredRearCamera(availableCameras);
+      const activeDeviceId = invoiceCameraTrack?.getSettings?.().deviceId || "";
+      if (preferredCamera?.deviceId && preferredCamera.deviceId !== activeDeviceId) {
+        await applyInvoiceCamera(preferredCamera.deviceId);
+      }
       invoiceCameraPanel.classList.remove("camera-unavailable");
-      invoiceVideo.srcObject = invoiceCameraStream;
-      await invoiceVideo.play();
-      setInvoiceScanStatus("相機已啟動。請讓左右兩個 QR Code 各自完整落在紅框內。");
+      setInvoiceScanStatus("相機已啟動。若畫面太遠，可切換後置鏡頭或拉近縮放；請讓兩個 QR Code 完整入框。");
       cameraButton.disabled = true;
       chooseButton.disabled = true;
       invoiceStopButton.disabled = false;
       invoiceScanButton.disabled = true;
-      invoiceScanTimer = window.setInterval(() => {
-        scanInvoiceCameraFrame();
-      }, 260);
     } catch (error) {
       stopInvoiceScanner(false);
       invoiceCameraPanel.classList.remove("hidden");
@@ -470,6 +530,26 @@
   }
 
   invoiceScanButton?.addEventListener("click", startInvoiceScanner);
+  invoiceCameraSelect?.addEventListener("change", async () => {
+    if (!invoiceCameraStream || !invoiceCameraSelect.value) return;
+    try {
+      setInvoiceScanStatus("正在切換鏡頭…");
+      await applyInvoiceCamera(invoiceCameraSelect.value);
+      setInvoiceScanStatus("鏡頭已切換。可用縮放控制調整近拍距離。");
+    } catch (error) {
+      setInvoiceScanStatus("切換鏡頭失敗，請選擇其他鏡頭或重新啟動掃描。", true);
+    }
+  });
+  invoiceZoomControl?.addEventListener("input", async () => {
+    if (!invoiceCameraTrack?.applyConstraints) return;
+    const zoom = Number(invoiceZoomControl.value);
+    try {
+      await invoiceCameraTrack.applyConstraints({ advanced: [{ zoom }] });
+      if (invoiceZoomValue) invoiceZoomValue.textContent = zoom.toFixed(1) + "×";
+    } catch (_error) {
+      setInvoiceScanStatus("此鏡頭暫時無法調整縮放，請切換鏡頭。", true);
+    }
+  });
   invoiceStopButton?.addEventListener("click", () => {
     stopInvoiceScanner();
     setInvoiceScanStatus("已停止掃描。你可以重新啟動相機，或改用收據拍照。");

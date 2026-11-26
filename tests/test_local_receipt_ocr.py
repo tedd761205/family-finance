@@ -93,7 +93,14 @@ def test_paper_einvoice_has_live_dual_qr_guides_and_local_pair_validation():
     assert "右 QR Code" in page.text
 
     assert "navigator.mediaDevices.getUserMedia" in script.text
-    assert 'facingMode: { ideal: "environment" }' in script.text
+    assert "function preferredRearCamera(devices)" in script.text
+    assert "main|主鏡頭|後置" in script.text
+    assert "ultra.?wide|超廣角|0[.,]5x|0[.,]6x" in script.text
+    assert "video.deviceId = { exact: deviceId }" in script.text
+    assert 'id="local-receipt-invoice-camera-select"' in page.text
+    assert 'id="local-receipt-invoice-zoom"' in page.text
+    assert "getCapabilities?.()" in script.text
+    assert "applyConstraints({ advanced: [{ zoom }] })" in script.text
     assert "parseTaiwanInvoiceQr(decoded.data, null)" in script.text
     assert 'String(decoded.data).startsWith("**")' in script.text
     assert "parseTaiwanInvoiceQr(leftValue, rightValue)" in script.text
