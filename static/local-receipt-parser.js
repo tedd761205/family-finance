@@ -72,10 +72,15 @@
     // followed by seller tax ID and a 24-character encrypted verification field.
     // Locate the separator before the optional item extension so older padded
     // seller-ID samples remain readable without shifting the remaining fields.
+    // The first 77 characters are the fixed invoice header. Item details after
+    // that header are optional; a valid left QR must still be accepted when no
+    // colon-delimited extension is printed on the code.
     const extensionSeparator = left.indexOf(":", 45);
-    if (extensionSeparator < 0) return null;
-    const authStart = extensionSeparator - 24;
+    const authStart = extensionSeparator >= 0 ? extensionSeparator - 24 : 53;
     if (authStart < 53 || authStart > 55) return null;
+    const fixedHeaderEnd = authStart + 24;
+    if (left.length < fixedHeaderEnd) return null;
+    if (extensionSeparator >= 0 && extensionSeparator !== fixedHeaderEnd) return null;
 
     const invoiceNumber = left.slice(0, 10).toUpperCase();
     const rocDate = left.slice(10, 17);
@@ -93,7 +98,7 @@
     const auth = left.slice(authStart, extensionSeparator);
     if (auth.length !== 24 || !/^[A-Za-z0-9+/=]{24}$/.test(auth)) return null;
 
-    const extension = left.slice(extensionSeparator + 1);
+    const extension = extensionSeparator >= 0 ? left.slice(extensionSeparator + 1) : "";
     const extensionParts = extension ? extension.split(":") : [];
     const encoding = extensionParts[3] || "1";
     const items = parseItemTriples(extensionParts, encoding, 4);
