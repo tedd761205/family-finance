@@ -503,6 +503,12 @@
     try {
       await loadScript(JSQR_SRC, "jsQR");
       await applyInvoiceCamera("");
+      const availableCameras = await navigator.mediaDevices.enumerateDevices();
+      const preferredCamera = preferredRearCamera(availableCameras);
+      const activeDeviceId = invoiceCameraTrack?.getSettings?.().deviceId || "";
+      if (preferredCamera?.deviceId && preferredCamera.deviceId !== activeDeviceId) {
+        await applyInvoiceCamera(preferredCamera.deviceId);
+      }
       invoiceCameraPanel.classList.remove("camera-unavailable");
       setInvoiceScanStatus("相機已啟動。若畫面太遠，可切換後置鏡頭或拉近縮放；請讓兩個 QR Code 完整入框。");
       cameraButton.disabled = true;
