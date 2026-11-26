@@ -720,8 +720,22 @@
     const sellerTaxId = sellerTaxIdInput.value.trim();
     const buyerTaxId = buyerTaxIdInput.value.trim();
     const itemLines = itemsInput.value.trim();
+    const structuredItems = Array.isArray(parsedFields && parsedFields.items)
+      ? parsedFields.items
+      : [];
 
     if (amount) $("transaction-amount").value = amount;
+    if (window.setTransactionPurchaseItems) {
+      window.setTransactionPurchaseItems(
+        structuredItems.map((item) => ({
+          item_name: item.name,
+          quantity: item.quantity,
+          unit: null,
+          unit_price: item.unitPrice
+        })),
+        { autoAmount: false }
+      );
+    }
     if (date) $("transaction-date").value = date;
     if (invoiceNumber) $("transaction-reference").value = invoiceNumber;
     if (merchant) $("transaction-description").value = merchant.slice(0, 255);
