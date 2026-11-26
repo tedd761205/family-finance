@@ -623,8 +623,8 @@ textarea:focus-visible {
 .local-receipt-invoice-camera-heading{display:grid;gap:5px;color:#fff}
 .local-receipt-invoice-camera-heading .tiny{color:#d3ddd7}
 .local-receipt-video-stage{position:relative;display:block;width:100%;overflow:hidden;border-radius:11px;background:#080d0b;line-height:0}
-.local-receipt-video-stage video{display:block;width:100%;height:auto;max-height:68vh;object-fit:contain}
-.local-receipt-qr-guide{position:absolute;top:30%;width:35%;aspect-ratio:1/1;border:3px solid #f04444;border-radius:10px;background:rgba(240,68,68,.07);box-shadow:0 0 0 9999px rgba(0,0,0,.16);transition:border-color .15s ease,background .15s ease}
+.local-receipt-video-stage video{display:block;width:100%;height:auto}
+.local-receipt-qr-guide{position:absolute;top:30%;width:35%;aspect-ratio:1/1;border:3px solid #f04444;border-radius:10px;background:rgba(240,68,68,.07);transition:border-color .15s ease,background .15s ease}
 .local-receipt-qr-guide.left{left:5%}
 .local-receipt-qr-guide.right{right:5%}
 .local-receipt-qr-guide span{position:absolute;left:50%;top:-27px;transform:translateX(-50%);padding:4px 9px;border-radius:7px;background:#cf3434;color:#fff;font-size:12px;font-weight:800;line-height:1.3;white-space:nowrap}
@@ -638,8 +638,10 @@ textarea:focus-visible {
  .local-receipt-actions{grid-template-columns:1fr}
  .local-receipt-actions button{min-height:50px}
  .local-receipt-invoice-camera{padding:11px}
- .local-receipt-video-stage video{max-height:58vh}
+ .local-receipt-video-stage video{max-height:none}
  .local-receipt-qr-guide{border-width:2px;border-radius:7px}
  .local-receipt-qr-guide span{top:-24px;font-size:11px;padding:4px 7px}
  .local-receipt-invoice-scan-status{font-size:13px}
 }
+
+.local-receipt-invoice-camera.camera-unavailable .local-receipt-video-stage{display:none}
