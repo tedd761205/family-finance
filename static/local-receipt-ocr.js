@@ -439,6 +439,7 @@
           height: { ideal: 1080 }
         }
       });
+      invoiceCameraPanel.classList.remove("camera-unavailable");
       invoiceVideo.srcObject = invoiceCameraStream;
       await invoiceVideo.play();
       setInvoiceScanStatus("相機已啟動。請讓左右兩個 QR Code 各自完整落在紅框內。");
@@ -450,6 +451,7 @@
     } catch (error) {
       stopInvoiceScanner(false);
       invoiceCameraPanel.classList.remove("hidden");
+      invoiceCameraPanel.classList.add("camera-unavailable");
       setInvoiceScanStatus(
         error && error.name === "NotAllowedError"
           ? "相機權限未開啟。請允許瀏覽器使用相機，或改用拍照／選擇照片。"
@@ -464,12 +466,14 @@
   invoiceStopButton?.addEventListener("click", () => {
     stopInvoiceScanner();
     setInvoiceScanStatus("已停止掃描。你可以重新啟動相機，或改用收據拍照。");
+    setStatus("已停止電子發票掃描。需要時可重新啟動雙 QR 掃描，或改用收據拍照。");
     invoiceScanButton.disabled = false;
   });
   document.addEventListener("visibilitychange", () => {
     if (document.hidden && invoiceCameraStream) {
       stopInvoiceScanner();
       setInvoiceScanStatus("切換到其他畫面後，相機已自動關閉。需要時請重新啟動雙 QR 掃描。");
+      setStatus("相機已自動關閉。回到本頁後可重新啟動雙 QR 掃描。");
     }
   });
   window.addEventListener("pagehide", () => stopInvoiceScanner());
