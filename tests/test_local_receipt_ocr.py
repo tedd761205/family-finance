@@ -89,8 +89,8 @@ def test_paper_einvoice_uses_full_frame_multi_qr_detection_and_local_pair_valida
     assert 'id="local-receipt-invoice-video"' in page.text
     assert 'id="local-receipt-left-guide"' not in page.text
     assert 'id="local-receipt-right-guide"' not in page.text
-    assert "不必分左右、不必拿正" in page.text
-    assert "整張發票進入畫面即可" in page.text
+    assert "不必分左右、不必對框或拿正" in page.text
+    assert "兩個 QR Code 同時出現在鏡頭畫面即可" in page.text
 
     assert "navigator.mediaDevices.getUserMedia" in script.text
     assert "function preferredRearCamera(devices, rememberedId = \"\", activeDeviceId = \"\")" in script.text
