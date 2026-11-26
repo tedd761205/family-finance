@@ -367,15 +367,16 @@ def build_purchase_line_items(
     for index, item in enumerate(purchase_items):
         quantity = Decimal(item.quantity)
         unit_price = Decimal(item.unit_price)
-        line_total = (quantity * unit_price).quantize(
-            PURCHASE_AMOUNT_QUANTUM,
-            rounding=ROUND_HALF_UP,
-        )
-        if line_total >= PURCHASE_AMOUNT_LIMIT:
+        raw_line_total = quantity * unit_price
+        if raw_line_total >= PURCHASE_AMOUNT_LIMIT:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="商品小計超出可儲存的金額範圍",
             )
+        line_total = raw_line_total.quantize(
+            PURCHASE_AMOUNT_QUANTUM,
+            rounding=ROUND_HALF_UP,
+        )
 
         records.append(
             PurchaseLineItem(
