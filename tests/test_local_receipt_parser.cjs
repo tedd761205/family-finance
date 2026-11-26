@@ -15,6 +15,16 @@ test("parses Taiwan e-invoice QR header, date, total and seller tax ID", () => {
   assert.deepEqual(result.items.map((item) => item.name), ["乾電池", "口罩", "牛奶"]);
 });
 
+test("accepts a valid 77-character left QR even without optional item extension", () => {
+  const fixedHeader = leftQr.split(":")[0];
+  assert.equal(fixedHeader.length, 77);
+  const result = parser.parseTaiwanInvoiceQr(fixedHeader, null);
+  assert.ok(result);
+  assert.equal(result.invoiceNumber, "AB11223344");
+  assert.equal(result.totalAmount, "340");
+  assert.deepEqual(result.items, []);
+});
+
 test("classifies an electronic invoice and prioritizes verified QR fields", () => {
   const result = parser.parseReceiptData(
     "電子發票證明聯\nAB-11223344\n總計：999\n2013-05-23",
