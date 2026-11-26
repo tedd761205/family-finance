@@ -1,6 +1,7 @@
 
 import logging
 from datetime import datetime, timezone
+from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import (
     APIRouter,
@@ -9,8 +10,10 @@ from fastapi import (
     Query,
     status,
 )
+from sqlalchemy import inspect
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.database import get_db
 from app.dependencies.auth import get_current_user
@@ -22,11 +25,13 @@ from app.models.user import User
 from app.models.account import Account
 from app.models.category import Category
 from app.models.transaction import Transaction
+from app.models.purchase_line_item import PurchaseLineItem
 from app.services.audit_log import add_audit_log
 from app.schemas.transaction import (
     TransactionCreate,
     TransactionUpdate,
     TransactionResponse,
+    PurchaseLineItemCreate,
 )
 
 logger = logging.getLogger(__name__)
@@ -329,6 +334,90 @@ def validate_category(
     return category
 
 
+
+
+# ============================================================
+# 採買商品明細
+# ============================================================
+
+PURCHASE_AMOUNT_QUANTUM = Decimal("0.0001")
+PURCHASE_AMOUNT_LIMIT = Decimal("10000000000000000")
+
+
+def validate_purchase_items(
+    transaction_type: str,
+    purchase_items: list[PurchaseLineItemCreate],
+):
+    """商品明細只允許掛在一般支出交易。"""
+
+    if purchase_items and transaction_type != "expense":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="商品明細只能附加在支出紀錄",
+        )
+
+
+def build_purchase_line_items(
+    *,
+    family_id: int,
+    user_id: int,
+    purchase_items: list[PurchaseLineItemCreate],
+) -> list[PurchaseLineItem]:
+    """計算明細小計並建立同一家庭範圍的 ORM 子資料。"""
+
+    records = []
+    for index, item in enumerate(purchase_items):
+        quantity = Decimal(item.quantity)
+        unit_price = Decimal(item.unit_price)
+        raw_line_total = quantity * unit_price
+        if raw_line_total >= PURCHASE_AMOUNT_LIMIT:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="商品小計超出可儲存的金額範圍",
+            )
+        line_total = raw_line_total.quantize(
+            PURCHASE_AMOUNT_QUANTUM,
+            rounding=ROUND_HALF_UP,
+        )
+
+        records.append(
+            PurchaseLineItem(
+                family_id=family_id,
+                item_name=item.item_name,
+                quantity=quantity,
+                unit=item.unit,
+                unit_price=unit_price,
+                line_total=line_total,
+                sort_order=index,
+                created_by=user_id,
+            )
+        )
+
+    return records
+
+
+def purchase_items_schema_available(db: Session) -> bool:
+    """部署新程式早於 Production migration 時，容許既有交易 API 暫時相容。"""
+
+    return inspect(db.get_bind()).has_table("purchase_line_items")
+
+
+def purchase_items_audit_values(purchase_items) -> list[dict]:
+    """產生可寫入 JSONB 稽核紀錄的商品明細快照。"""
+
+    return [
+        {
+            "item_name": item.item_name,
+            "quantity": item.quantity,
+            "unit": item.unit,
+            "unit_price": item.unit_price,
+            "line_total": item.line_total,
+            "sort_order": item.sort_order,
+        }
+        for item in purchase_items
+    ]
+
+
 # ============================================================
 # 新增交易
 # ============================================================
@@ -359,6 +448,18 @@ def create_transaction(
     )
 
     transaction_type = payload.transaction_type.value
+
+    validate_purchase_items(
+        transaction_type=transaction_type,
+        purchase_items=payload.purchase_items,
+    )
+
+    has_purchase_items_schema = purchase_items_schema_available(db)
+    if payload.purchase_items and not has_purchase_items_schema:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="採買明細資料表尚未完成資料庫升級，請稍後再試。",
+        )
 
     validate_account(
         db=db,
@@ -393,6 +494,11 @@ def create_transaction(
         external_reference=payload.external_reference,
         note=payload.note,
         created_by=current_user.id,
+        purchase_items=build_purchase_line_items(
+            family_id=family_id,
+            user_id=current_user.id,
+            purchase_items=payload.purchase_items,
+        ),
     )
 
     try:
@@ -416,6 +522,9 @@ def create_transaction(
                 "category_id": transaction.category_id,
                 "external_reference": transaction.external_reference,
                 "note": transaction.note,
+                "purchase_items": purchase_items_audit_values(
+                    transaction.purchase_items
+                ),
             },
             description="新增交易",
         )
@@ -478,7 +587,11 @@ def get_transactions(
         family_id=family_id,
     )
 
-    query = db.query(Transaction).filter(
+    has_purchase_items_schema = purchase_items_schema_available(db)
+    query = db.query(Transaction)
+    if has_purchase_items_schema:
+        query = query.options(selectinload(Transaction.purchase_items))
+    query = query.filter(
         Transaction.family_id == family_id,
     )
 
@@ -540,6 +653,10 @@ def get_transactions(
         .all()
     )
 
+    if not has_purchase_items_schema:
+        for item in transactions:
+            set_committed_value(item, "purchase_items", [])
+
     return {
         "success": True,
         "total": total,
@@ -577,11 +694,16 @@ def get_transaction(
         family_id=family_id,
     )
 
+    has_purchase_items_schema = purchase_items_schema_available(db)
     transaction = get_family_transaction(
         db=db,
         transaction_id=transaction_id,
         family_id=family_id,
     )
+    if has_purchase_items_schema:
+        db.refresh(transaction, attribute_names=["purchase_items"])
+    else:
+        set_committed_value(transaction, "purchase_items", [])
 
     if scope == "own":
         check_transaction_owner(
@@ -621,11 +743,14 @@ def update_transaction(
         family_id=family_id,
     )
 
+    has_purchase_items_schema = purchase_items_schema_available(db)
     transaction = get_family_transaction(
         db=db,
         transaction_id=transaction_id,
         family_id=family_id,
     )
+    if not has_purchase_items_schema:
+        set_committed_value(transaction, "purchase_items", [])
 
     check_transaction_active(transaction)
 
@@ -638,6 +763,22 @@ def update_transaction(
         )
 
     changes = payload.model_dump(exclude_unset=True)
+    purchase_items_were_provided = "purchase_items" in changes
+    changes.pop("purchase_items", None)
+    purchase_items_payload = (
+        payload.purchase_items
+        if purchase_items_were_provided
+        else []
+    )
+    if (
+        purchase_items_were_provided
+        and purchase_items_payload
+        and not has_purchase_items_schema
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="採買明細資料表尚未完成資料庫升級，請稍後再試。",
+        )
 
     new_type = changes.get(
         "transaction_type",
@@ -650,6 +791,17 @@ def update_transaction(
     validate_transaction_type_transition(
         old_type=transaction.transaction_type,
         new_type=new_type,
+    )
+
+    if new_type != "expense" and transaction.purchase_items and not purchase_items_were_provided:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="此交易已有商品明細；轉為非支出前請先清除商品明細",
+        )
+
+    validate_purchase_items(
+        transaction_type=new_type,
+        purchase_items=purchase_items_payload,
     )
 
     new_category_id = changes.get(
@@ -671,11 +823,34 @@ def update_transaction(
         field: getattr(transaction, field)
         for field in changes
     }
+    new_values = {}
 
     for field, value in changes.items():
         setattr(transaction, field, value)
 
     try:
+        if purchase_items_were_provided:
+            old_values["purchase_items"] = purchase_items_audit_values(
+                transaction.purchase_items
+            )
+            transaction.purchase_items.clear()
+            transaction.purchase_items.extend(
+                build_purchase_line_items(
+                    family_id=family_id,
+                    user_id=current_user.id,
+                    purchase_items=purchase_items_payload,
+                )
+            )
+            db.flush()
+            new_values["purchase_items"] = purchase_items_audit_values(
+                transaction.purchase_items
+            )
+
+        new_values.update({
+            field: getattr(transaction, field)
+            for field in changes
+        })
+
         add_audit_log(
             db,
             family_id=family_id,
@@ -684,10 +859,7 @@ def update_transaction(
             entity_type="transaction",
             entity_id=transaction.id,
             old_values=old_values,
-            new_values={
-                field: getattr(transaction, field)
-                for field in changes
-            },
+            new_values=new_values,
             description="修改交易",
         )
 

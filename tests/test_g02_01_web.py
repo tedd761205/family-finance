@@ -25,16 +25,28 @@ def test_frontend_assets_are_served():
     assert "/families/mine" in javascript.text
 
 
-def test_app_config_exposes_only_public_google_client_id(monkeypatch):
+def test_app_config_exposes_only_public_frontend_settings(monkeypatch):
     monkeypatch.setenv("GOOGLE_CLIENT_ID", "public-client-id.apps.googleusercontent.com")
+    monkeypatch.setenv("PURCHASE_LINE_ITEMS_ENABLED", "false")
 
     with TestClient(app) as client:
         response = client.get("/app-config")
 
     assert response.status_code == 200
     assert response.json() == {
-        "google_client_id": "public-client-id.apps.googleusercontent.com"
+        "google_client_id": "public-client-id.apps.googleusercontent.com",
+        "purchase_line_items_enabled": False,
     }
+
+
+def test_app_config_can_enable_purchase_items_after_migration(monkeypatch):
+    monkeypatch.setenv("PURCHASE_LINE_ITEMS_ENABLED", "true")
+
+    with TestClient(app) as client:
+        response = client.get("/app-config")
+
+    assert response.status_code == 200
+    assert response.json()["purchase_line_items_enabled"] is True
 
 
 def test_frontend_handles_session_and_family_loading_errors_safely():

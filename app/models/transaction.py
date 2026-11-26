@@ -242,3 +242,11 @@ class Transaction(Base):
         foreign_keys=[family_id, account_id],
         viewonly=True,
     )
+
+    # 一筆支出底下可有多筆商品明細；明細不會另算一筆交易。
+    purchase_items: Mapped[list["PurchaseLineItem"]] = relationship(
+        "PurchaseLineItem",
+        back_populates="transaction",
+        cascade="all, delete-orphan",
+        order_by="PurchaseLineItem.sort_order, PurchaseLineItem.id",
+    )

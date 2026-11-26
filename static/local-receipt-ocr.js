@@ -720,8 +720,22 @@
     const sellerTaxId = sellerTaxIdInput.value.trim();
     const buyerTaxId = buyerTaxIdInput.value.trim();
     const itemLines = itemsInput.value.trim();
+    const structuredItems = Array.isArray(parsedFields && parsedFields.items)
+      ? parsedFields.items
+      : [];
 
     if (amount) $("transaction-amount").value = amount;
+    if (window.setTransactionPurchaseItems) {
+      window.setTransactionPurchaseItems(
+        structuredItems.map((item) => ({
+          item_name: item.name,
+          quantity: item.quantity,
+          unit: null,
+          unit_price: item.unitPrice
+        })),
+        { autoAmount: false }
+      );
+    }
     if (date) $("transaction-date").value = date;
     if (invoiceNumber) $("transaction-reference").value = invoiceNumber;
     if (merchant) $("transaction-description").value = merchant.slice(0, 255);
@@ -731,7 +745,9 @@
     noteParts.push("憑證種類：" + receiptTypeLabel());
     if (sellerTaxId) noteParts.push("賣方統編：" + sellerTaxId);
     if (buyerTaxId) noteParts.push("買方統編：" + buyerTaxId);
-    if (itemLines) noteParts.push("商品明細：\n" + itemLines);
+    if (itemLines && !structuredItems.length) {
+      noteParts.push("OCR 商品明細文字（尚未拆成結構化明細，請人工核對）：\\n" + itemLines);
+    }
     if (noteParts.length && !$("transaction-note").value.trim()) {
       $("transaction-note").value = noteParts.join("\n");
     }

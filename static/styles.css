@@ -651,3 +651,32 @@ textarea:focus-visible {
 }
 
 .local-receipt-invoice-camera.camera-unavailable .local-receipt-video-stage{display:none}
+
+
+/* Structured purchase line items */
+.purchase-items-panel{border:1px solid #dfe9e2;background:#f8fbf8;border-radius:13px;padding:16px;margin:4px 0 18px}
+.purchase-items-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.purchase-items-heading strong{font-size:15px;color:#24483a}
+.purchase-items-heading p{margin:4px 0 0}
+.purchase-items-list{display:grid;gap:10px}
+.purchase-item-row{display:grid;grid-template-columns:minmax(150px,1.7fr) minmax(78px,.7fr) minmax(82px,.7fr) minmax(100px,.9fr) minmax(110px,.9fr) auto;gap:9px;align-items:end;padding:12px;background:#fff;border:1px solid #e3ebe5;border-radius:11px}
+.purchase-item-field{display:grid;gap:6px;min-width:0;font-size:11px;font-weight:700;color:#50665a}
+.purchase-item-field input{width:100%;min-width:0;padding:10px 9px;border:1px solid #dce5df;border-radius:8px;background:#fff;color:#243b33;font:inherit;font-size:13px;font-weight:450}
+.purchase-item-field input:focus{outline:2px solid #478a7233;border-color:#478a72}
+.purchase-item-line-total{display:grid;gap:6px;min-width:0;font-size:11px;color:#718079}
+.purchase-item-line-total strong{font-size:13px;color:#24483a;overflow-wrap:anywhere}
+.purchase-item-remove{padding:9px 10px;font-size:12px;white-space:nowrap}
+.purchase-items-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:13px;padding-top:12px;border-top:1px solid #e4ece6}
+.purchase-items-footer>span{font-size:13px;color:#52675b}
+.purchase-items-footer strong{display:block;font-size:18px;color:#205b4b;margin-top:3px}
+@media(max-width:760px){
+ .purchase-items-panel{padding:13px;margin-left:-2px;margin-right:-2px}
+ .purchase-items-heading{align-items:flex-start}
+ .purchase-items-heading .small{flex-shrink:0;min-height:42px}
+ .purchase-item-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:11px}
+ .purchase-item-field-item_name{grid-column:1/-1}
+ .purchase-item-line-total{align-self:center}
+ .purchase-item-remove{min-height:42px;align-self:end}
+ .purchase-items-footer{align-items:stretch;flex-direction:column}
+ .purchase-items-footer button{width:100%;min-height:44px}
+}
