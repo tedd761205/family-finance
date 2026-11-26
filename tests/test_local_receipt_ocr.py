@@ -254,3 +254,33 @@ def test_receipt_field_source_labels_have_consistent_mobile_readable_style():
     assert '/static/local-receipt-ocr.js?v=20261126-15' in page.text
     assert ".local-receipt-field-source" in styles.text
     assert "overflow-wrap:anywhere" in styles.text
+
+
+
+def test_unsaved_transaction_form_is_protected_when_closing_or_restarting():
+    with TestClient(app) as client:
+        script = client.get("/static/app.js").text
+
+    assert "let transactionFormTouched = false" in script
+    assert "function transactionFormHasUnsavedChanges()" in script
+    assert 'transactionFormElement?.addEventListener("input"' in script
+    assert 'transactionFormElement?.addEventListener("change"' in script
+    assert 'transactionFormElement?.addEventListener("reset"' in script
+    assert 'confirmDiscardTransactionForm("收起")' in script
+    assert 'confirmDiscardTransactionForm("放棄目前內容並開始新增")' in script
+    assert 'confirmDiscardTransactionForm("取消")' in script
+    assert "window.confirm(\"收支表單還有尚未儲存的內容" in script
+
+
+def test_family_switch_cannot_reuse_open_transaction_form_from_previous_family():
+    with TestClient(app) as client:
+        script = client.get("/static/app.js").text
+
+    start = script.index('card.addEventListener("click",async()=>{')
+    end = script.index('await refreshFamilyNavigationPermissions();', start)
+    handler = script[start:end]
+
+    assert "selectedFamilyId !== family.family_id" in handler
+    assert "transactionFormHasUnsavedChanges()" in handler
+    assert "切換家庭會清除這些內容" in handler
+    assert handler.index("resetTransactionForm();") < handler.index("selectedFamilyId=family.family_id;")
