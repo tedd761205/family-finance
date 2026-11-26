@@ -72,3 +72,17 @@ def test_transaction_filter_has_clear_action_and_contextual_no_results_message()
     assert "function clearTransactionFilters()" in script
     assert 'id="clear-transaction-filters"' in page.text
     assert "/static/app.js?v=20261126-3" in page.text
+
+
+
+def test_clear_filter_remains_available_when_date_range_validation_fails():
+    with TestClient(app) as client:
+        script = client.get("/static/app.js").text
+
+    start = script.index("async function loadTransactions()")
+    end = script.index("async function showTransactions()", start)
+    loader = script[start:end]
+
+    assert loader.index('$("clear-transaction-filters").disabled = !transactionFiltersActive();') < loader.index("validateDateRange(")
+    assert "if (!validateDateRange(" in loader
+    assert '$(endFieldId)?.focus();' in script
