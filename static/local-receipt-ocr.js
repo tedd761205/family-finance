@@ -745,7 +745,9 @@
     noteParts.push("憑證種類：" + receiptTypeLabel());
     if (sellerTaxId) noteParts.push("賣方統編：" + sellerTaxId);
     if (buyerTaxId) noteParts.push("買方統編：" + buyerTaxId);
-    if (itemLines) noteParts.push("商品明細：\n" + itemLines);
+    if (itemLines && !structuredItems.length) {
+      noteParts.push("OCR 商品明細文字（尚未拆成結構化明細，請人工核對）：\\n" + itemLines);
+    }
     if (noteParts.length && !$("transaction-note").value.trim()) {
       $("transaction-note").value = noteParts.join("\n");
     }
