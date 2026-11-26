@@ -373,6 +373,7 @@ function renderTransactions() {
 
 async function loadTransactions() {
   if(!selectedFamilyId)return false;
+  $("clear-transaction-filters").disabled = !transactionFiltersActive();
   if (!validateDateRange(
     "transaction-filter-start",
     "transaction-filter-end",
