@@ -146,6 +146,15 @@ def calculate_monthly_summary(
         lambda: ZERO
     )
 
+    # 每日明細依台灣當地日期及幣別分組；不把不同幣別合併。
+    daily_by_date_currency = defaultdict(
+        lambda: {
+            "income": ZERO,
+            "expense": ZERO,
+            "transaction_count": 0,
+        }
+    )
+
     # --------------------------------------------------
     # 5. 逐筆計算
     # --------------------------------------------------
@@ -185,6 +194,14 @@ def calculate_monthly_summary(
                 and transaction_type == "expense"
             ):
                 expense_by_currency[currency] += amount
+                if transaction.transaction_date is not None:
+                    transaction_datetime = transaction.transaction_date
+                    if transaction_datetime.tzinfo is None:
+                        transaction_datetime = transaction_datetime.replace(tzinfo=timezone.utc)
+                    local_date = transaction_datetime.astimezone(TAIWAN_TIMEZONE).date()
+                    daily = daily_by_date_currency[(local_date, currency)]
+                    daily["expense"] += amount
+                    daily["transaction_count"] += 1
 
             # 轉帳本金不計入家庭收入或支出。
             continue
@@ -205,6 +222,14 @@ def calculate_monthly_summary(
                 continue
 
             income_by_currency[currency] += amount
+            if transaction.transaction_date is not None:
+                transaction_datetime = transaction.transaction_date
+                if transaction_datetime.tzinfo is None:
+                    transaction_datetime = transaction_datetime.replace(tzinfo=timezone.utc)
+                local_date = transaction_datetime.astimezone(TAIWAN_TIMEZONE).date()
+                daily = daily_by_date_currency[(local_date, currency)]
+                daily["income"] += amount
+                daily["transaction_count"] += 1
 
         # ----------------------------------------------
         # 一般支出
@@ -213,6 +238,14 @@ def calculate_monthly_summary(
         elif transaction_type == "expense":
 
             expense_by_currency[currency] += amount
+            if transaction.transaction_date is not None:
+                transaction_datetime = transaction.transaction_date
+                if transaction_datetime.tzinfo is None:
+                    transaction_datetime = transaction_datetime.replace(tzinfo=timezone.utc)
+                local_date = transaction_datetime.astimezone(TAIWAN_TIMEZONE).date()
+                daily = daily_by_date_currency[(local_date, currency)]
+                daily["expense"] += amount
+                daily["transaction_count"] += 1
 
     # --------------------------------------------------
     # 6. 整理幣別
@@ -252,10 +285,23 @@ def calculate_monthly_summary(
             "amount": income - expense,
         })
 
+    daily_reports = [
+        {
+            "report_date": report_date.isoformat(),
+            "currency_code": currency,
+            "total_income": values["income"],
+            "total_expense": values["expense"],
+            "net_amount": values["income"] - values["expense"],
+            "transaction_count": values["transaction_count"],
+        }
+        for (report_date, currency), values in sorted(daily_by_date_currency.items())
+    ]
+
     return {
         "family_id": family_id,
         "year": year,
         "month": month,
+        "daily_reports": daily_reports,
         "total_income": total_income,
         "total_expense": total_expense,
         "net_amount": net_amount,

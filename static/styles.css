@@ -593,3 +593,14 @@ textarea:focus-visible {
  .local-receipt-review-heading{align-items:flex-start;flex-direction:column}
  .local-receipt-type-field{max-width:none}
 }
+
+
+/* Monthly daily cash-flow detail */
+.monthly-daily-table-wrap{overflow-x:auto;border:1px solid var(--border,#dce5e1);border-radius:12px;background:var(--surface,#fff)}
+.monthly-daily-table{width:100%;min-width:650px;border-collapse:collapse;font-size:14px}
+.monthly-daily-table th,.monthly-daily-table td{padding:11px 13px;border-bottom:1px solid var(--border,#e5ece8);text-align:left;white-space:nowrap}
+.monthly-daily-table th{background:var(--surface-soft,#f4f7f5);font-weight:700;color:var(--text,#243b33)}
+.monthly-daily-table tbody tr:last-child td{border-bottom:0}
+.monthly-daily-table td.numeric{text-align:right;font-variant-numeric:tabular-nums}
+.monthly-daily-table td.monthly-daily-date{font-variant-numeric:tabular-nums;font-weight:650}
+@media(max-width:760px){.monthly-daily-block{padding-top:18px}.monthly-daily-table{min-width:620px}.monthly-daily-table th,.monthly-daily-table td{padding:10px 11px;font-size:13px}}

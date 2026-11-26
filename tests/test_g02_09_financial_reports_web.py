@@ -107,7 +107,33 @@ def test_financial_report_csv_keeps_currency_rows_separate_and_includes_category
     with TestClient(app) as client:
         javascript = client.get("/static/app.js").text
 
-    assert '["期間","幣別","總收入","總支出","淨收支"]' in javascript
+    assert '["資料類型","日期","幣別","總收入","總支出","淨收支","交易筆數"]' in javascript
     assert '["年度","期間","幣別","總收入","總支出","淨收支"]' in javascript
     assert '["收支類型","分類名稱","幣別","金額","交易筆數","同幣別類型占比(%)"]' in javascript
     assert "reportCurrencies(data.total_income,data.total_expense,data.net_amount)" in javascript
+
+
+
+def test_monthly_report_includes_daily_details_with_iso_dates():
+    with TestClient(app) as client:
+        javascript = client.get("/static/app.js").text
+        html = client.get("/").text
+        schema = client.get("/openapi.json").json()
+
+    assert 'id="monthly-daily-report-list"' in html
+    assert 'id="monthly-daily-report-empty"' in html
+    assert "function renderMonthlyDailyReport(data)" in javascript
+    assert "function reportDateIso(value)" in javascript
+    assert "YYYY-MM-DD" in html
+    assert '["資料類型","日期","幣別","總收入","總支出","淨收支","交易筆數"]' in javascript
+    monthly_schema = schema["components"]["schemas"]["MonthlyReportResponse"]["properties"]
+    assert "daily_reports" in monthly_schema
+
+
+def test_monthly_daily_report_csv_includes_month_range_and_daily_iso_dates():
+    with TestClient(app) as client:
+        javascript = client.get("/static/app.js").text
+
+    assert 'const monthStart=period+"-01"' in javascript
+    assert 'reportDateIso(item.report_date)' in javascript
+    assert '["每日明細",reportDateIso(item.report_date)' in javascript
