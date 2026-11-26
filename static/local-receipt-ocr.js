@@ -204,6 +204,69 @@
     return canvas;
   }
 
+
+  // Single-QR still-image fallback. It is independent of the live multi-QR/WASM
+  // detector, so a failed or stalled video detector cannot block the capture button.
+  async function decodeInvoicePhotoWithJsQr(file) {
+    const jsQR = await loadScript(JSQR_SRC, "jsQR");
+    const sourceCanvas = await loadImageCanvas(file, MAX_BARCODE_IMAGE_EDGE);
+    const width = sourceCanvas.width;
+    const height = sourceCanvas.height;
+    const regions = [
+      [0, 0, width, height],
+      [0, 0, Math.ceil(width / 2), height],
+      [Math.floor(width / 2), 0, width - Math.floor(width / 2), height],
+      [0, 0, width, Math.ceil(height / 2)],
+      [0, Math.floor(height / 2), width, height - Math.floor(height / 2)]
+    ];
+    const results = [];
+    for (const [x, y, regionWidth, regionHeight] of regions) {
+      const canvas = document.createElement("canvas");
+      const scale = Math.min(1, 2200 / Math.max(regionWidth, regionHeight));
+      canvas.width = Math.max(1, Math.round(regionWidth * scale));
+      canvas.height = Math.max(1, Math.round(regionHeight * scale));
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (!context) continue;
+      context.drawImage(
+        sourceCanvas,
+        x, y, regionWidth, regionHeight,
+        0, 0, canvas.width, canvas.height
+      );
+      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+      const decoded = jsQR(
+        imageData.data,
+        imageData.width,
+        imageData.height,
+        { inversionAttempts: "attemptBoth" }
+      );
+      const value = String(decoded?.data || "").trim();
+      if (value && !results.some((item) => item.value === value)) {
+        results.push({ format: "QR Code", value });
+      }
+    }
+    return results;
+  }
+
+  async function decodeInvoiceVideoFrameWithJsQr() {
+    if (!invoiceVideo?.videoWidth || !invoiceVideo?.videoHeight) return null;
+    const jsQR = await loadScript(JSQR_SRC, "jsQR");
+    const maxEdge = 1800;
+    const scale = Math.min(1, maxEdge / Math.max(invoiceVideo.videoWidth, invoiceVideo.videoHeight));
+    invoiceScanCanvas.width = Math.max(1, Math.round(invoiceVideo.videoWidth * scale));
+    invoiceScanCanvas.height = Math.max(1, Math.round(invoiceVideo.videoHeight * scale));
+    const context = invoiceScanCanvas.getContext("2d", { willReadFrequently: true });
+    if (!context) throw new Error("目前瀏覽器無法讀取相機畫面。");
+    context.drawImage(invoiceVideo, 0, 0, invoiceScanCanvas.width, invoiceScanCanvas.height);
+    const imageData = context.getImageData(0, 0, invoiceScanCanvas.width, invoiceScanCanvas.height);
+    const decoded = jsQR(
+      imageData.data,
+      imageData.width,
+      imageData.height,
+      { inversionAttempts: "attemptBoth" }
+    );
+    return decoded?.data ? String(decoded.data).trim() : null;
+  }
+
   async function createLocalBarcodeDetector(formats) {
     // Prefer the ZBar WebAssembly polyfill: it returns every QR in the frame,
     // not just one, and reports orientation for sideways/upside-down symbols.
@@ -416,23 +479,17 @@
     setInvoiceScanStatus("正在拍攝目前鏡頭畫面…");
 
     try {
-      // Let the in-flight video detection finish before drawing the same video frame.
-      const waitStarted = Date.now();
-      while (invoiceScanBusy && Date.now() - waitStarted < 2500) {
-        await new Promise((resolve) => window.setTimeout(resolve, 40));
-      }
-      if (invoiceScanBusy) {
-        throw new Error("即時掃描仍在處理中，請稍候片刻再按拍照。");
-      }
       if (!invoiceCameraStream || !invoiceVideo.videoWidth) {
         throw new Error("相機畫面已停止，請重新啟動掃描。");
       }
 
+      // Do not wait for the continuous detector. Snapshot decoding uses jsQR
+      // directly and can proceed even while a WASM/video detection is in flight.
       const file = await captureInvoiceCameraFrame();
       setInvoiceScanStatus("已拍照，正在解析發票 QR Code…");
       if (invoiceCaptureButton) invoiceCaptureButton.textContent = "已拍照，分析中…";
 
-      const codes = await decodeLocalCodes(file, invoiceBarcodeDetector, true);
+      const codes = await decodeInvoicePhotoWithJsQr(file);
       const leftCode = codes.find((item) =>
         Boolean(window.FamilyReceiptParser.parseTaiwanInvoiceQr(item.value, null))
       );
@@ -472,7 +529,8 @@
       setInvoiceScanStatus(error && error.message ? error.message : "拍照或 QR 解析失敗，請再試一次。", true);
     } finally {
       invoiceCaptureRequested = false;
-      invoiceScanBusy = false;
+      // The live scan callback owns invoiceScanBusy and will release it in its
+      // own finally block; do not clear another operation's lock here.
       if (invoiceCaptureButton) {
         invoiceCaptureButton.textContent = "拍照辨識（備用）";
         invoiceCaptureButton.classList.remove("is-capturing");
@@ -481,7 +539,7 @@
       }
       // Resume automatic whole-frame scanning after an unsuccessful still-photo attempt.
       if (invoiceCameraStream && !invoiceScanTimer) {
-        invoiceScanTimer = window.setInterval(scanInvoiceCameraFrame, 220);
+        invoiceScanTimer = window.setInterval(scanInvoiceCameraFrame, 350);
       }
     }
   }
@@ -491,14 +549,30 @@
   }
 
   async function scanInvoiceCameraFrame() {
-    if (!invoiceCameraStream || invoiceScanBusy || invoiceCaptureRequested || !invoiceVideo.videoWidth || !invoiceBarcodeDetector) return;
+    if (!invoiceCameraStream || invoiceScanBusy || invoiceCaptureRequested || !invoiceVideo.videoWidth) return;
+    if (!invoiceBarcodeDetector && typeof window.jsQR !== "function") return;
     invoiceScanBusy = true;
     try {
-      // Scan the whole video frame and accept every QR returned. Payload content,
-      // rather than on-screen position, identifies the two invoice QR records.
-      const detected = await invoiceBarcodeDetector.detect(invoiceVideo);
-      if (invoiceCaptureRequested) return;
-      for (const code of detected || []) acceptInvoiceQrPayload(code.rawValue);
+      // Prefer multi-QR detection, but never let one video/WASM decoder failure
+      // turn off the camera or disable the user's manual capture fallback.
+      if (invoiceBarcodeDetector) {
+        try {
+          const detected = await invoiceBarcodeDetector.detect(invoiceVideo);
+          if (invoiceCaptureRequested) return;
+          for (const code of detected || []) acceptInvoiceQrPayload(code.rawValue);
+        } catch (_error) {
+          invoiceBarcodeDetector = null;
+          setInvoiceScanStatus("多 QR 引擎暫時無法讀取，已切換單 QR 備援；相機會繼續保持開啟。");
+        }
+      }
+
+      // jsQR reads one QR per frame. If the basic invoice QR is not yet found,
+      // keep checking the full frame until the primary payload appears.
+      if (!invoiceLeftQrValue && typeof window.jsQR === "function") {
+        const fallbackValue = await decodeInvoiceVideoFrameWithJsQr();
+        if (invoiceCaptureRequested) return;
+        if (fallbackValue) acceptInvoiceQrPayload(fallbackValue);
+      }
 
       if (invoiceLeftQrValue) {
         setInvoiceScanStatus("已讀取發票基本資料，正在帶入記帳欄位…");
@@ -509,9 +583,9 @@
         setInvoiceScanStatus("正在自動搜尋整個畫面的 QR Code。先讀到發票基本資料碼即可完成，不必等商品明細碼。");
       }
     } catch (_error) {
-      setInvoiceScanStatus("多 QR 辨識器暫時無法讀取畫面，請重新啟動掃描。", true);
-      stopInvoiceScanner(false);
-      if (invoiceScanButton) invoiceScanButton.disabled = false;
+      // Keep the camera and capture button available so the user can retry with
+      // a still frame instead of being left with an inert, disabled button.
+      setInvoiceScanStatus("即時掃描暫時發生錯誤；相機仍保持開啟，可按下方「拍照辨識」重試。", true);
     } finally {
       invoiceScanBusy = false;
     }
@@ -631,7 +705,7 @@
     invoiceVideo.srcObject = invoiceCameraStream;
     await invoiceVideo.play();
     await refreshInvoiceCameraControls();
-    invoiceScanTimer = window.setInterval(scanInvoiceCameraFrame, 220);
+    invoiceScanTimer = window.setInterval(scanInvoiceCameraFrame, 350);
   }
 
   async function startInvoiceScanner() {
@@ -653,8 +727,15 @@
     }
 
     try {
-      invoiceBarcodeDetector = await createNativeInvoiceBarcodeDetector();
-      if (!invoiceBarcodeDetector) throw new Error("無法載入全畫面多 QR 辨識引擎，請確認網路後重新開啟掃描。");
+      const detectorResult = await Promise.all([
+        createNativeInvoiceBarcodeDetector().catch(() => null),
+        loadScript(JSQR_SRC, "jsQR").catch(() => null)
+      ]);
+      invoiceBarcodeDetector = detectorResult[0];
+      const jsQrAvailable = typeof detectorResult[1] === "function";
+      if (!invoiceBarcodeDetector && !jsQrAvailable) {
+        throw new Error("QR 掃描程式無法載入。請確認網路連線，或改用「選擇照片／收據」。");
+      }
       await applyInvoiceCamera("");
       const availableCameras = await navigator.mediaDevices.enumerateDevices();
       const activeDeviceId = invoiceCameraTrack?.getSettings?.().deviceId || "";
@@ -676,7 +757,7 @@
       const currentZoom = Number(invoiceCameraTrack?.getSettings?.().zoom);
       const zoomLabel = Number.isFinite(currentZoom) ? currentZoom.toFixed(1) + "×" : "預設倍率";
       setInvoiceScanStatus(
-        "已啟用全畫面多 QR 辨識。" +
+        (invoiceBarcodeDetector ? "已啟用全畫面多 QR 掃描與備援辨識。" : "已啟用 QR 備援掃描。") +
         "目前鏡頭：" + activeCameraLabel + "，" + zoomLabel +
         "；下次會沿用你手動選過的後置鏡頭。"
       );
