@@ -161,6 +161,57 @@ let transactionRows = [];
 let transactionAccounts = [];
 let transactionCategories = [];
 
+const TRANSACTION_DEFAULTS_KEY_PREFIX = "family_finance_recent_transaction_defaults_v1:";
+
+function readRecentTransactionDefaults() {
+  if (!selectedFamilyId) return {};
+  try {
+    const saved = sessionStorage.getItem(TRANSACTION_DEFAULTS_KEY_PREFIX + selectedFamilyId);
+    const parsed = saved ? JSON.parse(saved) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (_error) {
+    return {};
+  }
+}
+
+function rememberRecentTransactionDefaults(accountId, type, categoryId) {
+  if (!selectedFamilyId) return;
+  try {
+    const saved = readRecentTransactionDefaults();
+    saved.categories = saved.categories && typeof saved.categories === "object"
+      ? saved.categories
+      : {};
+    if (accountId) saved.accountId = Number(accountId);
+    if (categoryId && (type === "income" || type === "expense")) {
+      saved.categories[type] = Number(categoryId);
+    }
+    sessionStorage.setItem(
+      TRANSACTION_DEFAULTS_KEY_PREFIX + selectedFamilyId,
+      JSON.stringify(saved)
+    );
+  } catch (_error) {
+    // Remembering defaults is optional; storage restrictions must not block accounting.
+  }
+}
+
+function applyRecentTransactionDefaults() {
+  const saved = readRecentTransactionDefaults();
+  const accountSelect = $("transaction-account");
+  if (saved.accountId && transactionAccounts.some((item) =>
+    item.id === Number(saved.accountId) && item.is_active !== false
+  )) {
+    accountSelect.value = String(saved.accountId);
+  }
+
+  const type = $("transaction-type").value;
+  const categoryId = saved.categories && saved.categories[type];
+  if (categoryId && transactionCategories.some((item) =>
+    item.id === Number(categoryId) && item.category_type === type
+  )) {
+    $("transaction-category").value = String(categoryId);
+  }
+}
+
 function transactionTypeLabel(type) {
   return ({income:"收入",expense:"支出",opening_balance:"期初餘額"})[type] || type;
 }
@@ -209,6 +260,9 @@ async function loadTransactionSupportData() {
   transactionCategories=categoryResult.categories||[];
   populateTransactionAccountSelects();
   populateTransactionCategories($("transaction-type").value);
+  if ($("transaction-form-panel").classList.contains("hidden")) {
+    applyRecentTransactionDefaults();
+  }
 }
 
 function transactionQuery() {
@@ -500,6 +554,7 @@ function resetTransactionForm() {
   setPurchaseItemsVisibility();
   $("transaction-form-panel").classList.add("hidden");
   populateTransactionCategories($("transaction-type").value);
+  applyRecentTransactionDefaults();
 }
 
 function startEditTransaction(item) {
@@ -541,6 +596,7 @@ $("transaction-cancel").addEventListener("click",()=>{
 });
 $("transaction-type").addEventListener("change",()=>{
   populateTransactionCategories($("transaction-type").value);
+  applyRecentTransactionDefaults();
   setPurchaseItemsVisibility();
 });
 $("purchase-item-add").addEventListener("click",()=>{
@@ -596,6 +652,9 @@ $("transaction-form").addEventListener("submit",async(event)=>{
     } else {
       payload.account_id=account.id;
       await api("/transactions?family_id="+selectedFamilyId,{method:"POST",body:JSON.stringify(payload)});
+      // Persist only after a successful create; preferences are isolated by family
+      // and transaction type and never change the saved accounting record.
+      rememberRecentTransactionDefaults(account.id, type, categoryId);
     }
     resetTransactionForm();
     const refreshed=await loadTransactions();
