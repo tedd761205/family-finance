@@ -269,6 +269,8 @@
       invoiceVideo.srcObject = null;
     }
     if (hidePanel) invoiceCameraPanel?.classList.add("hidden");
+    if (cameraButton) cameraButton.disabled = isProcessing;
+    if (chooseButton) chooseButton.disabled = isProcessing;
     if (invoiceScanButton) invoiceScanButton.disabled = isProcessing;
     if (invoiceStopButton) invoiceStopButton.disabled = true;
   }
@@ -446,6 +448,8 @@
       invoiceVideo.srcObject = invoiceCameraStream;
       await invoiceVideo.play();
       setInvoiceScanStatus("相機已啟動。請讓左右兩個 QR Code 各自完整落在紅框內。");
+      cameraButton.disabled = true;
+      chooseButton.disabled = true;
       invoiceStopButton.disabled = false;
       invoiceScanButton.disabled = true;
       invoiceScanTimer = window.setInterval(() => {
