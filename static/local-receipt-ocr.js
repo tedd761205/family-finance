@@ -416,6 +416,7 @@
     if (invoiceCameraStream) return;
     clearPhoto();
     invoiceCameraPanel.classList.remove("hidden");
+    invoiceCameraPanel.classList.remove("camera-unavailable");
     invoiceScanButton.disabled = true;
     setInvoiceScanStatus("正在啟動相機…");
     invoiceLeftQrValue = null;
@@ -424,7 +425,9 @@
     setInvoiceGuideScanned("right", false);
 
     if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      invoiceCameraPanel.classList.add("camera-unavailable");
       setInvoiceScanStatus("目前瀏覽器無法啟用即時相機。請改用「一般收據：拍照辨識」或「選擇照片／收據」。", true);
+      setStatus("即時相機目前不可用，可改用一般收據拍照或選擇手機照片。");
       invoiceScanButton.disabled = false;
       return;
     }
