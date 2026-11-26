@@ -305,5 +305,8 @@ def calculate_monthly_summary(
         "total_income": total_income,
         "total_expense": total_expense,
         "net_amount": net_amount,
-        "transaction_count": len(transactions),
+        "transaction_count": sum(
+            values["transaction_count"]
+            for values in daily_by_date_currency.values()
+        ),
     }
