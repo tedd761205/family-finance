@@ -76,7 +76,10 @@
     // that header are optional; a valid left QR must still be accepted when no
     // colon-delimited extension is printed on the code.
     const extensionSeparator = left.indexOf(":", 45);
-    const authStart = extensionSeparator >= 0 ? extensionSeparator - 24 : 53;
+    // When there is no extension separator, the final 24 characters are the
+    // authentication field. This also tolerates legacy samples with a padded
+    // seller tax-ID field (the normal domestic layout is 77 characters).
+    const authStart = extensionSeparator >= 0 ? extensionSeparator - 24 : left.length - 24;
     if (authStart < 53 || authStart > 55) return null;
     const fixedHeaderEnd = authStart + 24;
     if (left.length < fixedHeaderEnd) return null;
