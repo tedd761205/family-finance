@@ -10,8 +10,10 @@ from fastapi import (
     Query,
     status,
 )
+from sqlalchemy import inspect
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.database import get_db
 from app.dependencies.auth import get_current_user
@@ -394,6 +396,12 @@ def build_purchase_line_items(
     return records
 
 
+def purchase_items_schema_available(db: Session) -> bool:
+    """部署新程式早於 Production migration 時，容許既有交易 API 暫時相容。"""
+
+    return inspect(db.get_bind()).has_table("purchase_line_items")
+
+
 def purchase_items_audit_values(purchase_items) -> list[dict]:
     """產生可寫入 JSONB 稽核紀錄的商品明細快照。"""
 
@@ -445,6 +453,13 @@ def create_transaction(
         transaction_type=transaction_type,
         purchase_items=payload.purchase_items,
     )
+
+    has_purchase_items_schema = purchase_items_schema_available(db)
+    if payload.purchase_items and not has_purchase_items_schema:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="採買明細資料表尚未完成資料庫升級，請稍後再試。",
+        )
 
     validate_account(
         db=db,
@@ -572,9 +587,11 @@ def get_transactions(
         family_id=family_id,
     )
 
-    query = db.query(Transaction).options(
-        selectinload(Transaction.purchase_items),
-    ).filter(
+    has_purchase_items_schema = purchase_items_schema_available(db)
+    query = db.query(Transaction)
+    if has_purchase_items_schema:
+        query = query.options(selectinload(Transaction.purchase_items))
+    query = query.filter(
         Transaction.family_id == family_id,
     )
 
@@ -636,6 +653,10 @@ def get_transactions(
         .all()
     )
 
+    if not has_purchase_items_schema:
+        for item in transactions:
+            set_committed_value(item, "purchase_items", [])
+
     return {
         "success": True,
         "total": total,
@@ -673,11 +694,16 @@ def get_transaction(
         family_id=family_id,
     )
 
+    has_purchase_items_schema = purchase_items_schema_available(db)
     transaction = get_family_transaction(
         db=db,
         transaction_id=transaction_id,
         family_id=family_id,
     )
+    if has_purchase_items_schema:
+        db.refresh(transaction, attribute_names=["purchase_items"])
+    else:
+        set_committed_value(transaction, "purchase_items", [])
 
     if scope == "own":
         check_transaction_owner(
@@ -717,11 +743,14 @@ def update_transaction(
         family_id=family_id,
     )
 
+    has_purchase_items_schema = purchase_items_schema_available(db)
     transaction = get_family_transaction(
         db=db,
         transaction_id=transaction_id,
         family_id=family_id,
     )
+    if not has_purchase_items_schema:
+        set_committed_value(transaction, "purchase_items", [])
 
     check_transaction_active(transaction)
 
@@ -741,6 +770,15 @@ def update_transaction(
         if purchase_items_were_provided
         else []
     )
+    if (
+        purchase_items_were_provided
+        and purchase_items_payload
+        and not has_purchase_items_schema
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="採買明細資料表尚未完成資料庫升級，請稍後再試。",
+        )
 
     new_type = changes.get(
         "transaction_type",
