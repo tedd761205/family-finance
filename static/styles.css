@@ -624,7 +624,6 @@ textarea:focus-visible {
 .local-receipt-invoice-camera-heading .tiny{color:#d3ddd7}
 .local-receipt-video-stage{position:relative;display:block;width:100%;overflow:hidden;border-radius:11px;background:#080d0b;line-height:0}
 .local-receipt-video-stage video{display:block;width:100%;height:auto}
-.local-receipt-qr-guide{display:none!important}
 .local-receipt-camera-controls{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px 12px;padding:12px;border:1px solid rgba(255,255,255,.18);border-radius:10px;background:#22332c;color:#fff}
 .local-receipt-camera-controls label{font-size:13px;font-weight:700}
 .local-receipt-camera-controls select{min-width:0;min-height:42px;padding:7px 10px;border:1px solid #a9bbb1;border-radius:8px;background:#fff;color:#17221e}
