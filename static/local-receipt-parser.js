@@ -226,9 +226,13 @@
 
     const qr = leftQr ? parseTaiwanInvoiceQr(leftQr.value, rightQr && rightQr.value) : null;
     const textInvoiceNumber = (sourceText.match(/\b([A-Z]{2})[\s-]?(\d{8})\b/i) || []);
+    const barcodeInvoiceNumber = extractBarcodeInvoiceNumber(codes);
     const invoiceNumber = qr && qr.invoiceNumber
       ? qr.invoiceNumber
-      : (textInvoiceNumber[1] ? textInvoiceNumber[1].toUpperCase() + textInvoiceNumber[2] : extractBarcodeInvoiceNumber(codes));
+      : (textInvoiceNumber[1] ? textInvoiceNumber[1].toUpperCase() + textInvoiceNumber[2] : barcodeInvoiceNumber);
+    const invoiceNumberSource = qr && qr.invoiceNumber
+      ? "qr"
+      : (textInvoiceNumber[1] ? "ocr" : (barcodeInvoiceNumber ? "barcode" : "none"));
 
     const sellerTaxId = qr && qr.sellerTaxId
       ? qr.sellerTaxId
@@ -248,7 +252,14 @@
       items: qr ? qr.items : [],
       source: qr ? "qr" : "ocr",
       hasElectronicQr: Boolean(qr),
-      codeCount: codes.length
+      codeCount: codes.length,
+      // Per-field provenance distinguishes QR values from OCR candidates.
+      fieldSources: {
+        merchant: extractMerchant(sourceText) ? "ocr" : "none",
+        date: qr && qr.date ? "qr" : (extractTextDate(sourceText) ? "ocr" : "none"),
+        amount: qr && qr.totalAmount ? "qr" : (extractTextAmount(sourceText) ? "ocr" : "none"),
+        invoiceNumber: invoiceNumberSource
+      }
     };
     fields.typeLabel = TYPE_LABELS[fields.type] || TYPE_LABELS.unknown;
     return fields;

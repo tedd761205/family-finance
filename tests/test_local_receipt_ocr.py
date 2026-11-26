@@ -91,7 +91,7 @@ def test_paper_einvoice_uses_full_frame_multi_qr_detection_and_local_pair_valida
         styles = client.get("/static/styles.css")
 
     assert page.status_code == 200
-    assert '/static/local-receipt-ocr.js?v=20261126-13' in page.text
+    assert '/static/local-receipt-ocr.js?v=20261126-14' in page.text
     assert 'id="local-receipt-invoice-scan"' in page.text
     assert 'id="local-receipt-invoice-video"' in page.text
     assert 'id="local-receipt-left-guide"' not in page.text
@@ -192,3 +192,23 @@ def test_invoice_fallback_capture_uses_live_camera_stream_without_leaving_worksp
     assert "captureAndDecodeInvoicePhoto()" in handler
     assert "cameraInput.click()" not in handler
     assert "android/ios camera app" in handler.lower()
+
+
+
+def test_receipt_review_shows_field_level_data_sources_and_manual_edits():
+    with TestClient(app) as client:
+        page = client.get("/")
+        script = client.get("/static/local-receipt-ocr.js")
+        parser = client.get("/static/local-receipt-parser.js")
+
+    assert page.status_code == 200
+    for field in ("merchant", "amount", "date", "invoice-number"):
+        assert f'id="local-receipt-{field}-source"' in page.text
+    assert "fieldSources" in parser.text
+    assert 'merchant: extractMerchant(sourceText) ? "ocr" : "none"' in parser.text
+    assert 'date: qr && qr.date ? "qr"' in parser.text
+    assert 'amount: qr && qr.totalAmount ? "qr"' in parser.text
+    assert "function receiptSourceLabel(source)" in script.text
+    assert "來源：發票 QR Code" in script.text
+    assert "照片文字辨識候選，請核對" in script.text
+    assert 'setReviewSource(field, "manual")' in script.text
