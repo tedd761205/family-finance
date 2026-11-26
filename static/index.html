@@ -435,11 +435,12 @@
           <form id="bill-payment-form">
             <div class="account-form-grid">
               <label class="field">付款／退款帳戶<select id="bill-payment-account" required></select></label>
-              <label class="field">金額<input id="bill-payment-amount" type="number" min="0.0001" step="0.0001" required placeholder="輸入金額"></label>
+              <label class="field" id="bill-payment-amount-label">帳單幣別金額<input id="bill-payment-amount" type="number" min="0.0001" step="0.0001" required placeholder="輸入帳單幣別金額"></label>
+              <label class="field hidden" id="bill-payment-rate-field">實際付款／退款匯率<input id="bill-payment-exchange-rate" type="number" min="0.0000000001" step="0.0000000001" placeholder="例如 32.1"></label>
               <label class="field">日期<input id="bill-payment-date" type="date" required></label>
               <label class="field">說明<input id="bill-payment-description" maxlength="200" placeholder="選填"></label>
             </div>
-            <p class="tiny muted">帳戶幣別必須與帳單幣別一致。退款金額不可超過原付款尚可退款餘額。</p>
+            <p class="tiny muted" id="bill-payment-currency-summary">同幣別付款不需要輸入匯率；跨幣別會依實際付款匯率計算帳戶扣款金額。</p>
             <label class="field">備註<textarea id="bill-payment-note" rows="2" placeholder="選填"></textarea></label>
             <div class="form-actions"><button class="primary" id="bill-payment-submit" type="submit">確認付款</button><button class="secondary" id="bill-payment-cancel" type="button">取消</button></div>
           </form>
