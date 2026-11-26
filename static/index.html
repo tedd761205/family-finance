@@ -233,18 +233,38 @@
         <section class="local-receipt-tool" aria-labelledby="local-receipt-title">
           <div class="local-receipt-heading">
             <div>
-              <h3 id="local-receipt-title">發票拍照辨識（本機試用）</h3>
-              <p>照片只在目前裝置辨識，不會上傳到家庭記帳系統，也不會呼叫 Google Cloud Vision。</p>
+              <h3 id="local-receipt-title">發票／收據辨識（本機處理）</h3>
+              <p>電子發票以左右雙 QR Code 即時掃描；一般收據拍攝整張照片辨識。所有影像處理都在目前裝置，不會上傳照片。</p>
             </div>
             <span class="local-receipt-tag">不產生 OCR API 費用</span>
           </div>
           <div class="local-receipt-actions">
-            <button class="primary" id="local-receipt-camera" type="button">拍照辨識</button>
-            <button class="secondary" id="local-receipt-choose" type="button">選擇手機照片</button>
+            <button class="primary" id="local-receipt-invoice-scan" type="button">紙本電子發票：雙 QR 掃描</button>
+            <button class="secondary" id="local-receipt-camera" type="button">一般收據：拍照辨識</button>
+            <button class="secondary" id="local-receipt-choose" type="button">選擇照片／收據</button>
           </div>
           <input id="local-receipt-camera-input" class="hidden" type="file" accept="image/jpeg,image/png,image/webp" capture="environment">
           <input id="local-receipt-file-input" class="hidden" type="file" accept="image/jpeg,image/png,image/webp">
-          <p id="local-receipt-status" class="local-receipt-status" role="status" aria-live="polite">支援紙本、手寫發票及一般收據照片。第一次使用會下載辨識程式與繁體中文模型，會使用網路流量；這不是付費 OCR API，也不會上傳照片。</p>
+          <p id="local-receipt-status" class="local-receipt-status" role="status" aria-live="polite">紙本電子發票請使用「雙 QR 掃描」；一般收據、手寫憑證請拍攝整張照片。第一次使用收據 OCR 會下載辨識程式與繁體中文模型，會使用網路流量；不會呼叫付費 OCR API，也不會上傳照片。</p>
+          <section id="local-receipt-invoice-camera" class="local-receipt-invoice-camera hidden" aria-label="電子發票雙 QR Code 即時掃描">
+            <div class="local-receipt-invoice-camera-heading">
+              <strong>將發票下方兩個 QR Code 對準紅框</strong>
+              <span class="tiny muted">請保持發票平整、避免反光，讓左右 QR Code 完整入框。</span>
+            </div>
+            <div class="local-receipt-video-stage">
+              <video id="local-receipt-invoice-video" autoplay muted playsinline></video>
+              <div class="local-receipt-qr-guide left" id="local-receipt-left-guide">
+                <span>左 QR Code</span>
+              </div>
+              <div class="local-receipt-qr-guide right" id="local-receipt-right-guide">
+                <span>右 QR Code</span>
+              </div>
+            </div>
+            <p id="local-receipt-invoice-scan-status" class="local-receipt-invoice-scan-status" role="status" aria-live="polite">正在準備相機…</p>
+            <div class="local-receipt-invoice-scan-actions">
+              <button class="secondary" id="local-receipt-invoice-stop" type="button">停止掃描</button>
+            </div>
+          </section>
           <div id="local-receipt-workspace" class="local-receipt-workspace hidden">
             <img id="local-receipt-preview" class="local-receipt-preview" alt="待辨識的發票照片">
             <div class="local-receipt-progress" aria-hidden="true"><span id="local-receipt-progress-bar"></span></div>
