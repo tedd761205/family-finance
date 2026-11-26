@@ -604,3 +604,13 @@ textarea:focus-visible {
 .monthly-daily-table td.numeric{text-align:right;font-variant-numeric:tabular-nums}
 .monthly-daily-table td.monthly-daily-date{font-variant-numeric:tabular-nums;font-weight:650}
 @media(max-width:760px){.monthly-daily-block{padding-top:18px}.monthly-daily-table{min-width:620px}.monthly-daily-table th,.monthly-daily-table td{padding:10px 11px;font-size:13px}}
+
+
+/* Continuous workspace navigation: compact, accessible and mobile-friendly. */
+.workspace-shortcuts{position:sticky;top:8px;z-index:45;display:flex;align-items:center;gap:7px;width:100%;margin:10px 0 18px;padding:8px 10px;overflow-x:auto;overscroll-behavior-x:contain;border:1px solid var(--nav-border,#d8e4dc);border-radius:14px;background:rgba(255,255,255,.96);box-shadow:0 5px 18px rgba(32,58,49,.07);scrollbar-width:thin}
+.workspace-shortcuts-label{flex:0 0 auto;padding:0 5px;color:var(--nav-muted,#718079);font-size:12px;font-weight:700;white-space:nowrap}
+.workspace-shortcut{flex:0 0 auto;min-height:36px;padding:7px 13px;border:1px solid transparent;border-radius:10px;background:#f1f5f2;color:#40584d;font:inherit;font-size:13px;font-weight:700;white-space:nowrap;cursor:pointer}
+.workspace-shortcut:hover,.workspace-shortcut.active{border-color:#c6ddce;background:#e5f1e9;color:#174b3d}
+.workspace-shortcut:focus-visible{outline:3px solid #4b8f72;outline-offset:2px}
+.workspace-shortcuts+.more-tools-panel{margin-top:10px}
+@media(max-width:760px){.workspace-shortcuts{top:4px;margin:8px 0 14px;padding:7px;gap:6px;border-radius:12px}.workspace-shortcuts-label{font-size:11px}.workspace-shortcut{min-height:38px;padding:8px 12px;font-size:13px}}

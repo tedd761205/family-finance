@@ -88,6 +88,15 @@
         <button class="app-nav-button hidden" type="button" data-nav-key="reconcile" data-nav-target="open-bank-reconciliation" data-permissions="reconciliation.view"><span class="nav-icon" aria-hidden="true">對</span><span class="nav-label">對帳</span></button>
         <button class="app-nav-button hidden" type="button" data-nav-key="more" data-nav-action="more" aria-expanded="false" aria-controls="more-tools-panel"><span class="nav-icon" aria-hidden="true">☷</span><span class="nav-label">更多</span></button>
       </nav>
+      <nav id="workspace-shortcuts" class="workspace-shortcuts hidden" aria-label="工作區快速切換">
+        <span class="workspace-shortcuts-label">快速切換</span>
+        <button type="button" class="workspace-shortcut" data-target="open-accounts" data-permissions="accounts.view">帳戶</button>
+        <button type="button" class="workspace-shortcut" data-target="open-transactions" data-permissions="transactions.view">收支</button>
+        <button type="button" class="workspace-shortcut" data-target="open-transfers" data-permissions-all="accounts.transfer,transactions.view">轉帳</button>
+        <button type="button" class="workspace-shortcut" data-target="open-bills" data-permissions="bills.view">帳單</button>
+        <button type="button" class="workspace-shortcut" data-target="open-reports" data-permissions="reports.view">報表</button>
+        <button type="button" class="workspace-shortcut" data-target="open-bank-reconciliation" data-permissions="reconciliation.view">對帳</button>
+      </nav>
       <section id="more-tools-panel" class="more-tools-panel hidden no-authorized-tools" aria-label="更多功能">
         <div class="more-tools-heading">
           <div><h2>更多功能</h2><p class="muted">選擇分類，或直接搜尋功能名稱</p></div>
