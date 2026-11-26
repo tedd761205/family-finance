@@ -75,5 +75,5 @@ class MonthlyReportResponse(BaseModel):
     transaction_count: int = Field(
         ...,
         ge=0,
-        description="當月有效交易筆數",
+        description="納入當月收支統計的交易筆數；與每日明細筆數合計一致",
     )
