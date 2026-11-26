@@ -322,11 +322,12 @@
           <label class="field">結束日期<input id="transaction-filter-end" type="date"></label>
           <label class="field transaction-void-filter"><span>顯示已作廢</span><input id="transaction-include-voided" type="checkbox"></label>
           <button class="secondary small" id="apply-transaction-filters" type="button">套用篩選</button>
+          <button class="secondary small" id="clear-transaction-filters" type="button" disabled>清除篩選</button>
         </div>
         <div class="accounts-summary"><strong id="transactions-count">0 筆紀錄</strong><span class="muted tiny">金額以各帳戶幣別顯示，不跨幣別加總。</span></div>
         <p id="transactions-loading" class="muted hidden">正在載入收支紀錄…</p>
         <div id="transactions-list" class="transactions-list"></div>
-        <div id="transactions-empty" class="empty-state hidden"><div class="empty-icon">＋</div><h3>尚無收支紀錄</h3><p class="muted">新增第一筆收入或支出，開始記錄家庭財務。</p></div>
+        <div id="transactions-empty" class="empty-state hidden"><div class="empty-icon">＋</div><h3 id="transaction-empty-title">尚無收支紀錄</h3><p id="transaction-empty-description" class="muted">新增第一筆收入或支出，開始記錄家庭財務。</p></div>
         <div id="transaction-form-panel" class="subpanel hidden">
           <h3 id="transaction-form-title">新增收支</h3>
           <form id="transaction-form">
