@@ -58,6 +58,7 @@
   let invoiceBarcodeDetector = null;
   let invoiceScanTimer = null;
   let invoiceScanBusy = false;
+  let invoiceCaptureRequested = false;
   let invoiceLeftQrValue = null;
   let invoiceRightQrValue = null;
   const invoiceScanCanvas = document.createElement("canvas");
@@ -230,7 +231,7 @@
     return null;
   }
 
-  async function decodeLocalCodes(file) {
+  async function decodeLocalCodes(file, preferredDetector = null, strict = false) {
     const found = [];
     const addCode = (value, format, side = null) => {
       if (!value) return;
@@ -245,7 +246,7 @@
     try {
       const canvas = await loadImageCanvas(file, MAX_BARCODE_IMAGE_EDGE);
       const desiredFormats = ["qr_code", "code_128", "ean_13", "ean_8", "upc_a", "upc_e", "code_39", "itf"];
-      const detector = await createLocalBarcodeDetector(desiredFormats);
+      const detector = preferredDetector || await createLocalBarcodeDetector(desiredFormats);
       if (detector) {
         try {
           const detected = await detector.detect(canvas);
@@ -253,7 +254,8 @@
             const format = code.format === "qr_code" ? "QR Code" : (code.format || "條碼");
             addCode(code.rawValue, format);
           }
-        } catch (_error) {
+        } catch (error) {
+          if (strict) throw error;
           // A single decoder failure should not prevent trying the local fallback.
         }
       }
@@ -268,7 +270,8 @@
         const full = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "attemptBoth" });
         if (full && full.data) addCode(full.data, "QR Code");
       }
-    } catch (_error) {
+    } catch (error) {
+      if (strict) throw error;
       // OCR can still proceed when the optional local barcode decoder is unavailable.
     }
     return found;
@@ -339,8 +342,10 @@
   async function completeInvoiceQrScan() {
     const leftValue = invoiceLeftQrValue;
     const rightValue = invoiceRightQrValue;
-    if (!leftValue || !rightValue || isProcessing) return;
+    if (!leftValue || isProcessing) return;
 
+    // The left/basic QR is sufficient for invoice number, date, random code,
+    // amount and tax IDs. The right/detail QR is optional enrichment only.
     const parsedPair = window.FamilyReceiptParser.parseTaiwanInvoiceQr(leftValue, rightValue);
     if (!parsedPair) {
       setInvoiceScanStatus("已找到兩組 QR Code，但資料無法配對。請確認兩個 QR Code 都清楚可見，再試一次。", true);
@@ -359,7 +364,7 @@
       const file = await captureInvoiceCameraFrame();
       const codes = [
         { format: "QR Code", value: leftValue, side: "left" },
-        { format: "QR Code", value: rightValue, side: "right" }
+        ...(rightValue ? [{ format: "QR Code", value: rightValue, side: "right" }] : [])
       ];
       stopInvoiceScanner();
       await handleFile(file, codes);
@@ -385,57 +390,99 @@
   }
 
   async function captureAndDecodeInvoicePhoto() {
-    if (!invoiceCameraStream || invoiceScanBusy) return;
-    invoiceScanBusy = true;
+    if (!invoiceCameraStream) {
+      setInvoiceScanStatus("相機尚未啟動，請先重新開啟雙 QR 掃描。", true);
+      return;
+    }
+    if (invoiceCaptureRequested) {
+      setInvoiceScanStatus("正在處理剛才的拍照，請稍候。");
+      return;
+    }
+
+    // Pause the continuous scanner immediately. The previous implementation returned
+    // silently whenever invoiceScanBusy was true, which is almost always during live
+    // detection and made the button appear to do nothing.
+    invoiceCaptureRequested = true;
     if (invoiceScanTimer) {
       window.clearInterval(invoiceScanTimer);
       invoiceScanTimer = null;
     }
-    if (invoiceCaptureButton) invoiceCaptureButton.disabled = true;
-    setInvoiceScanStatus("已拍下目前畫面，正在自動尋找所有 QR Code…");
+    if (invoiceCaptureButton) {
+      invoiceCaptureButton.disabled = true;
+      invoiceCaptureButton.textContent = "正在拍攝…";
+      invoiceCaptureButton.classList.add("is-capturing");
+      invoiceCaptureButton.setAttribute("aria-busy", "true");
+    }
+    setInvoiceScanStatus("正在拍攝目前鏡頭畫面…");
+
     try {
+      // Let the in-flight video detection finish before drawing the same video frame.
+      const waitStarted = Date.now();
+      while (invoiceScanBusy && Date.now() - waitStarted < 2500) {
+        await new Promise((resolve) => window.setTimeout(resolve, 40));
+      }
+      if (invoiceScanBusy) {
+        throw new Error("即時掃描仍在處理中，請稍候片刻再按拍照。");
+      }
+      if (!invoiceCameraStream || !invoiceVideo.videoWidth) {
+        throw new Error("相機畫面已停止，請重新啟動掃描。");
+      }
+
       const file = await captureInvoiceCameraFrame();
-      const codes = await decodeLocalCodes(file);
+      setInvoiceScanStatus("已拍照，正在解析發票 QR Code…");
+      if (invoiceCaptureButton) invoiceCaptureButton.textContent = "已拍照，分析中…";
+
+      const codes = await decodeLocalCodes(file, invoiceBarcodeDetector, true);
       const leftCode = codes.find((item) =>
         Boolean(window.FamilyReceiptParser.parseTaiwanInvoiceQr(item.value, null))
       );
       const rightCode = codes.find((item) => String(item.value || "").startsWith("**"));
+      const leftValue = leftCode?.value || invoiceLeftQrValue;
+      const rightValue = rightCode?.value || invoiceRightQrValue || null;
 
-      if (leftCode) {
-        invoiceLeftQrValue = leftCode.value;
-      }
-      if (rightCode) {
-        invoiceRightQrValue = rightCode.value;
-      }
-
-      if (invoiceLeftQrValue && invoiceRightQrValue) {
-        setInvoiceScanStatus("左右 QR Code 都已拍照讀取，正在核對資料…");
-        const verified = window.FamilyReceiptParser.parseTaiwanInvoiceQr(invoiceLeftQrValue, invoiceRightQrValue);
+      if (leftValue) {
+        const verified = window.FamilyReceiptParser.parseTaiwanInvoiceQr(leftValue, rightValue);
         if (verified) {
+          invoiceLeftQrValue = leftValue;
+          invoiceRightQrValue = rightValue;
+          setInvoiceScanStatus(
+            rightValue
+              ? "已拍照並讀取發票基本資料及商品明細，正在帶入核對畫面…"
+              : "已拍照並讀取發票基本資料；商品明細碼沒有讀到也不影響記帳，正在帶入核對畫面…"
+          );
           const pair = [
-            { format: "QR Code", value: invoiceLeftQrValue, side: "left" },
-            { format: "QR Code", value: invoiceRightQrValue, side: "right" }
+            { format: "QR Code", value: leftValue, side: "left" },
+            ...(rightValue ? [{ format: "QR Code", value: rightValue, side: "right" }] : [])
           ];
           stopInvoiceScanner();
           await handleFile(file, pair);
           return;
         }
-        invoiceLeftQrValue = null;
-        invoiceRightQrValue = null;
-        setInvoiceScanStatus("兩碼都有讀到，但資料無法配對。請重新拍攝，讓發票完整入鏡。", true);
+      }
+
+      if (rightValue && !leftValue) {
+        setInvoiceScanStatus("已拍照，但目前只讀到商品明細碼；尚未讀到發票基本資料碼。請讓上方兩個 QR 都清楚入鏡後再拍一次。", true);
       } else {
         setInvoiceScanStatus(
-          "這次畫面尚未同時讀到兩組發票 QR Code。請讓兩個 QR 都清楚出現在鏡頭中、減少反光，再按「拍照補掃」。",
+          "已拍照，但沒有讀到有效的發票基本資料 QR Code。請靠近一點、避免反光，再按「拍照辨識」。",
           true
         );
       }
     } catch (error) {
-      setInvoiceScanStatus(error && error.message ? error.message : "拍照解析失敗，請重新拍攝。", true);
+      setInvoiceScanStatus(error && error.message ? error.message : "拍照或 QR 解析失敗，請再試一次。", true);
     } finally {
+      invoiceCaptureRequested = false;
       invoiceScanBusy = false;
-      if (invoiceCaptureButton) invoiceCaptureButton.disabled = !invoiceCameraStream;
-      // The still-image pass is user-triggered; do not silently restart a
-      // long-running loop that forces the user to keep holding the phone.
+      if (invoiceCaptureButton) {
+        invoiceCaptureButton.textContent = "拍照辨識（備用）";
+        invoiceCaptureButton.classList.remove("is-capturing");
+        invoiceCaptureButton.removeAttribute("aria-busy");
+        invoiceCaptureButton.disabled = !invoiceCameraStream;
+      }
+      // Resume automatic whole-frame scanning after an unsuccessful still-photo attempt.
+      if (invoiceCameraStream && !invoiceScanTimer) {
+        invoiceScanTimer = window.setInterval(scanInvoiceCameraFrame, 220);
+      }
     }
   }
 
@@ -444,7 +491,7 @@
   }
 
   async function scanInvoiceCameraFrame() {
-    if (!invoiceCameraStream || invoiceScanBusy || !invoiceVideo.videoWidth || !invoiceBarcodeDetector) return;
+    if (!invoiceCameraStream || invoiceScanBusy || invoiceCaptureRequested || !invoiceVideo.videoWidth || !invoiceBarcodeDetector) return;
     invoiceScanBusy = true;
     try {
       // Scan the whole video frame and accept every QR returned. Payload content,
@@ -452,15 +499,13 @@
       const detected = await invoiceBarcodeDetector.detect(invoiceVideo);
       for (const code of detected || []) acceptInvoiceQrPayload(code.rawValue);
 
-      if (invoiceLeftQrValue && invoiceRightQrValue) {
-        setInvoiceScanStatus("已自動找到兩組 QR Code，正在確認發票資料…");
+      if (invoiceLeftQrValue) {
+        setInvoiceScanStatus("已讀取發票基本資料，正在帶入記帳欄位…");
         await completeInvoiceQrScan();
-      } else if (invoiceLeftQrValue) {
-        setInvoiceScanStatus("已找到發票基本資料，正在自動尋找另一組 QR Code…");
       } else if (invoiceRightQrValue) {
-        setInvoiceScanStatus("已找到發票另一組資料，正在自動尋找基本資料…");
+        setInvoiceScanStatus("已找到商品明細碼，正在繼續尋找發票基本資料碼…");
       } else {
-        setInvoiceScanStatus("正在自動搜尋整個畫面的 QR Code。兩個 QR Code 同時進入畫面即可，不必對框或拿正。");
+        setInvoiceScanStatus("正在自動搜尋整個畫面的 QR Code。先讀到發票基本資料碼即可完成，不必等商品明細碼。");
       }
     } catch (_error) {
       setInvoiceScanStatus("多 QR 辨識器暫時無法讀取畫面，請重新啟動掃描。", true);
@@ -677,7 +722,10 @@
       setInvoiceScanStatus("此鏡頭暫時無法調整縮放，請切換鏡頭。", true);
     }
   });
-  invoiceCaptureButton?.addEventListener("click", captureAndDecodeInvoicePhoto);
+  invoiceCaptureButton?.addEventListener("click", (event) => {
+    event.preventDefault();
+    captureAndDecodeInvoicePhoto();
+  });
   invoiceStopButton?.addEventListener("click", () => {
     stopInvoiceScanner();
     setInvoiceScanStatus("已停止掃描。你可以重新啟動相機，或改用收據拍照。");
