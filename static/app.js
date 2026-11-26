@@ -1744,7 +1744,7 @@ function reportCurrencies(...groups) {
 
 function reportCsvCell(value) {
   const raw=value===null||value===undefined?"":String(value);
-  const safe=typeof value==="string"&&/^[\\s]*[=+\\-@]/.test(raw)?"'"+raw:raw;
+  const safe=typeof value==="string"&&/^\s*[=+\-@]/.test(raw)?"'"+raw:raw;
   return '"'+safe.replace(/"/g,'""')+'"';
 }
 
@@ -1753,7 +1753,7 @@ function downloadReportCsv(fileName,headers,rows) {
     notice("reports-notice","目前沒有可匯出的報表資料。","error");
     return false;
   }
-  const csv="\\uFEFF"+[headers,...rows].map(row=>row.map(reportCsvCell).join(",")).join("\\r\\n");
+  const csv="\uFEFF"+[headers,...rows].map(row=>row.map(reportCsvCell).join(",")).join("\r\n");
   const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
   const url=URL.createObjectURL(blob);
   const link=document.createElement("a");
@@ -1828,8 +1828,6 @@ function downloadCategoryReportCsv() {
     item.transaction_count,
     Number(item.percentage||0).toFixed(2)
   ]);
-  const start=data.start_date||"不限開始日";
-  const end=data.end_date||"不限結束日";
   const suffix=[data.start_date||"不限開始日",data.end_date||"不限結束日"].join("_");
   downloadReportCsv("家庭財務報表_分類_"+suffix+".csv",["收支類型","分類名稱","幣別","金額","交易筆數","同幣別類型占比(%)"],rows);
 }
