@@ -94,8 +94,9 @@ def test_paper_einvoice_has_live_dual_qr_guides_and_local_pair_validation():
 
     assert "navigator.mediaDevices.getUserMedia" in script.text
     assert "function preferredRearCamera(devices, rememberedId = \"\", activeDeviceId = \"\")" in script.text
-    assert "main|主鏡頭|後置" in script.text
-    assert "ultra.?wide|超廣角|0[.,]5x|0[.,]6x" in script.text
+    assert "main|primary|standard|normal|主鏡頭" in script.text
+    assert "back|rear|facing back|後置" in script.text
+    assert "function isUltraWideCameraLabel(label)" in script.text
     assert "video.deviceId = { exact: deviceId }" in script.text
     assert 'id="local-receipt-invoice-camera-select"' in page.text
     assert 'id="local-receipt-invoice-zoom"' in page.text
