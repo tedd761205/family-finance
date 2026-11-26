@@ -76,6 +76,8 @@ def test_monthly_report_groups_daily_rows_by_taiwan_date_and_currency():
             "transaction_count": 1,
         },
     ]
+    assert result["transaction_count"] == 4
+
     assert result["total_income"] == [
         {"currency_code": "TWD", "amount": Decimal("100.00")},
         {"currency_code": "USD", "amount": Decimal("10.00")},
