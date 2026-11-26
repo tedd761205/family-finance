@@ -348,7 +348,7 @@
     // amount and tax IDs. The right/detail QR is optional enrichment only.
     const parsedPair = window.FamilyReceiptParser.parseTaiwanInvoiceQr(leftValue, rightValue);
     if (!parsedPair) {
-      setInvoiceScanStatus("已找到兩組 QR Code，但資料無法配對。請確認兩個 QR Code 都清楚可見，再試一次。", true);
+      setInvoiceScanStatus("已讀取發票基本 QR，但資料格式無法解析。請重新掃描，或改用拍照辨識。", true);
       invoiceLeftQrValue = null;
       invoiceRightQrValue = null;
       return;
@@ -358,7 +358,7 @@
       window.clearInterval(invoiceScanTimer);
       invoiceScanTimer = null;
     }
-    setInvoiceScanStatus("雙 QR Code 已配對成功，正在擷取完整發票並核對商家資訊…");
+    setInvoiceScanStatus(rightValue ? "已讀取發票基本資料與商品明細，正在擷取畫面…" : "已讀取發票基本資料，正在擷取畫面…");
     invoiceScanBusy = true;
     try {
       const file = await captureInvoiceCameraFrame();
@@ -461,7 +461,7 @@
       }
 
       if (rightValue && !leftValue) {
-        setInvoiceScanStatus("已拍照，但目前只讀到商品明細碼；尚未讀到發票基本資料碼。請讓上方兩個 QR 都清楚入鏡後再拍一次。", true);
+        setInvoiceScanStatus("已拍照，但目前只讀到商品明細碼；還需要發票基本資料碼才能帶入日期與金額。請調整角度再拍一次。", true);
       } else {
         setInvoiceScanStatus(
           "已拍照，但沒有讀到有效的發票基本資料 QR Code。請靠近一點、避免反光，再按「拍照辨識」。",
@@ -497,13 +497,14 @@
       // Scan the whole video frame and accept every QR returned. Payload content,
       // rather than on-screen position, identifies the two invoice QR records.
       const detected = await invoiceBarcodeDetector.detect(invoiceVideo);
+      if (invoiceCaptureRequested) return;
       for (const code of detected || []) acceptInvoiceQrPayload(code.rawValue);
 
       if (invoiceLeftQrValue) {
         setInvoiceScanStatus("已讀取發票基本資料，正在帶入記帳欄位…");
         await completeInvoiceQrScan();
       } else if (invoiceRightQrValue) {
-        setInvoiceScanStatus("已找到商品明細碼，正在繼續尋找發票基本資料碼…");
+        setInvoiceScanStatus("已找到商品明細碼，正在尋找發票基本資料碼…");
       } else {
         setInvoiceScanStatus("正在自動搜尋整個畫面的 QR Code。先讀到發票基本資料碼即可完成，不必等商品明細碼。");
       }
