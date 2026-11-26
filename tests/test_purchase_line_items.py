@@ -375,11 +375,11 @@ def test_purchase_item_visibility_follows_parent_transaction_own_scope(purchase_
 
 
 def test_purchase_item_editor_and_invoice_bridge_are_wired_for_mobile_transactions(purchase_api_client):
-    with purchase_api_client as client:
-        page = client.get("/")
-        javascript = client.get("/static/app.js").text
-        receipt_script = client.get("/static/local-receipt-ocr.js").text
-        css = client.get("/static/styles.css").text
+    client = purchase_api_client
+    page = client.get("/")
+    javascript = client.get("/static/app.js").text
+    receipt_script = client.get("/static/local-receipt-ocr.js").text
+    css = client.get("/static/styles.css").text
 
     assert page.status_code == 200
     assert 'id="purchase-items-panel"' in page.text
