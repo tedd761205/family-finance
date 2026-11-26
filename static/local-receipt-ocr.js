@@ -859,7 +859,7 @@
     const amount = Number(amountText);
     const date = dateInput.value.trim();
     const validAmount = amountText !== "" && Number.isFinite(amount) && amount > 0;
-    const validDate = /^\\d{4}-\\d{2}-\\d{2}$/.test(date);
+    const validDate = /^\d{4}-\d{2}-\d{2}$/.test(date);
     return validAmount && validDate;
   }
 
@@ -868,7 +868,7 @@
     const amount = Number(amountText);
     const date = dateInput?.value.trim() || "";
     const validAmount = amountText !== "" && Number.isFinite(amount) && amount > 0;
-    const validDate = /^\\d{4}-\\d{2}-\\d{2}$/.test(date);
+    const validDate = /^\d{4}-\d{2}-\d{2}$/.test(date);
     const ready = hasReviewData();
     fillButton.disabled = isProcessing || !ready;
     if (reviewHint) {
