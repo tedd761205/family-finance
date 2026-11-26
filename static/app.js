@@ -296,6 +296,138 @@ async function showTransactions() {
   }
 }
 
+
+let purchaseAmountAuto = true;
+
+function purchaseMoney(amount) {
+  const account = transactionAccounts.find(
+    row => row.id === Number($("transaction-account").value)
+  );
+  return money(amount, account?.currency_code || "TWD");
+}
+
+function addPurchaseItemRow(item = {}) {
+  const container = $("purchase-items-list");
+  const row = document.createElement("div");
+  row.className = "purchase-item-row";
+
+  const fields = [
+    { key: "item_name", label: "商品名稱", type: "text", value: item.item_name || item.name || "", placeholder: "例如：高麗菜", required: true, maxLength: 120 },
+    { key: "quantity", label: "數量", type: "number", value: item.quantity ?? 1, min: "0.0001", step: "0.0001", required: true },
+    { key: "unit", label: "單位", type: "text", value: item.unit || "", placeholder: "個／斤", list: "purchase-unit-options", maxLength: 24 },
+    { key: "unit_price", label: "單價", type: "number", value: item.unit_price ?? item.unitPrice ?? "", min: "0", step: "0.0001", required: true },
+  ];
+
+  for (const field of fields) {
+    const label = document.createElement("label");
+    label.className = "purchase-item-field purchase-item-field-" + field.key;
+    const caption = document.createElement("span");
+    caption.textContent = field.label;
+    const input = document.createElement("input");
+    input.dataset.field = field.key;
+    input.type = field.type;
+    input.value = String(field.value);
+    input.required = Boolean(field.required);
+    if (field.placeholder) input.placeholder = field.placeholder;
+    if (field.min !== undefined) input.min = field.min;
+    if (field.step !== undefined) input.step = field.step;
+    if (field.maxLength !== undefined) input.maxLength = field.maxLength;
+    if (field.list) input.setAttribute("list", field.list);
+    input.addEventListener("input", updatePurchaseItemsSummary);
+    label.append(caption, input);
+    row.appendChild(label);
+  }
+
+  const total = document.createElement("div");
+  total.className = "purchase-item-line-total";
+  const totalLabel = document.createElement("span");
+  totalLabel.textContent = "小計";
+  const totalValue = document.createElement("strong");
+  totalValue.dataset.field = "line_total";
+  totalValue.textContent = purchaseMoney(0);
+  total.append(totalLabel, totalValue);
+  row.appendChild(total);
+
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "danger purchase-item-remove";
+  remove.textContent = "移除";
+  remove.setAttribute("aria-label", "移除這項商品");
+  remove.addEventListener("click", () => {
+    row.remove();
+    updatePurchaseItemsSummary();
+  });
+  row.appendChild(remove);
+
+  container.appendChild(row);
+  updatePurchaseItemsSummary();
+  return row;
+}
+
+function readPurchaseItems() {
+  return Array.from($("purchase-items-list").children).map(row => {
+    const read = key => row.querySelector('[data-field="' + key + '"]').value.trim();
+    const itemName = read("item_name");
+    const quantity = read("quantity");
+    const unitPrice = read("unit_price");
+    if (!itemName) throw new Error("請填寫每一列商品名稱，或移除空白商品列。");
+    if (!quantity || !Number.isFinite(Number(quantity)) || Number(quantity) <= 0) {
+      throw new Error("「" + itemName + "」的數量必須大於 0。");
+    }
+    if (unitPrice === "" || !Number.isFinite(Number(unitPrice)) || Number(unitPrice) < 0) {
+      throw new Error("「" + itemName + "」的單價不可空白或小於 0。");
+    }
+    return {
+      item_name: itemName,
+      quantity,
+      unit: read("unit") || null,
+      unit_price: unitPrice
+    };
+  });
+}
+
+function updatePurchaseItemsSummary() {
+  const rows = Array.from($("purchase-items-list").children);
+  let sum = 0;
+  let hasNamedItem = false;
+  for (const row of rows) {
+    const name = row.querySelector('[data-field="item_name"]').value.trim();
+    const quantity = Number(row.querySelector('[data-field="quantity"]').value);
+    const price = Number(row.querySelector('[data-field="unit_price"]').value);
+    const valid = Boolean(name) && Number.isFinite(quantity) && quantity > 0
+      && Number.isFinite(price) && price >= 0;
+    const lineTotal = valid ? quantity * price : 0;
+    if (valid) {
+      hasNamedItem = true;
+      sum += lineTotal;
+    }
+    row.querySelector('[data-field="line_total"]').textContent = purchaseMoney(lineTotal);
+  }
+  $("purchase-items-total").textContent = purchaseMoney(sum);
+  if (purchaseAmountAuto && rows.length) {
+    $("transaction-amount").value = hasNamedItem ? sum.toFixed(4) : "";
+  }
+}
+
+function setPurchaseItems(items = [], options = {}) {
+  $("purchase-items-list").replaceChildren();
+  purchaseAmountAuto = options.autoAmount !== false;
+  for (const item of items) addPurchaseItemRow(item);
+  updatePurchaseItemsSummary();
+}
+
+function setPurchaseItemsVisibility() {
+  const isExpense = $("transaction-type").value === "expense";
+  $("purchase-items-panel").classList.toggle("hidden", !isExpense);
+  if (!isExpense && $("purchase-items-list").children.length) {
+    setPurchaseItems([], { autoAmount: false });
+  }
+}
+
+window.setTransactionPurchaseItems = (items, options = {}) => {
+  setPurchaseItems(items, { autoAmount: options.autoAmount === true });
+};
+
 function resetTransactionForm() {
   editingTransactionId=null;
   $("transaction-form").reset();
@@ -304,6 +436,9 @@ function resetTransactionForm() {
   $("transaction-type").disabled=false;
   $("transaction-account").disabled=false;
   $("transaction-date").value=localDateString();
+  purchaseAmountAuto=true;
+  setPurchaseItems([], { autoAmount: true });
+  setPurchaseItemsVisibility();
   $("transaction-form-panel").classList.add("hidden");
   populateTransactionCategories($("transaction-type").value);
 }
@@ -321,6 +456,8 @@ function startEditTransaction(item) {
   $("transaction-description").value=item.description||"";
   $("transaction-reference").value=item.external_reference||"";
   $("transaction-note").value=item.note||"";
+  setPurchaseItems(item.purchase_items||[], { autoAmount: false });
+  setPurchaseItemsVisibility();
   populateTransactionCategories(item.transaction_type,item.category_id);
   $("transaction-form-panel").classList.remove("hidden");
   $("transaction-form-panel").scrollIntoView({behavior:"smooth",block:"start"});
@@ -340,7 +477,29 @@ $("add-transaction-button").addEventListener("click",()=>{
 $("transaction-cancel").addEventListener("click",resetTransactionForm);
 $("transaction-type").addEventListener("change",()=>{
   populateTransactionCategories($("transaction-type").value);
+  setPurchaseItemsVisibility();
 });
+$("purchase-item-add").addEventListener("click",()=>{
+  if($("transaction-type").value!=="expense")return;
+  addPurchaseItemRow();
+  $("purchase-items-list").lastElementChild?.scrollIntoView({behavior:"smooth",block:"nearest"});
+});
+$("purchase-items-apply-total").addEventListener("click",()=>{
+  const total = Array.from($("purchase-items-list").children).reduce((sum,row)=>{
+    const quantity=Number(row.querySelector('[data-field="quantity"]').value);
+    const price=Number(row.querySelector('[data-field="unit_price"]').value);
+    const name=row.querySelector('[data-field="item_name"]').value.trim();
+    return name&&Number.isFinite(quantity)&&quantity>0&&Number.isFinite(price)&&price>=0
+      ? sum+quantity*price : sum;
+  },0);
+  if(!$("purchase-items-list").children.length){
+    notice("transaction-notice","請先新增商品明細。","error");
+    return;
+  }
+  $("transaction-amount").value=total.toFixed(4);
+  purchaseAmountAuto=false;
+}); 
+$("transaction-amount").addEventListener("input",()=>{purchaseAmountAuto=false;});
 $("apply-transaction-filters").addEventListener("click",loadTransactions);
 $("transaction-filter-type").addEventListener("change",loadTransactions);
 $("transaction-filter-account").addEventListener("change",loadTransactions);
@@ -364,7 +523,8 @@ $("transaction-form").addEventListener("submit",async(event)=>{
       description:$("transaction-description").value.trim()||null,
       category_id:categoryId?Number(categoryId):null,
       external_reference:$("transaction-reference").value.trim()||null,
-      note:$("transaction-note").value.trim()||null
+      note:$("transaction-note").value.trim()||null,
+      purchase_items:type==="expense"?readPurchaseItems():[]
     };
     if(wasEditing) {
       delete payload.currency_code;
