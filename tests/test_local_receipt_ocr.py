@@ -129,6 +129,9 @@ def test_paper_einvoice_uses_full_frame_multi_qr_detection_and_local_pair_valida
     assert "if (!invoiceBarcodeDetector && !jsQrAvailable)" in script.text
     assert "The live scan callback owns invoiceScanBusy" in script.text
     assert "manual capture fallback" in script.text
+    assert "pendingInvoiceCameraCapture = true" in script.text
+    assert "cameraInput.click()" in script.text
+    assert "const fallbackCodes = await decodeInvoicePhotoWithJsQr(file)" in script.text
     assert "while (invoiceScanBusy && Date.now() - waitStarted < 2500)" not in script.text
     assert 'invoiceCaptureButton.textContent = "正在拍攝…"' in script.text
     assert 'setInvoiceScanStatus("已拍照，正在解析發票 QR Code…")' in script.text
@@ -139,7 +142,7 @@ def test_paper_einvoice_uses_full_frame_multi_qr_detection_and_local_pair_valida
     assert "#local-receipt-invoice-capture.is-capturing" in styles.text
     assert "不必等兩個都讀到才完成" in page.text
     assert 'id="local-receipt-invoice-capture"' in page.text
-    assert "拍照辨識（備用）" in page.text
+    assert "改用手機相機拍照" in page.text
     assert "MAX_BARCODE_IMAGE_EDGE = 2600" in script.text
     assert "workspace.scrollIntoView({ behavior: \"smooth\", block: \"start\" })" in script.text
     assert 'inversionAttempts: "attemptBoth"' in script.text
