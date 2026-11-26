@@ -539,11 +539,18 @@
     }
   }
 
-  async function enableContinuousCameraFocus(track) {
+  async function configureInvoiceCameraTrack(track) {
     if (!track || typeof track.getCapabilities !== "function" || typeof track.applyConstraints !== "function") return;
     try {
       const capabilities = track.getCapabilities() || {};
       const advanced = {};
+      if (capabilities.zoom) {
+        const minZoom = Number(capabilities.zoom.min ?? 1);
+        const maxZoom = Number(capabilities.zoom.max ?? 1);
+        // 1.0x is the normal/main-camera view; never initialize to the minimum
+        // zoom because many multi-lens Android phones expose 0.5x ultra-wide there.
+        advanced.zoom = Math.min(maxZoom, Math.max(minZoom, 1));
+      }
       if (Array.isArray(capabilities.focusMode) && capabilities.focusMode.includes("continuous")) {
         advanced.focusMode = "continuous";
       }
@@ -552,26 +559,7 @@
       }
       if (Object.keys(advanced).length) await track.applyConstraints({ advanced: [advanced] });
     } catch (_error) {
-      // Many browsers manage focus automatically and do not expose manual focus controls.
-    }
-  }
-
-  async function applyDefaultInvoiceCameraZoom(track) {
-    if (!track || typeof track.getCapabilities !== "function" || typeof track.applyConstraints !== "function") return;
-    try {
-      const range = track.getCapabilities()?.zoom;
-      if (!range) return;
-      const minZoom = Number(range.min ?? 1);
-      const maxZoom = Number(range.max ?? 1);
-      // 1.0x is the normal/main-camera view; never initialize to the minimum
-      // zoom because many multi-lens Android phones expose 0.5x ultra-wide there.
-      const targetZoom = Math.min(maxZoom, Math.max(minZoom, 1));
-      const currentZoom = Number(track.getSettings?.().zoom);
-      if (!Number.isFinite(currentZoom) || Math.abs(currentZoom - targetZoom) > 0.02) {
-        await track.applyConstraints({ advanced: [{ zoom: targetZoom }] });
-      }
-    } catch (_error) {
-      // Unsupported zoom controls must not prevent the camera from starting.
+      // Unsupported zoom or focus controls must not prevent the camera from starting.
     }
   }
 
@@ -590,8 +578,7 @@
     invoiceCameraStream = await navigator.mediaDevices.getUserMedia({ audio: false, video });
     invoiceCameraTrack = invoiceCameraStream.getVideoTracks()[0] || null;
     invoiceCameraDeviceId = invoiceCameraTrack?.getSettings?.().deviceId || deviceId;
-    await enableContinuousCameraFocus(invoiceCameraTrack);
-    await applyDefaultInvoiceCameraZoom(invoiceCameraTrack);
+    await configureInvoiceCameraTrack(invoiceCameraTrack);
     invoiceVideo.srcObject = invoiceCameraStream;
     await invoiceVideo.play();
     await refreshInvoiceCameraControls();
@@ -632,7 +619,7 @@
       if (preferredCamera?.deviceId && preferredCamera.deviceId !== activeDeviceId) {
         await applyInvoiceCamera(preferredCamera.deviceId);
       } else {
-        await applyDefaultInvoiceCameraZoom(invoiceCameraTrack);
+        await configureInvoiceCameraTrack(invoiceCameraTrack);
         await refreshInvoiceCameraControls();
       }
       invoiceCameraDeviceId = invoiceCameraTrack?.getSettings?.().deviceId || invoiceCameraDeviceId;
