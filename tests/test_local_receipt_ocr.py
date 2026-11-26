@@ -133,7 +133,7 @@ def test_paper_einvoice_uses_full_frame_multi_qr_detection_and_local_pair_valida
     assert 'invoiceCaptureButton.textContent = "正在拍攝…"' in script.text
     assert 'setInvoiceScanStatus("已拍照，正在解析發票 QR Code…")' in script.text
     assert "if (!leftValue || isProcessing) return;" in script.text
-    assert "if (invoiceCaptureRequested) return;" in script.text
+    assert "if (invoiceCaptureRequested || scanGeneration !== invoiceCaptureGeneration) return;" in script.text
     assert "if (!invoiceCameraStream || invoiceScanBusy) return;" not in script.text
     assert 'invoiceCaptureButton.textContent = "正在拍攝…"' in script.text
     assert "#local-receipt-invoice-capture.is-capturing" in styles.text
