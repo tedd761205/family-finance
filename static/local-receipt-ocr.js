@@ -3,6 +3,9 @@
 
   const TESSERACT_SRC = "https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js";
   const JSQR_SRC = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js";
+  // ZBar WASM + BarcodeDetector polyfill: multi-QR detection with 0/90/180/270-degree orientation support.
+  const ZBAR_WASM_SRC = "https://cdn.jsdelivr.net/npm/@undecaf/zbar-wasm@0.9.15/dist/index.js";
+  const BARCODE_POLYFILL_SRC = "https://cdn.jsdelivr.net/npm/@undecaf/barcode-detector-polyfill@0.9.23/dist/index.js";
   const LANGUAGE_PATH = "https://tessdata.projectnaptha.com/4.0.0";
   const MAX_FILE_BYTES = 10 * 1024 * 1024;
   const MAX_BARCODE_IMAGE_EDGE = 2600;
@@ -16,8 +19,6 @@
   const invoiceCameraPanel = $("local-receipt-invoice-camera");
   const invoiceVideo = $("local-receipt-invoice-video");
   const invoiceScanStatus = $("local-receipt-invoice-scan-status");
-  const invoiceLeftGuide = $("local-receipt-left-guide");
-  const invoiceRightGuide = $("local-receipt-right-guide");
   const invoiceStopButton = $("local-receipt-invoice-stop");
   const invoiceCaptureButton = $("local-receipt-invoice-capture");
   const invoiceCameraSelect = $("local-receipt-invoice-camera-select");
@@ -78,11 +79,17 @@
   }
 
   function loadScript(src, globalName) {
-    if (window[globalName]) return Promise.resolve(window[globalName]);
+    const readyValue = () => globalName ? window[globalName] : true;
+    if (globalName && readyValue()) return Promise.resolve(readyValue());
     return new Promise((resolve, reject) => {
       const existing = document.querySelector('script[data-local-receipt-src="' + src + '"]');
       if (existing) {
-        existing.addEventListener("load", () => window[globalName] ? resolve(window[globalName]) : reject(new Error("辨識程式載入失敗")), { once: true });
+        if (existing.dataset.localReceiptLoaded === "true") {
+          const value = readyValue();
+          value ? resolve(value) : reject(new Error("辨識程式載入後無法啟動"));
+          return;
+        }
+        existing.addEventListener("load", () => readyValue() ? resolve(readyValue()) : reject(new Error("辨識程式載入失敗")), { once: true });
         existing.addEventListener("error", () => reject(new Error("無法下載本機辨識程式，請確認網路連線後重試")), { once: true });
         return;
       }
@@ -91,7 +98,10 @@
       script.async = true;
       script.crossOrigin = "anonymous";
       script.dataset.localReceiptSrc = src;
-      script.onload = () => window[globalName] ? resolve(window[globalName]) : reject(new Error("辨識程式載入後無法啟動"));
+      script.onload = () => {
+        script.dataset.localReceiptLoaded = "true";
+        readyValue() ? resolve(readyValue()) : reject(new Error("辨識程式載入後無法啟動"));
+      };
       script.onerror = () => {
         script.remove();
         reject(new Error("無法下載本機辨識程式，請確認網路連線後重試"));
@@ -193,6 +203,33 @@
     return canvas;
   }
 
+  async function createLocalBarcodeDetector(formats) {
+    // Prefer the ZBar WebAssembly polyfill: it returns every QR in the frame,
+    // not just one, and reports orientation for sideways/upside-down symbols.
+    try {
+      await loadScript(ZBAR_WASM_SRC, null);
+      const api = await loadScript(BARCODE_POLYFILL_SRC, "barcodeDetectorPolyfill");
+      if (api && typeof api.BarcodeDetectorPolyfill === "function") {
+        return new api.BarcodeDetectorPolyfill({ formats: formats || ["qr_code"] });
+      }
+    } catch (_error) {
+      // Continue with the browser detector or jsQR fallback when CDN/WASM is unavailable.
+    }
+
+    if (typeof window.BarcodeDetector === "function") {
+      try {
+        const supported = typeof window.BarcodeDetector.getSupportedFormats === "function"
+          ? await window.BarcodeDetector.getSupportedFormats()
+          : (formats || ["qr_code"]);
+        const selected = (formats || ["qr_code"]).filter((format) => supported.includes(format));
+        if (selected.length) return new window.BarcodeDetector({ formats: selected });
+      } catch (_error) {
+        // Browser-native detector is optional; the local jsQR fallback remains available.
+      }
+    }
+    return null;
+  }
+
   async function decodeLocalCodes(file) {
     const found = [];
     const addCode = (value, format, side = null) => {
@@ -207,49 +244,29 @@
 
     try {
       const canvas = await loadImageCanvas(file, MAX_BARCODE_IMAGE_EDGE);
-      const detectorSupported = "BarcodeDetector" in window;
-      if (detectorSupported && typeof createImageBitmap === "function") {
+      const desiredFormats = ["qr_code", "code_128", "ean_13", "ean_8", "upc_a", "upc_e", "code_39", "itf"];
+      const detector = await createLocalBarcodeDetector(desiredFormats);
+      if (detector) {
         try {
-          const desiredFormats = ["qr_code", "code_128", "ean_13", "ean_8", "upc_a", "upc_e", "code_39", "itf"];
-          const supportedFormats = typeof BarcodeDetector.getSupportedFormats === "function"
-            ? await BarcodeDetector.getSupportedFormats()
-            : desiredFormats;
-          const formats = desiredFormats.filter((format) => supportedFormats.includes(format));
-          if (formats.length) {
-            const detector = new BarcodeDetector({ formats });
-            const bitmap = await createImageBitmap(canvas);
-            const detected = await detector.detect(bitmap);
-            bitmap.close();
-            for (const code of detected) addCode(code.rawValue, code.format || "條碼");
+          const detected = await detector.detect(canvas);
+          for (const code of detected || []) {
+            const format = code.format === "qr_code" ? "QR Code" : (code.format || "條碼");
+            addCode(code.rawValue, format);
           }
         } catch (_error) {
-          // Some browsers expose BarcodeDetector but do not implement every format.
+          // A single decoder failure should not prevent trying the local fallback.
         }
       }
 
-      const jsQR = await loadScript(JSQR_SRC, "jsQR");
-      const context = canvas.getContext("2d", { willReadFrequently: true });
-      if (!context) return found;
-      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-      const full = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "attemptBoth" });
-      if (full && full.data) addCode(full.data, "QR Code");
-
-      // 台灣電子發票左右 QR Code 分開解碼，保留左右位置以便合併解析。
-      const middle = Math.floor(canvas.width / 2);
-      for (const region of [
-        { x: 0, width: middle, side: "left" },
-        { x: middle, width: canvas.width - middle, side: "right" }
-      ]) {
-        if (region.width < 2) continue;
-        const crop = document.createElement("canvas");
-        crop.width = region.width;
-        crop.height = canvas.height;
-        const cropContext = crop.getContext("2d", { willReadFrequently: true });
-        if (!cropContext) continue;
-        cropContext.drawImage(canvas, region.x, 0, region.width, canvas.height, 0, 0, region.width, canvas.height);
-        const cropData = cropContext.getImageData(0, 0, crop.width, crop.height);
-        const result = jsQR(cropData.data, cropData.width, cropData.height, { inversionAttempts: "attemptBoth" });
-        if (result && result.data) addCode(result.data, "QR Code", region.side);
+      // jsQR is a single-symbol fallback only.
+      // The ZBar detector above scans the whole invoice and can return both QR payloads in one pass.
+      if (found.filter((item) => item.format === "QR Code" || item.format === "qr_code").length < 2) {
+        const jsQR = await loadScript(JSQR_SRC, "jsQR");
+        const context = canvas.getContext("2d", { willReadFrequently: true });
+        if (!context) return found;
+        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+        const full = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "attemptBoth" });
+        if (full && full.data) addCode(full.data, "QR Code");
       }
     } catch (_error) {
       // OCR can still proceed when the optional local barcode decoder is unavailable.
@@ -289,11 +306,6 @@
     if (invoiceCaptureButton) invoiceCaptureButton.disabled = true;
   }
 
-  function setInvoiceGuideScanned(side, scanned) {
-    const guide = side === "left" ? invoiceLeftGuide : invoiceRightGuide;
-    if (guide) guide.classList.toggle("scanned", Boolean(scanned));
-  }
-
   function captureInvoiceCameraFrame() {
     return new Promise((resolve, reject) => {
       if (!invoiceVideo || !invoiceVideo.videoWidth || !invoiceVideo.videoHeight) {
@@ -331,11 +343,9 @@
 
     const parsedPair = window.FamilyReceiptParser.parseTaiwanInvoiceQr(leftValue, rightValue);
     if (!parsedPair) {
-      setInvoiceScanStatus("左右 QR Code 已讀取，但資料無法完整配對。請把兩個 QR Code 都放回紅框，再試一次。", true);
+      setInvoiceScanStatus("已找到兩組 QR Code，但資料無法配對。請確認兩個 QR Code 都清楚可見，再試一次。", true);
       invoiceLeftQrValue = null;
       invoiceRightQrValue = null;
-      setInvoiceGuideScanned("left", false);
-      setInvoiceGuideScanned("right", false);
       return;
     }
 
@@ -366,13 +376,11 @@
     if (raw.startsWith("**")) {
       if (!invoiceRightQrValue) {
         invoiceRightQrValue = raw;
-        setInvoiceGuideScanned("right", true);
       }
       return;
     }
     if (!invoiceLeftQrValue && window.FamilyReceiptParser.parseTaiwanInvoiceQr(raw, null)) {
       invoiceLeftQrValue = raw;
-      setInvoiceGuideScanned("left", true);
     }
   }
 
@@ -384,7 +392,7 @@
       invoiceScanTimer = null;
     }
     if (invoiceCaptureButton) invoiceCaptureButton.disabled = true;
-    setInvoiceScanStatus("已拍下整張發票，正在逐區解析左右 QR Code…");
+    setInvoiceScanStatus("已拍下目前畫面，正在自動尋找所有 QR Code…");
     try {
       const file = await captureInvoiceCameraFrame();
       const codes = await decodeLocalCodes(file);
@@ -395,11 +403,9 @@
 
       if (leftCode) {
         invoiceLeftQrValue = leftCode.value;
-        setInvoiceGuideScanned("left", true);
       }
       if (rightCode) {
         invoiceRightQrValue = rightCode.value;
-        setInvoiceGuideScanned("right", true);
       }
 
       if (invoiceLeftQrValue && invoiceRightQrValue) {
@@ -416,15 +422,10 @@
         }
         invoiceLeftQrValue = null;
         invoiceRightQrValue = null;
-        setInvoiceGuideScanned("left", false);
-        setInvoiceGuideScanned("right", false);
         setInvoiceScanStatus("兩碼都有讀到，但資料無法配對。請重新拍攝，讓發票完整入鏡。", true);
       } else {
-        const missing = [];
-        if (!invoiceLeftQrValue) missing.push("左側");
-        if (!invoiceRightQrValue) missing.push("右側");
         setInvoiceScanStatus(
-          "這次照片尚未讀到" + missing.join("與") + " QR Code。可以調整距離、避免反光，再按「重新拍照辨識」；不用一直舉著等。",
+          "這次畫面尚未同時讀到兩組發票 QR Code。請讓兩個 QR 都清楚出現在鏡頭中、減少反光，再按「拍照補掃」。",
           true
         );
       }
@@ -439,91 +440,32 @@
   }
 
   async function createNativeInvoiceBarcodeDetector() {
-    if (typeof window.BarcodeDetector !== "function") return null;
-    try {
-      const supported = typeof window.BarcodeDetector.getSupportedFormats === "function"
-        ? await window.BarcodeDetector.getSupportedFormats()
-        : ["qr_code"];
-      if (!supported.includes("qr_code")) return null;
-      return new window.BarcodeDetector({ formats: ["qr_code"] });
-    } catch (_error) {
-      // BarcodeDetector is not available in every mobile browser. jsQR remains the fallback.
-      return null;
-    }
+    return createLocalBarcodeDetector(["qr_code"]);
   }
 
   async function scanInvoiceCameraFrame() {
-    if (!invoiceCameraStream || invoiceScanBusy || !invoiceVideo.videoWidth) return;
-    if (!window.jsQR && !invoiceBarcodeDetector) return;
+    if (!invoiceCameraStream || invoiceScanBusy || !invoiceVideo.videoWidth || !invoiceBarcodeDetector) return;
     invoiceScanBusy = true;
     try {
-      const sourceWidth = invoiceVideo.videoWidth;
-      const sourceHeight = invoiceVideo.videoHeight;
-
-      // Prefer the browser's native camera/barcode implementation. It can return
-      // both QR codes from one frame; jsQR below remains the cross-browser fallback.
-      if (invoiceBarcodeDetector && (!invoiceLeftQrValue || !invoiceRightQrValue)) {
-        try {
-          const detected = await invoiceBarcodeDetector.detect(invoiceVideo);
-          for (const code of detected || []) acceptInvoiceQrPayload(code.rawValue);
-        } catch (_error) {
-          invoiceBarcodeDetector = null;
-        }
-      }
-
-      // Only decode the missing side(s) with jsQR. Standard printed invoice QR
-      // codes are dark-on-light, so dontInvert avoids an expensive second pass.
-      if (window.jsQR && (!invoiceLeftQrValue || !invoiceRightQrValue)) {
-        // Keep more source pixels: the left invoice QR carries a denser payload
-        // than the right QR and is the one most likely to fail when downscaled.
-        const maxEdge = 2400;
-        const scale = Math.min(1, maxEdge / Math.max(sourceWidth, sourceHeight));
-        const width = Math.max(1, Math.round(sourceWidth * scale));
-        const height = Math.max(1, Math.round(sourceHeight * scale));
-        if (invoiceScanCanvas.width !== width || invoiceScanCanvas.height !== height) {
-          invoiceScanCanvas.width = width;
-          invoiceScanCanvas.height = height;
-        }
-        const context = invoiceScanCanvas.getContext("2d", { willReadFrequently: true });
-        if (!context) return;
-        context.drawImage(invoiceVideo, 0, 0, width, height);
-
-        // Keep the left and right search areas separate. jsQR returns only one
-        // QR per crop; overlapping regions let the easy right QR win twice and
-        // starve the denser left QR. These bounds match the visible guide boxes.
-        const edge = Math.round(width * 0.005);
-        const guideWidth = Math.max(1, Math.round(width * 0.49));
-        const regions = [
-          { side: "left", x: edge, width: guideWidth },
-          { side: "right", x: Math.round(width * 0.505), width: guideWidth }
-        ];
-        for (const region of regions) {
-          if (region.side === "left" && invoiceLeftQrValue) continue;
-          if (region.side === "right" && invoiceRightQrValue) continue;
-          const x = Math.max(0, Math.min(width - 1, region.x));
-          const cropWidth = Math.max(1, Math.min(region.width, width - x));
-          const pixels = context.getImageData(x, 0, cropWidth, height);
-          const decoded = window.jsQR(pixels.data, pixels.width, pixels.height, {
-            // Both sides use full polarity retry. The left code is denser and
-            // particularly sensitive to glare, low contrast and partial framing.
-            inversionAttempts: "attemptBoth"
-          });
-          if (decoded && decoded.data) acceptInvoiceQrPayload(decoded.data);
-        }
-      }
+      // Scan the whole video frame and accept every QR returned. Payload content,
+      // rather than on-screen position, identifies the two invoice QR records.
+      const detected = await invoiceBarcodeDetector.detect(invoiceVideo);
+      for (const code of detected || []) acceptInvoiceQrPayload(code.rawValue);
 
       if (invoiceLeftQrValue && invoiceRightQrValue) {
-        setInvoiceScanStatus("左右 QR Code 都已讀取，正在確認資料配對…");
+        setInvoiceScanStatus("已自動找到兩組 QR Code，正在確認發票資料…");
         await completeInvoiceQrScan();
       } else if (invoiceLeftQrValue) {
-        setInvoiceScanStatus("左側 QR Code 已讀取。請再將右側 QR Code 對準右邊綠框。");
+        setInvoiceScanStatus("已找到發票基本資料，正在自動尋找另一組 QR Code…");
       } else if (invoiceRightQrValue) {
-        setInvoiceScanStatus("右側 QR Code 已讀取。請再將左側 QR Code 對準左邊紅框。");
+        setInvoiceScanStatus("已找到發票另一組資料，正在自動尋找基本資料…");
       } else {
-        setInvoiceScanStatus("正在快速尋找左右 QR Code，請將兩碼置中並保持發票平整。");
+        setInvoiceScanStatus("正在自動搜尋整個畫面的 QR Code。兩個 QR Code 同時進入畫面即可，不必對框或拿正。");
       }
     } catch (_error) {
-      // A single blurry or partially covered frame is normal while the user is positioning the invoice.
+      setInvoiceScanStatus("多 QR 辨識器暫時無法讀取畫面，請重新啟動掃描。", true);
+      stopInvoiceScanner(false);
+      if (invoiceScanButton) invoiceScanButton.disabled = false;
     } finally {
       invoiceScanBusy = false;
     }
@@ -643,7 +585,7 @@
     invoiceVideo.srcObject = invoiceCameraStream;
     await invoiceVideo.play();
     await refreshInvoiceCameraControls();
-    invoiceScanTimer = window.setInterval(scanInvoiceCameraFrame, 160);
+    invoiceScanTimer = window.setInterval(scanInvoiceCameraFrame, 220);
   }
 
   async function startInvoiceScanner() {
@@ -652,11 +594,9 @@
     invoiceCameraPanel.classList.remove("hidden");
     invoiceCameraPanel.classList.remove("camera-unavailable");
     invoiceScanButton.disabled = true;
-    setInvoiceScanStatus("正在啟動一般後置鏡頭…");
+    setInvoiceScanStatus("正在準備全畫面多 QR 辨識引擎與後置鏡頭…");
     invoiceLeftQrValue = null;
     invoiceRightQrValue = null;
-    setInvoiceGuideScanned("left", false);
-    setInvoiceGuideScanned("right", false);
 
     if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       invoiceCameraPanel.classList.add("camera-unavailable");
@@ -667,8 +607,8 @@
     }
 
     try {
-      await loadScript(JSQR_SRC, "jsQR");
       invoiceBarcodeDetector = await createNativeInvoiceBarcodeDetector();
+      if (!invoiceBarcodeDetector) throw new Error("無法載入全畫面多 QR 辨識引擎，請確認網路後重新開啟掃描。");
       await applyInvoiceCamera("");
       const availableCameras = await navigator.mediaDevices.enumerateDevices();
       const activeDeviceId = invoiceCameraTrack?.getSettings?.().deviceId || "";
@@ -690,7 +630,7 @@
       const currentZoom = Number(invoiceCameraTrack?.getSettings?.().zoom);
       const zoomLabel = Number.isFinite(currentZoom) ? currentZoom.toFixed(1) + "×" : "預設倍率";
       setInvoiceScanStatus(
-        (invoiceBarcodeDetector ? "已啟用原生 QR 加速。" : "已啟用相容掃描模式。") +
+        "已啟用全畫面多 QR 辨識。" +
         "目前鏡頭：" + activeCameraLabel + "，" + zoomLabel +
         "；下次會沿用你手動選過的後置鏡頭。"
       );
