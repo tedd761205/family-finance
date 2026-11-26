@@ -19,8 +19,6 @@
   const invoiceCameraPanel = $("local-receipt-invoice-camera");
   const invoiceVideo = $("local-receipt-invoice-video");
   const invoiceScanStatus = $("local-receipt-invoice-scan-status");
-  const invoiceLeftGuide = $("local-receipt-left-guide");
-  const invoiceRightGuide = $("local-receipt-right-guide");
   const invoiceStopButton = $("local-receipt-invoice-stop");
   const invoiceCaptureButton = $("local-receipt-invoice-capture");
   const invoiceCameraSelect = $("local-receipt-invoice-camera-select");
@@ -308,11 +306,6 @@
     if (invoiceCaptureButton) invoiceCaptureButton.disabled = true;
   }
 
-  function setInvoiceGuideScanned(side, scanned) {
-    const guide = side === "left" ? invoiceLeftGuide : invoiceRightGuide;
-    if (guide) guide.classList.toggle("scanned", Boolean(scanned));
-  }
-
   function captureInvoiceCameraFrame() {
     return new Promise((resolve, reject) => {
       if (!invoiceVideo || !invoiceVideo.videoWidth || !invoiceVideo.videoHeight) {
@@ -353,8 +346,6 @@
       setInvoiceScanStatus("已找到兩組 QR Code，但資料無法配對。請確認兩個 QR Code 都清楚可見，再試一次。", true);
       invoiceLeftQrValue = null;
       invoiceRightQrValue = null;
-      setInvoiceGuideScanned("left", false);
-      setInvoiceGuideScanned("right", false);
       return;
     }
 
@@ -385,13 +376,11 @@
     if (raw.startsWith("**")) {
       if (!invoiceRightQrValue) {
         invoiceRightQrValue = raw;
-        setInvoiceGuideScanned("right", true);
       }
       return;
     }
     if (!invoiceLeftQrValue && window.FamilyReceiptParser.parseTaiwanInvoiceQr(raw, null)) {
       invoiceLeftQrValue = raw;
-      setInvoiceGuideScanned("left", true);
     }
   }
 
@@ -403,7 +392,7 @@
       invoiceScanTimer = null;
     }
     if (invoiceCaptureButton) invoiceCaptureButton.disabled = true;
-    setInvoiceScanStatus("已拍下整張發票，正在整張畫面尋找所有 QR Code…");
+    setInvoiceScanStatus("已拍下目前畫面，正在自動尋找所有 QR Code…");
     try {
       const file = await captureInvoiceCameraFrame();
       const codes = await decodeLocalCodes(file);
@@ -414,11 +403,9 @@
 
       if (leftCode) {
         invoiceLeftQrValue = leftCode.value;
-        setInvoiceGuideScanned("left", true);
       }
       if (rightCode) {
         invoiceRightQrValue = rightCode.value;
-        setInvoiceGuideScanned("right", true);
       }
 
       if (invoiceLeftQrValue && invoiceRightQrValue) {
@@ -435,15 +422,10 @@
         }
         invoiceLeftQrValue = null;
         invoiceRightQrValue = null;
-        setInvoiceGuideScanned("left", false);
-        setInvoiceGuideScanned("right", false);
         setInvoiceScanStatus("兩碼都有讀到，但資料無法配對。請重新拍攝，讓發票完整入鏡。", true);
       } else {
-        const missing = [];
-        if (!invoiceLeftQrValue) missing.push("左側");
-        if (!invoiceRightQrValue) missing.push("右側");
         setInvoiceScanStatus(
-          "這張照片尚未同時讀到兩組發票 QR Code。請讓整張發票完整入鏡、減少反光，再按「重新拍照辨識」。",
+          "這次畫面尚未同時讀到兩組發票 QR Code。請讓兩個 QR 都清楚出現在鏡頭中、減少反光，再按「拍照補掃」。",
           true
         );
       }
@@ -615,8 +597,6 @@
     setInvoiceScanStatus("正在準備全畫面多 QR 辨識引擎與後置鏡頭…");
     invoiceLeftQrValue = null;
     invoiceRightQrValue = null;
-    setInvoiceGuideScanned("left", false);
-    setInvoiceGuideScanned("right", false);
 
     if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       invoiceCameraPanel.classList.add("camera-unavailable");
