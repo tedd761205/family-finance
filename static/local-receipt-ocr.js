@@ -489,8 +489,12 @@
       setInvoiceScanStatus("已拍照，正在解析發票 QR Code…");
       if (invoiceCaptureButton) invoiceCaptureButton.textContent = "已拍照，分析中…";
 
-      const codes = await decodeInvoicePhotoWithJsQr(file);
+      // Reuse the live multi-QR detector on the captured still image first.
+      // The former direct jsQR-only call could decode just one symbol per crop,
+      // which often missed the basic left QR on a two-QR Taiwan invoice.
+      const codes = await decodeLocalCodes(file, invoiceBarcodeDetector);
       const leftCode = codes.find((item) =>
+        /qr/i.test(String(item.format || "")) &&
         Boolean(window.FamilyReceiptParser.parseTaiwanInvoiceQr(item.value, null))
       );
       const rightCode = codes.find((item) => String(item.value || "").startsWith("**"));
@@ -520,10 +524,11 @@
       // Keep the captured image even when the QR decoder misses the basic
       // payload. Local OCR/manual review is a useful fallback; never discard
       // the user's photo or force another camera launch.
+      const qrCount = codes.filter((item) => /qr/i.test(String(item.format || ""))).length;
       setInvoiceScanStatus(
         rightValue && !leftValue
-          ? "目前只讀到商品明細碼；先保留照片，繼續本機文字辨識與人工核對。"
-          : "尚未讀到有效的發票基本 QR Code；先保留照片，繼續本機文字辨識與人工核對。"
+          ? "本次讀到 " + qrCount + " 個 QR Code，但只有商品明細碼；基本資料碼未讀到。先保留照片，繼續本機文字辨識與人工核對。"
+          : "本次讀到 " + qrCount + " 個 QR Code，仍未取得可解析的發票基本資料碼；先保留照片，繼續本機文字辨識與人工核對。"
       );
       stopInvoiceScanner();
       await handleFile(file, codes);
@@ -973,10 +978,14 @@
       renderCandidates(parsedFields, codeResults);
       if (!recognizedText && !codeResults.length) {
         setStatus("沒有辨識到文字或條碼。請把憑證放平、拍清楚、避免反光後再試一次。", true);
+      } else if (parsedFields.hasElectronicQr) {
+        setStatus("已成功解析電子發票基本 QR Code，日期、總金額及發票號碼已優先採用 QR 資料；請再核對商家與其他欄位。資料不會自動建立支出。");
+      } else if (codeResults.some((item) => /qr/i.test(String(item.format || "")))) {
+        setStatus("照片有讀到 QR Code，但未能確認為有效的發票基本資料碼；目前欄位是文字辨識候選值，請核對日期與金額，必要時手動補上。");
       } else if (parsedFields.type === "unknown") {
         setStatus("已取得文字，但無法可靠判斷憑證種類。請手動選擇種類並核對欄位；不確定的資料請自行補上。", true);
       } else {
-        setStatus("本機辨識完成。請先確認憑證種類，再核對或修改欄位；資料不會自動建立支出。");
+        setStatus("本機辨識完成。未讀取到有效電子發票 QR Code，日期及金額是文字辨識候選值；請核對後再帶入。資料不會自動建立支出。");
       }
     } catch (error) {
       parsedFields = null;
