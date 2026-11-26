@@ -14,6 +14,7 @@ from app.models.family_invitation import FamilyInvitation
 
 from app.models.account import Account
 from app.models.transaction import Transaction
+from app.models.purchase_line_item import PurchaseLineItem
 from app.models.transfer import Transfer
 from app.models.category import Category
 from app.models.credit_card_payment import CreditCardPayment
@@ -32,7 +33,7 @@ __all__ = [
     "User", "Family", "FamilyMember", "Role", "Permission", "RolePermission",
     "MemberRole", "AuditLog", "RoleDataScope", "RevokedToken",
     "PasswordResetToken", "UserIdentity", "FamilyInvitation", "Account", "Transaction", "Transfer",
-    "Category", "CreditCardPayment", "Bill", "BillPayment", "Attachment",
+    "Category", "PurchaseLineItem", "CreditCardPayment", "Bill", "BillPayment", "Attachment",
     "OcrTask", "RecurringBill", "Notification", "ExportTemplate",
     "ExportTemplateVersion", "ExportSchedule", "ExportRun", "BankImportBatch", "BankImportRow",
     "ReconciliationSession", "ReconciliationMatch", "ReconciliationExclusion", "ReconciliationIssue",
