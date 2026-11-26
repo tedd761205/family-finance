@@ -91,7 +91,7 @@ def test_paper_einvoice_uses_full_frame_multi_qr_detection_and_local_pair_valida
         styles = client.get("/static/styles.css")
 
     assert page.status_code == 200
-    assert '/static/local-receipt-ocr.js?v=20261126-14' in page.text
+    assert '/static/local-receipt-ocr.js?v=20261126-15' in page.text
     assert 'id="local-receipt-invoice-scan"' in page.text
     assert 'id="local-receipt-invoice-video"' in page.text
     assert 'id="local-receipt-left-guide"' not in page.text
@@ -212,3 +212,45 @@ def test_receipt_review_shows_field_level_data_sources_and_manual_edits():
     assert "來源：發票 QR Code" in script.text
     assert "照片文字辨識候選，請核對" in script.text
     assert 'setReviewSource(field, "manual")' in script.text
+
+
+
+def test_receipt_import_merges_into_new_transaction_draft_without_resetting_it():
+    with TestClient(app) as client:
+        script = client.get("/static/local-receipt-ocr.js").text
+
+    start = script.index("function fillTransactionForm()")
+    end = script.index("function disposeLocalReceiptSession()", start)
+    handler = script[start:end]
+
+    assert "window.resetTransactionForm()" not in handler
+    assert "editingExistingTransaction" in handler
+    assert "請先儲存或取消這次修改" in handler
+    assert "if (amount && !amountField.value.trim())" in handler
+    assert "if (date && !transactionDateWasEdited)" in handler
+    assert "if (invoiceNumber && !referenceField.value.trim())" in handler
+    assert "if (merchant && !descriptionField.value.trim())" in handler
+    assert "purchaseItemsList.children.length === 0" in handler
+    assert "本次只補入空白欄位" in handler
+
+
+def test_receipt_import_tracks_manual_date_edits_and_resets_tracking_for_new_drafts():
+    with TestClient(app) as client:
+        script = client.get("/static/local-receipt-ocr.js").text
+
+    assert 'transactionForm?.addEventListener("reset"' in script
+    assert 'transactionDateField?.addEventListener("input"' in script
+    assert 'transactionDateField?.addEventListener("change"' in script
+    assert "transactionDateWasEdited = false" in script
+    assert "transactionDateWasEdited = true" in script
+
+
+
+def test_receipt_field_source_labels_have_consistent_mobile_readable_style():
+    with TestClient(app) as client:
+        page = client.get("/")
+        styles = client.get("/static/styles.css")
+
+    assert '/static/local-receipt-ocr.js?v=20261126-15' in page.text
+    assert ".local-receipt-field-source" in styles.text
+    assert "overflow-wrap:anywhere" in styles.text

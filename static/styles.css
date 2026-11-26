@@ -727,3 +727,7 @@ button:disabled {
   }
 }
 .local-receipt-review-hint{margin:-4px 0 14px;padding:10px 12px;border-radius:9px;background:#f0f5f1;color:#3d5d4a;font-size:13px;line-height:1.6}
+
+
+/* Receipt field provenance labels: readable text remains the source of status. */
+.local-receipt-field-source{display:inline-block;margin-top:5px;padding:2px 7px;border-radius:7px;background:#f1f4f2;color:#53645b;font-size:12px;font-weight:500;line-height:1.6;overflow-wrap:anywhere}
