@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#173b35">
   <title>家庭記帳系統</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261126-5">
+  <link rel="stylesheet" href="/static/styles.css?v=20261126-6">
   <style>
     .browser-help{margin-top:26px;padding:20px;border:1px solid #dce8e0;border-radius:14px;background:#fff}
     .browser-help-title{margin:0 0 8px;color:#1b5142;font-size:17px;font-weight:750}
@@ -248,8 +248,8 @@
           <p id="local-receipt-status" class="local-receipt-status" role="status" aria-live="polite">紙本電子發票請使用「雙 QR 掃描」；一般收據、手寫憑證請拍攝整張照片。第一次使用收據 OCR 會下載辨識程式與繁體中文模型，會使用網路流量；不會呼叫付費 OCR API，也不會上傳照片。</p>
           <section id="local-receipt-invoice-camera" class="local-receipt-invoice-camera hidden" aria-label="電子發票雙 QR Code 即時掃描">
             <div class="local-receipt-invoice-camera-heading">
-              <strong>兩個 QR Code 同時進入畫面即可，自動辨識</strong>
-              <span class="tiny muted">不必分左右、不必對框或拿正；橫拿、倒拿或稍微傾斜都能自動辨識。只要兩個 QR Code 同時出現在鏡頭畫面即可。</span>
+              <strong>先掃到發票基本 QR，就能讀取日期與金額</strong>
+              <span class="tiny muted">不必分左右、不必對框或拿正；橫拿、倒拿或稍微傾斜都能自動辨識。另一個 QR 若有讀到，會再補上商品明細；不必等兩個都讀到才完成。</span>
             </div>
             <p id="local-receipt-invoice-scan-status" class="local-receipt-invoice-scan-status" role="status" aria-live="polite">正在準備相機…</p>
             <div class="local-receipt-video-stage">
@@ -265,7 +265,7 @@
               <span class="tiny muted">優先使用一般主鏡頭；若手機支援光學／數位縮放，可在此拉近。若 QR Code 仍太小，可切換其他後置鏡頭。</span>
             </div>
             <div class="local-receipt-invoice-scan-actions">
-              <button class="primary" id="local-receipt-invoice-capture" type="button" disabled>拍照補掃（備用）</button>
+              <button class="primary" id="local-receipt-invoice-capture" type="button" disabled>拍照辨識（備用）</button>
               <button class="secondary" id="local-receipt-invoice-stop" type="button">停止掃描</button>
             </div>
           </section>
@@ -758,6 +758,6 @@
   <script src="/static/app.js" defer></script>
   <script src="/static/reconciliation.js" defer></script>
   <script src="/static/local-receipt-parser.js?v=20261126-2" defer></script>
-  <script src="/static/local-receipt-ocr.js?v=20261126-6" defer></script>
+  <script src="/static/local-receipt-ocr.js?v=20261126-7" defer></script>
 </body>
 </html>
