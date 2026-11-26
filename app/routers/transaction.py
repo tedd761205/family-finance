@@ -784,29 +784,29 @@ def update_transaction(
     for field, value in changes.items():
         setattr(transaction, field, value)
 
-    if purchase_items_were_provided:
-        old_values["purchase_items"] = purchase_items_audit_values(
-            transaction.purchase_items
-        )
-        transaction.purchase_items.clear()
-        transaction.purchase_items.extend(
-            build_purchase_line_items(
-                family_id=family_id,
-                user_id=current_user.id,
-                purchase_items=purchase_items_payload,
-            )
-        )
-        db.flush()
-        new_values["purchase_items"] = purchase_items_audit_values(
-            transaction.purchase_items
-        )
-
-    new_values.update({
-        field: getattr(transaction, field)
-        for field in changes
-    })
-
     try:
+        if purchase_items_were_provided:
+            old_values["purchase_items"] = purchase_items_audit_values(
+                transaction.purchase_items
+            )
+            transaction.purchase_items.clear()
+            transaction.purchase_items.extend(
+                build_purchase_line_items(
+                    family_id=family_id,
+                    user_id=current_user.id,
+                    purchase_items=purchase_items_payload,
+                )
+            )
+            db.flush()
+            new_values["purchase_items"] = purchase_items_audit_values(
+                transaction.purchase_items
+            )
+
+        new_values.update({
+            field: getattr(transaction, field)
+            for field in changes
+        })
+
         add_audit_log(
             db,
             family_id=family_id,
