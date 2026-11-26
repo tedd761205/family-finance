@@ -553,8 +553,8 @@ jobs:
         run: |
           set -euo pipefail
           REVISION="$(docker run --rm --env DATABASE_URL postgres:18-bookworm psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atc "SELECT version_num FROM public.alembic_version")"
-          if [ "$REVISION" != "f2a4c6e8b0d2" ]; then
-            echo "Expected restored Production baseline f2a4c6e8b0d2; found: $REVISION"
+          if [ "$REVISION" != "f5b7d9e1a3c5" ]; then
+            echo "Expected restored Production baseline f5b7d9e1a3c5; found: $REVISION"
             exit 1
           fi
           cat > /tmp/expected-public-tables.txt <<'TABLES'
@@ -600,7 +600,7 @@ jobs:
             > /tmp/actual-public-tables.txt
           sort -o /tmp/expected-public-tables.txt /tmp/expected-public-tables.txt
           diff -u /tmp/expected-public-tables.txt /tmp/actual-public-tables.txt
-          echo "Restored schema matches the 35-table Production baseline at f2a4c6e8b0d2."
+          echo "Restored schema matches the 35-table Production baseline at f5b7d9e1a3c5."
 
           if [ -z "${MANIFEST_PATH:-}" ] || [ ! -s "$MANIFEST_PATH" ]; then
             echo "Missing backup row-count manifest."
