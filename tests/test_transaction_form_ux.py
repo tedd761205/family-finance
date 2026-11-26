@@ -86,3 +86,27 @@ def test_clear_filter_remains_available_when_date_range_validation_fails():
     assert loader.index('$("clear-transaction-filters").disabled = !transactionFiltersActive();') < loader.index("validateDateRange(")
     assert "if (!validateDateRange(" in loader
     assert '$(endFieldId)?.focus();' in script
+
+
+
+def test_warm_family_theme_uses_cream_sage_palette_with_readable_semantic_states():
+    with TestClient(app) as client:
+        styles = client.get("/static/styles.css").text
+
+    assert "--page-bg: #f6f2e9" in styles
+    assert "--surface: #fffdf8" in styles
+    assert "--accent: #3e6a51" in styles
+    assert "--accent-warm: #b8755b" in styles
+    assert "background:" in styles
+    assert "var(--danger-bg)" in styles
+    assert "var(--success-bg)" in styles
+    assert ".local-receipt-invoice-camera{display:grid" in styles
+    assert "prefers-reduced-transparency: reduce" in styles
+
+
+def test_warm_visual_theme_stylesheet_cache_is_refreshed():
+    with TestClient(app) as client:
+        page = client.get("/")
+
+    assert page.status_code == 200
+    assert '/static/styles.css?v=20261126-8' in page.text
