@@ -83,6 +83,7 @@ def test_paper_einvoice_uses_full_frame_multi_qr_detection_and_local_pair_valida
     with TestClient(app) as client:
         page = client.get("/")
         script = client.get("/static/local-receipt-ocr.js")
+        styles = client.get("/static/styles.css")
 
     assert page.status_code == 200
     assert 'id="local-receipt-invoice-scan"' in page.text
@@ -128,7 +129,7 @@ def test_paper_einvoice_uses_full_frame_multi_qr_detection_and_local_pair_valida
     assert "if (invoiceCaptureRequested) return;" in script.text
     assert "if (!invoiceCameraStream || invoiceScanBusy) return;" not in script.text
     assert 'invoiceCaptureButton.textContent = "正在拍攝…"' in script.text
-    assert 'button.is-capturing' in client.get("/static/styles.css").text
+    assert "#local-receipt-invoice-capture.is-capturing" in styles.text
     assert "不必等兩個都讀到才完成" in page.text
     assert 'id="local-receipt-invoice-capture"' in page.text
     assert "拍照辨識（備用）" in page.text
