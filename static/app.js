@@ -3094,6 +3094,18 @@ function applyFamilyNavigationPermissions(){
     card.classList.toggle("hidden",!allowed);
   });
 
+  document.querySelectorAll(".workspace-shortcut[data-permissions],.workspace-shortcut[data-permissions-all]").forEach(button=>{
+    const anyCodes=(button.dataset.permissions||"").split(",").map(code=>code.trim()).filter(Boolean);
+    const allCodes=(button.dataset.permissionsAll||"").split(",").map(code=>code.trim()).filter(Boolean);
+    const allowed=(!anyCodes.length||hasAnyCurrentFamilyPermission(anyCodes))&&allCodes.every(code=>currentFamilyPermissionCodes.has(code));
+    button.classList.toggle("hidden",!allowed);
+  });
+  const workspaceShortcuts=$("workspace-shortcuts");
+  if(workspaceShortcuts){
+    const hasShortcuts=[...workspaceShortcuts.querySelectorAll(".workspace-shortcut")].some(button=>!button.classList.contains("hidden"));
+    workspaceShortcuts.classList.toggle("hidden",!hasShortcuts);
+  }
+
   document.querySelectorAll(".app-nav-button[data-permissions]").forEach(button=>{
     const codes=button.dataset.permissions.split(",").map(code=>code.trim()).filter(Boolean);
     button.classList.toggle("hidden",!hasAnyCurrentFamilyPermission(codes));
@@ -3227,5 +3239,49 @@ async function refreshFamilyNavigationPermissions(){
     if (!card || navigationTriggeredCard) return;
     closeMorePanel();
     setActive("more");
+  });
+})();
+
+// Keep one main workspace visible at a time and provide direct cross-workspace shortcuts.
+// Hidden workspaces retain their form state; switching never discards unsaved input.
+(() => {
+  const shortcuts=document.getElementById("workspace-shortcuts");
+  if(!shortcuts)return;
+  const viewByButton={
+    "open-accounts":"accounts-view","open-transactions":"transactions-view",
+    "open-transfers":"transfers-view","open-credit-card-payments":"credit-card-payments-view",
+    "open-bills":"bills-view","open-bill-payments":"bill-payments-view",
+    "open-recurring-bills":"recurring-bills-view","open-reports":"reports-view",
+    "open-categories":"categories-view","open-attachments":"attachments-view",
+    "open-notifications-exports":"notifications-exports-view","open-bank-imports":"bank-imports-view",
+    "open-bank-reconciliation":"bank-reconciliation-view","open-family-members":"family-members-view",
+    "open-family-roles":"family-roles-view","open-audit-logs":"audit-logs-view"
+  };
+  const workspaceViews=Object.values(viewByButton).map(id=>document.getElementById(id)).filter(Boolean);
+  function showOnly(viewId){workspaceViews.forEach(view=>view.classList.toggle("hidden",view.id!==viewId));}
+  document.addEventListener("click",event=>{
+    const opener=event.target.closest("button[id^='open-']");
+    if(!opener)return;
+    const viewId=viewByButton[opener.id];
+    if(!viewId)return;
+    showOnly(viewId);
+    shortcuts.querySelectorAll(".workspace-shortcut").forEach(button=>{
+      const active=button.dataset.target===opener.id;
+      button.classList.toggle("active",active);
+      if(active)button.setAttribute("aria-current","page");else button.removeAttribute("aria-current");
+    });
+  },true);
+  shortcuts.addEventListener("click",event=>{
+    const button=event.target.closest(".workspace-shortcut");
+    if(!button||button.classList.contains("hidden"))return;
+    document.getElementById(button.dataset.target)?.click();
+  });
+  document.querySelectorAll(".app-nav-button[data-nav-action='overview']").forEach(button=>{
+    button.addEventListener("click",()=>{
+      workspaceViews.forEach(view=>view.classList.add("hidden"));
+      shortcuts.querySelectorAll(".workspace-shortcut").forEach(item=>{
+        item.classList.remove("active");item.removeAttribute("aria-current");
+      });
+    });
   });
 })();
