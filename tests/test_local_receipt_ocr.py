@@ -124,6 +124,8 @@ def test_paper_einvoice_uses_full_frame_multi_qr_detection_and_local_pair_valida
     assert "async function decodeInvoicePhotoWithJsQr(file)" in script.text
     assert "async function decodeInvoiceVideoFrameWithJsQr()" in script.text
     assert "let invoiceCaptureRequested = false" in script.text
+    assert "let invoiceCaptureGeneration = 0" in script.text
+    assert "scanGeneration !== invoiceCaptureGeneration" in script.text
     assert "if (!invoiceBarcodeDetector && !jsQrAvailable)" in script.text
     assert "The live scan callback owns invoiceScanBusy" in script.text
     assert "manual capture fallback" in script.text
