@@ -112,8 +112,13 @@ def test_paper_einvoice_has_live_dual_qr_guides_and_local_pair_validation():
     assert "advanced.zoom = Math.min(maxZoom, Math.max(minZoom, 1))" in script.text
     assert "INVOICE_CAMERA_STORAGE_KEY" in script.text
     assert "rememberInvoiceCameraId(invoiceCameraSelect.value)" in script.text
-    assert "Math.round(width * 0.58)" in script.text
-    assert "Math.round(width * 0.42)" in script.text
+    assert "Math.round(width * 0.49)" in script.text
+    assert 'x: Math.round(width * 0.505)' in script.text
+    assert "overlapping regions let the easy right QR win twice" in script.text
+    assert "async function captureAndDecodeInvoicePhoto()" in script.text
+    assert "const codes = await decodeLocalCodes(file)" in script.text
+    assert 'id="local-receipt-invoice-capture"' in page.text
+    assert "MAX_BARCODE_IMAGE_EDGE = 2600" in script.text
     assert "workspace.scrollIntoView({ behavior: \"smooth\", block: \"start\" })" in script.text
     assert 'inversionAttempts: "attemptBoth"' in script.text
     assert "parseTaiwanInvoiceQr(leftValue, rightValue)" in script.text
