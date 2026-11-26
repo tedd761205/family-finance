@@ -1742,6 +1742,98 @@ function reportCurrencies(...groups) {
   return [...new Set(groups.flatMap(rows=>(rows||[]).map(row=>row.currency_code)))].sort();
 }
 
+function reportCsvCell(value) {
+  const raw=value===null||value===undefined?"":String(value);
+  const safe=typeof value==="string"&&/^[\\s]*[=+\\-@]/.test(raw)?"'"+raw:raw;
+  return '"'+safe.replace(/"/g,'""')+'"';
+}
+
+function downloadReportCsv(fileName,headers,rows) {
+  if(!Array.isArray(rows)||rows.length===0) {
+    notice("reports-notice","目前沒有可匯出的報表資料。","error");
+    return false;
+  }
+  const csv="\\uFEFF"+[headers,...rows].map(row=>row.map(reportCsvCell).join(",")).join("\\r\\n");
+  const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
+  const url=URL.createObjectURL(blob);
+  const link=document.createElement("a");
+  link.href=url;
+  link.download=fileName;
+  link.style.display="none";
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(()=>URL.revokeObjectURL(url),1000);
+  notice("reports-notice","CSV 報表已開始下載。","success");
+  return true;
+}
+
+function setReportExportAvailability(enabled) {
+  for(const id of ["export-monthly-report","export-yearly-report","export-category-report"]) {
+    const button=$(id);
+    if(button)button.disabled=!enabled;
+  }
+}
+
+function downloadMonthlyReportCsv() {
+  if(!monthlyReportData) {
+    notice("reports-notice","請先載入報表資料，再匯出。","error");
+    return;
+  }
+  const data=monthlyReportData;
+  const income=reportAmountMap(data.total_income);
+  const expense=reportAmountMap(data.total_expense);
+  const net=reportAmountMap(data.net_amount);
+  const period=String(data.year)+"-"+String(data.month).padStart(2,"0");
+  const rows=reportCurrencies(data.total_income,data.total_expense,data.net_amount).map(currency=>[
+    period,currency,income.get(currency)||0,expense.get(currency)||0,net.get(currency)||0
+  ]);
+  downloadReportCsv("家庭財務報表_月份_"+period+".csv",["期間","幣別","總收入","總支出","淨收支"],rows);
+}
+
+function downloadYearlyReportCsv() {
+  if(!yearlyReportData) {
+    notice("reports-notice","請先載入報表資料，再匯出。","error");
+    return;
+  }
+  const data=yearlyReportData;
+  const currencies=reportCurrencies(data.total_income,data.total_expense,data.net_amount);
+  const totalIncome=reportAmountMap(data.total_income);
+  const totalExpense=reportAmountMap(data.total_expense);
+  const totalNet=reportAmountMap(data.net_amount);
+  const rows=[];
+  for(const currency of currencies) {
+    rows.push([data.year,"全年合計",currency,totalIncome.get(currency)||0,totalExpense.get(currency)||0,totalNet.get(currency)||0]);
+    for(const item of data.monthly_reports||[]) {
+      const income=reportAmountMap(item.total_income);
+      const expense=reportAmountMap(item.total_expense);
+      const net=reportAmountMap(item.net_amount);
+      rows.push([data.year,item.month+"月",currency,income.get(currency)||0,expense.get(currency)||0,net.get(currency)||0]);
+    }
+  }
+  downloadReportCsv("家庭財務報表_年度_"+data.year+".csv",["年度","期間","幣別","總收入","總支出","淨收支"],rows);
+}
+
+function downloadCategoryReportCsv() {
+  if(!categoryReportData) {
+    notice("reports-notice","請先載入報表資料，再匯出。","error");
+    return;
+  }
+  const data=categoryReportData;
+  const rows=(data.categories||[]).map(item=>[
+    item.category_type==="income"?"收入":"支出",
+    item.category_name,
+    item.currency_code,
+    item.total_amount,
+    item.transaction_count,
+    Number(item.percentage||0).toFixed(2)
+  ]);
+  const start=data.start_date||"不限開始日";
+  const end=data.end_date||"不限結束日";
+  const suffix=[data.start_date||"不限開始日",data.end_date||"不限結束日"].join("_");
+  downloadReportCsv("家庭財務報表_分類_"+suffix+".csv",["收支類型","分類名稱","幣別","金額","交易筆數","同幣別類型占比(%)"],rows);
+}
+
 function renderMonthlyReport(data) {
   const host=$("monthly-report-summary");
   host.replaceChildren();
@@ -1821,6 +1913,8 @@ async function loadFinancialReports() {
   const start=$("report-start-date").value,end=$("report-end-date").value;
   if(!Number.isInteger(year)||year<2000||year>2100){notice("reports-notice","報表年份必須介於 2000 至 2100。","error");return false;}
   if(start&&end&&start>end){notice("reports-notice","分類開始日期不可晚於結束日期。","error");return false;}
+  monthlyReportData=null;yearlyReportData=null;categoryReportData=null;
+  setReportExportAvailability(false);
   $("reports-loading").classList.remove("hidden");clearNotice("reports-notice");
   try {
     const categoryParams=new URLSearchParams({family_id:String(selectedFamilyId)});
@@ -1834,6 +1928,7 @@ async function loadFinancialReports() {
     ]);
     monthlyReportData=monthly;yearlyReportData=yearly;categoryReportData=categories;
     renderMonthlyReport(monthly);renderYearlyReport(yearly);renderCategoryReport(categories);
+    setReportExportAvailability(true);
     notice("reports-notice","財務報表已更新。","success");
     return true;
   } catch(error) {
@@ -1862,6 +1957,9 @@ $("open-reports").addEventListener("click",openFinancialReports);
 $("close-reports").addEventListener("click",()=>{$("reports-view").classList.add("hidden");});
 $("refresh-reports").addEventListener("click",loadFinancialReports);
 $("apply-reports").addEventListener("click",loadFinancialReports);
+$("export-monthly-report").addEventListener("click",downloadMonthlyReportCsv);
+$("export-yearly-report").addEventListener("click",downloadYearlyReportCsv);
+$("export-category-report").addEventListener("click",downloadCategoryReportCsv);
 
 
 // --------------------------------------------------
