@@ -79,7 +79,7 @@ def test_camera_or_photo_picker_return_restores_receipt_workspace_after_page_rel
     assert "window.__familyReceiptPhotoReturned = true" in ocr_script
     assert "不會上傳照片" in ocr_script or "照片不會傳送到伺服器或 Google" in ocr_script
 
-def test_paper_einvoice_has_live_dual_qr_guides_and_local_pair_validation():
+def test_paper_einvoice_uses_full_frame_multi_qr_detection_and_local_pair_validation():
     with TestClient(app) as client:
         page = client.get("/")
         script = client.get("/static/local-receipt-ocr.js")
@@ -87,10 +87,10 @@ def test_paper_einvoice_has_live_dual_qr_guides_and_local_pair_validation():
     assert page.status_code == 200
     assert 'id="local-receipt-invoice-scan"' in page.text
     assert 'id="local-receipt-invoice-video"' in page.text
-    assert 'id="local-receipt-left-guide"' in page.text
-    assert 'id="local-receipt-right-guide"' in page.text
-    assert "左 QR Code" in page.text
-    assert "右 QR Code" in page.text
+    assert 'id="local-receipt-left-guide"' not in page.text
+    assert 'id="local-receipt-right-guide"' not in page.text
+    assert "不必分左右、不必拿正" in page.text
+    assert "整張發票進入畫面即可" in page.text
 
     assert "navigator.mediaDevices.getUserMedia" in script.text
     assert "function preferredRearCamera(devices, rememberedId = \"\", activeDeviceId = \"\")" in script.text
@@ -105,19 +105,23 @@ def test_paper_einvoice_has_live_dual_qr_guides_and_local_pair_validation():
     assert "function acceptInvoiceQrPayload(value)" in script.text
     assert "parseTaiwanInvoiceQr(raw, null)" in script.text
     assert 'raw.startsWith("**")' in script.text
-    assert "new window.BarcodeDetector({ formats: [\"qr_code\"] })" in script.text
+    assert "new api.BarcodeDetectorPolyfill({ formats: formats || [\"qr_code\"] })" in script.text
     assert "invoiceBarcodeDetector.detect(invoiceVideo)" in script.text
-    assert "window.setInterval(scanInvoiceCameraFrame, 160)" in script.text
+    assert "ZBAR_WASM_SRC" in script.text
+    assert "BARCODE_POLYFILL_SRC" in script.text
+    assert "const detected = await detector.detect(canvas)" in script.text
+    assert "horizontal or vertical" in script.text or "orientation" in script.text
+    assert "window.setInterval(scanInvoiceCameraFrame, 220)" in script.text
     assert "function configureInvoiceCameraTrack(track)" in script.text
     assert "advanced.zoom = Math.min(maxZoom, Math.max(minZoom, 1))" in script.text
     assert "INVOICE_CAMERA_STORAGE_KEY" in script.text
     assert "rememberInvoiceCameraId(invoiceCameraSelect.value)" in script.text
-    assert "Math.round(width * 0.49)" in script.text
-    assert 'x: Math.round(width * 0.505)' in script.text
-    assert "overlapping regions let the easy right QR win twice" in script.text
+    assert "The ZBar detector above scans the whole invoice" in script.text
+    assert "Classify by payload content, not screen side" in script.text
     assert "async function captureAndDecodeInvoicePhoto()" in script.text
     assert "const codes = await decodeLocalCodes(file)" in script.text
     assert 'id="local-receipt-invoice-capture"' in page.text
+    assert "拍照補掃（備用）" in page.text
     assert "MAX_BARCODE_IMAGE_EDGE = 2600" in script.text
     assert "workspace.scrollIntoView({ behavior: \"smooth\", block: \"start\" })" in script.text
     assert 'inversionAttempts: "attemptBoth"' in script.text
