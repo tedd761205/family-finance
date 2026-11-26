@@ -4,9 +4,9 @@
 
 This runbook documents the guarded production migration workflow. It does not authorize or execute a production migration.
 
-- Production baseline for this migration: `f2a4c6e8b0d2` (family invitations already deployed).
+- Production baseline for this migration: `f5b7d9e1a3c5` (family invitations and cross-currency bill payment fields already deployed).
 - Repository Alembic target: `a8c4e2f6b1d3` (cross-currency bill payment fields plus structured purchase line items).
-- The full migration chain from `f2a4c6e8b0d2` through `f5b7d9e1a3c5` to `a8c4e2f6b1d3` must be rehearsed on a fresh restored snapshot before production execution. The final revision adds only the `purchase_line_items` table and its constraints/index.
+- The deployed production baseline is `f5b7d9e1a3c5`; rehearse the pending migration from that exact revision to `a8c4e2f6b1d3` on a fresh restored snapshot. The target adds only the `purchase_line_items` table and its constraints/index.
 - The production migration workflow is manual-only and requires a fresh backup, a successful restore test, a successful restored-snapshot rehearsal, a host allowlist, and an exact target confirmation.
 
 ## Required GitHub configuration
@@ -37,7 +37,7 @@ Supply three successful GitHub Actions run IDs:
 
 The workflow verifies each run's repository, workflow path, branch, status, conclusion, chronology, and required artifacts. The restore workflow also records a provenance artifact containing the exact backup run ID and the `g01-restore-test` confirmation; the production gate downloads it and requires it to match the selected backup run. It also compares migration source files in the rehearsal commit with current `main`. Documentation-only or workflow-only commits do not force a needless rehearsal; changes to migration sources, dependencies, Alembic configuration, or the role-catalog validator do.
 
-The restore provenance artifact is required for the production gate. Use a fresh backup, restore it to `g01-restore-test`, then rehearse from the restored `f2a4c6e8b0d2` baseline through `f5b7d9e1a3c5` to `a8c4e2f6b1d3`. The restore test resets the isolated branch, so the rehearsal must run after it.
+The restore provenance artifact is required for the production gate. Use a fresh backup, restore it to `g01-restore-test`, then rehearse from the restored `f5b7d9e1a3c5` baseline to `a8c4e2f6b1d3`. The restore test resets the isolated branch, so the rehearsal must run after it.
 
 Latest successful evidence at the time this runbook was written:
 
@@ -65,8 +65,8 @@ Before running `alembic upgrade a8c4e2f6b1d3`, the workflow:
 - Verifies successful backup, restore-test, and rehearsal runs and the available backup/rehearsal artifacts.
 - Confirms the rehearsal's migration sources match the current `main`.
 - Confirms the Neon API reports the pinned project ID and production branch ID/name, then independently matches the production endpoint hostname and database name `neondb`.
-- Opens a read-only transaction and requires the exact production baseline revision `f2a4c6e8b0d2`.
-- Requires the exact 35-table baseline at `f2a4c6e8b0d2`, refuses if any of the four cross-currency bill-payment columns already exist, and refuses unexpected public tables.
+- Opens a read-only transaction and requires the exact production baseline revision `f5b7d9e1a3c5`.
+- Requires the exact 35-table baseline at `f5b7d9e1a3c5`, including the already-deployed cross-currency bill-payment fields, and refuses unexpected public tables or a pre-existing `purchase_line_items` table.
 - Captures selected existing row counts before migration.
 
 After migration, it verifies Alembic revision `a8c4e2f6b1d3`, all existing finance tables, the four cross-currency bill-payment columns, the new `purchase_line_items` table, its family-safe transaction foreign key and creator foreign key, its nonblank-name/positive-quantity/nonnegative-price checks, its family/transaction index and family/id unique constraint, existing required indexes, bill-payment checks, category-scope triggers, unchanged selected existing row counts, and the role catalog. It uploads a report artifact.
