@@ -45,6 +45,11 @@ def test_local_receipt_ocr_only_suggests_fields_and_requires_manual_transaction_
     assert "FamilyReceiptParser.parseReceiptData" in script
     assert "renderReview(parsedFields)" in script
     assert "hasReviewData()" in script
+    assert "const validAmount = amountText !== \"\" && Number.isFinite(amount) && amount > 0;" in script
+    assert "return validAmount && validDate;" in script
+    assert "function updateReviewReadiness()" in script
+    assert "只讀到發票號碼不代表資料已完整" in script
+    assert 'id="local-receipt-review-hint"' in page.text
     assert 'transaction-amount' in script
     assert 'transaction-date' in script
     assert 'transaction-reference' in script
@@ -86,7 +91,7 @@ def test_paper_einvoice_uses_full_frame_multi_qr_detection_and_local_pair_valida
         styles = client.get("/static/styles.css")
 
     assert page.status_code == 200
-    assert '/static/local-receipt-ocr.js?v=20261126-12' in page.text
+    assert '/static/local-receipt-ocr.js?v=20261126-13' in page.text
     assert 'id="local-receipt-invoice-scan"' in page.text
     assert 'id="local-receipt-invoice-video"' in page.text
     assert 'id="local-receipt-left-guide"' not in page.text
