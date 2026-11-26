@@ -78,3 +78,40 @@ def test_camera_or_photo_picker_return_restores_receipt_workspace_after_page_rel
     assert 'addEventListener("cancel"' in ocr_script
     assert "window.__familyReceiptPhotoReturned = true" in ocr_script
     assert "不會上傳照片" in ocr_script or "照片不會傳送到伺服器或 Google" in ocr_script
+
+def test_paper_einvoice_has_live_dual_qr_guides_and_local_pair_validation():
+    with TestClient(app) as client:
+        page = client.get("/")
+        script = client.get("/static/local-receipt-ocr.js")
+
+    assert page.status_code == 200
+    assert 'id="local-receipt-invoice-scan"' in page.text
+    assert 'id="local-receipt-invoice-video"' in page.text
+    assert 'id="local-receipt-left-guide"' in page.text
+    assert 'id="local-receipt-right-guide"' in page.text
+    assert "左 QR Code" in page.text
+    assert "右 QR Code" in page.text
+
+    assert "navigator.mediaDevices.getUserMedia" in script.text
+    assert 'facingMode: { ideal: "environment" }' in script.text
+    assert "parseTaiwanInvoiceQr(decoded.data, null)" in script.text
+    assert 'String(decoded.data).startsWith("**")' in script.text
+    assert "parseTaiwanInvoiceQr(leftValue, rightValue)" in script.text
+    assert "handleFile(file, codes)" in script.text
+
+
+def test_live_invoice_camera_stops_cleanly_and_keeps_receipt_photo_fallback():
+    with TestClient(app) as client:
+        page = client.get("/")
+        script = client.get("/static/local-receipt-ocr.js")
+
+    assert 'id="local-receipt-camera"' in page.text
+    assert 'id="local-receipt-choose"' in page.text
+    assert "一般收據：拍照辨識" in page.text
+    assert "選擇照片／收據" in page.text
+    assert "track.stop()" in script.text
+    assert 'addEventListener("visibilitychange"' in script.text
+    assert 'addEventListener("pagehide"' in script.text
+    assert "相機權限未開啟" in script.text
+    assert "不會上傳照片" in page.text or "照片不會傳送到伺服器或 Google" in script.text
+

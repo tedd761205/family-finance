@@ -11,6 +11,13 @@
   const $ = (id) => document.getElementById(id);
   const cameraButton = $("local-receipt-camera");
   const chooseButton = $("local-receipt-choose");
+  const invoiceScanButton = $("local-receipt-invoice-scan");
+  const invoiceCameraPanel = $("local-receipt-invoice-camera");
+  const invoiceVideo = $("local-receipt-invoice-video");
+  const invoiceScanStatus = $("local-receipt-invoice-scan-status");
+  const invoiceLeftGuide = $("local-receipt-left-guide");
+  const invoiceRightGuide = $("local-receipt-right-guide");
+  const invoiceStopButton = $("local-receipt-invoice-stop");
   const cameraInput = $("local-receipt-camera-input");
   const fileInput = $("local-receipt-file-input");
   const status = $("local-receipt-status");
@@ -39,6 +46,12 @@
   let previewUrl = null;
   let parsedFields = null;
   let isProcessing = false;
+  let invoiceCameraStream = null;
+  let invoiceScanTimer = null;
+  let invoiceScanBusy = false;
+  let invoiceLeftQrValue = null;
+  let invoiceRightQrValue = null;
+  const invoiceScanCanvas = document.createElement("canvas");
 
   function setStatus(message, isError = false) {
     status.textContent = message;
@@ -49,6 +62,8 @@
     isProcessing = busy;
     cameraButton.disabled = busy;
     chooseButton.disabled = busy;
+    invoiceScanButton.disabled = busy || Boolean(invoiceCameraStream);
+    invoiceStopButton.disabled = busy || !invoiceCameraStream;
     fillButton.disabled = busy || !hasReviewData();
     clearButton.disabled = busy;
   }
@@ -233,6 +248,243 @@
     return found;
   }
 
+  function setInvoiceScanStatus(message, isError = false) {
+    if (!invoiceScanStatus) return;
+    invoiceScanStatus.textContent = message;
+    invoiceScanStatus.classList.toggle("error", isError);
+  }
+
+  function stopInvoiceScanner(hidePanel = true) {
+    if (invoiceScanTimer) {
+      window.clearInterval(invoiceScanTimer);
+      invoiceScanTimer = null;
+    }
+    invoiceScanBusy = false;
+    if (invoiceCameraStream) {
+      invoiceCameraStream.getTracks().forEach((track) => track.stop());
+      invoiceCameraStream = null;
+    }
+    if (invoiceVideo) {
+      invoiceVideo.pause();
+      invoiceVideo.srcObject = null;
+    }
+    if (hidePanel) invoiceCameraPanel?.classList.add("hidden");
+    if (cameraButton) cameraButton.disabled = isProcessing;
+    if (chooseButton) chooseButton.disabled = isProcessing;
+    if (invoiceScanButton) invoiceScanButton.disabled = isProcessing;
+    if (invoiceStopButton) invoiceStopButton.disabled = true;
+  }
+
+  function setInvoiceGuideScanned(side, scanned) {
+    const guide = side === "left" ? invoiceLeftGuide : invoiceRightGuide;
+    if (guide) guide.classList.toggle("scanned", Boolean(scanned));
+  }
+
+  function captureInvoiceCameraFrame() {
+    return new Promise((resolve, reject) => {
+      if (!invoiceVideo || !invoiceVideo.videoWidth || !invoiceVideo.videoHeight) {
+        reject(new Error("相機畫面尚未準備好，請稍候再試。"));
+        return;
+      }
+      const maxEdge = MAX_OCR_IMAGE_EDGE;
+      const scale = Math.min(1, maxEdge / Math.max(invoiceVideo.videoWidth, invoiceVideo.videoHeight));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(invoiceVideo.videoWidth * scale));
+      canvas.height = Math.max(1, Math.round(invoiceVideo.videoHeight * scale));
+      const context = canvas.getContext("2d");
+      if (!context) {
+        reject(new Error("目前瀏覽器無法擷取相機畫面。"));
+        return;
+      }
+      context.drawImage(invoiceVideo, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          reject(new Error("無法建立發票影像，請重新掃描。"));
+          return;
+        }
+        resolve(new File([blob], "electronic-invoice.jpg", {
+          type: "image/jpeg",
+          lastModified: Date.now()
+        }));
+      }, "image/jpeg", 0.94);
+    });
+  }
+
+  async function completeInvoiceQrScan() {
+    const leftValue = invoiceLeftQrValue;
+    const rightValue = invoiceRightQrValue;
+    if (!leftValue || !rightValue || isProcessing) return;
+
+    const parsedPair = window.FamilyReceiptParser.parseTaiwanInvoiceQr(leftValue, rightValue);
+    if (!parsedPair) {
+      setInvoiceScanStatus("左右 QR Code 已讀取，但資料無法完整配對。請把兩個 QR Code 都放回紅框，再試一次。", true);
+      invoiceLeftQrValue = null;
+      invoiceRightQrValue = null;
+      setInvoiceGuideScanned("left", false);
+      setInvoiceGuideScanned("right", false);
+      return;
+    }
+
+    if (invoiceScanTimer) {
+      window.clearInterval(invoiceScanTimer);
+      invoiceScanTimer = null;
+    }
+    setInvoiceScanStatus("雙 QR Code 已配對成功，正在擷取完整發票並核對商家資訊…");
+    invoiceScanBusy = true;
+    try {
+      const file = await captureInvoiceCameraFrame();
+      const codes = [
+        { format: "QR Code", value: leftValue, side: "left" },
+        { format: "QR Code", value: rightValue, side: "right" }
+      ];
+      stopInvoiceScanner();
+      await handleFile(file, codes);
+    } catch (error) {
+      stopInvoiceScanner(false);
+      setInvoiceScanStatus(error && error.message ? error.message : "擷取發票失敗，請重新掃描。", true);
+      invoiceScanButton.disabled = false;
+    }
+  }
+
+  async function scanInvoiceCameraFrame() {
+    if (!invoiceCameraStream || invoiceScanBusy || !invoiceVideo.videoWidth || !window.jsQR) return;
+    invoiceScanBusy = true;
+    try {
+      const sourceWidth = invoiceVideo.videoWidth;
+      const sourceHeight = invoiceVideo.videoHeight;
+      const maxEdge = 1400;
+      const scale = Math.min(1, maxEdge / Math.max(sourceWidth, sourceHeight));
+      const width = Math.max(1, Math.round(sourceWidth * scale));
+      const height = Math.max(1, Math.round(sourceHeight * scale));
+      if (invoiceScanCanvas.width !== width || invoiceScanCanvas.height !== height) {
+        invoiceScanCanvas.width = width;
+        invoiceScanCanvas.height = height;
+      }
+      const context = invoiceScanCanvas.getContext("2d", { willReadFrequently: true });
+      if (!context) return;
+      context.drawImage(invoiceVideo, 0, 0, width, height);
+
+      // The red guide boxes use the same normalized coordinates as these local scan regions.
+      const boxWidth = Math.round(width * 0.35);
+      const boxHeight = boxWidth;
+      const top = Math.round(height * 0.30);
+      const regions = [
+        { side: "left", x: Math.round(width * 0.05), y: top, width: boxWidth, height: boxHeight },
+        { side: "right", x: Math.round(width * 0.60), y: top, width: boxWidth, height: boxHeight }
+      ];
+      for (const region of regions) {
+        if (region.side === "left" && invoiceLeftQrValue) continue;
+        if (region.side === "right" && invoiceRightQrValue) continue;
+        const x = Math.max(0, Math.min(width - 1, region.x));
+        const y = Math.max(0, Math.min(height - 1, region.y));
+        const cropWidth = Math.max(1, Math.min(region.width, width - x));
+        const cropHeight = Math.max(1, Math.min(region.height, height - y));
+        const pixels = context.getImageData(x, y, cropWidth, cropHeight);
+        const decoded = window.jsQR(pixels.data, pixels.width, pixels.height, {
+          inversionAttempts: "attemptBoth"
+        });
+        if (!decoded || !decoded.data) continue;
+
+        if (region.side === "left") {
+          const leftParsed = window.FamilyReceiptParser.parseTaiwanInvoiceQr(decoded.data, null);
+          if (leftParsed) {
+            invoiceLeftQrValue = decoded.data;
+            setInvoiceGuideScanned("left", true);
+          }
+        } else if (String(decoded.data).startsWith("**")) {
+          invoiceRightQrValue = decoded.data;
+          setInvoiceGuideScanned("right", true);
+        }
+      }
+
+      if (invoiceLeftQrValue && invoiceRightQrValue) {
+        setInvoiceScanStatus("左右 QR Code 都已讀取，正在確認資料配對…");
+        await completeInvoiceQrScan();
+      } else if (invoiceLeftQrValue) {
+        setInvoiceScanStatus("左側 QR Code 已讀取。請再將右側 QR Code 對準右邊紅框。");
+      } else if (invoiceRightQrValue) {
+        setInvoiceScanStatus("右側 QR Code 已讀取。請再將左側 QR Code 對準左邊紅框。");
+      } else {
+        setInvoiceScanStatus("正在尋找左右 QR Code，請保持發票平整並對準紅框。");
+      }
+    } catch (_error) {
+      // A single blurry or partially covered frame is normal while the user is positioning the invoice.
+    } finally {
+      invoiceScanBusy = false;
+    }
+  }
+
+  async function startInvoiceScanner() {
+    if (invoiceCameraStream) return;
+    clearPhoto();
+    invoiceCameraPanel.classList.remove("hidden");
+    invoiceCameraPanel.classList.remove("camera-unavailable");
+    invoiceScanButton.disabled = true;
+    setInvoiceScanStatus("正在啟動相機…");
+    invoiceLeftQrValue = null;
+    invoiceRightQrValue = null;
+    setInvoiceGuideScanned("left", false);
+    setInvoiceGuideScanned("right", false);
+
+    if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      invoiceCameraPanel.classList.add("camera-unavailable");
+      setInvoiceScanStatus("目前瀏覽器無法啟用即時相機。請改用「一般收據：拍照辨識」或「選擇照片／收據」。", true);
+      setStatus("即時相機目前不可用，可改用一般收據拍照或選擇手機照片。");
+      invoiceScanButton.disabled = false;
+      return;
+    }
+
+    try {
+      await loadScript(JSQR_SRC, "jsQR");
+      invoiceCameraStream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        }
+      });
+      invoiceCameraPanel.classList.remove("camera-unavailable");
+      invoiceVideo.srcObject = invoiceCameraStream;
+      await invoiceVideo.play();
+      setInvoiceScanStatus("相機已啟動。請讓左右兩個 QR Code 各自完整落在紅框內。");
+      cameraButton.disabled = true;
+      chooseButton.disabled = true;
+      invoiceStopButton.disabled = false;
+      invoiceScanButton.disabled = true;
+      invoiceScanTimer = window.setInterval(() => {
+        scanInvoiceCameraFrame();
+      }, 260);
+    } catch (error) {
+      stopInvoiceScanner(false);
+      invoiceCameraPanel.classList.remove("hidden");
+      invoiceCameraPanel.classList.add("camera-unavailable");
+      setInvoiceScanStatus(
+        error && error.name === "NotAllowedError"
+          ? "相機權限未開啟。請允許瀏覽器使用相機，或改用拍照／選擇照片。"
+          : (error && error.message ? error.message : "無法啟動相機，請改用拍照或選擇照片。"),
+        true
+      );
+      invoiceScanButton.disabled = false;
+    }
+  }
+
+  invoiceScanButton?.addEventListener("click", startInvoiceScanner);
+  invoiceStopButton?.addEventListener("click", () => {
+    stopInvoiceScanner();
+    setInvoiceScanStatus("已停止掃描。你可以重新啟動相機，或改用收據拍照。");
+    setStatus("已停止電子發票掃描。需要時可重新啟動雙 QR 掃描，或改用收據拍照。");
+    invoiceScanButton.disabled = false;
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && invoiceCameraStream) {
+      stopInvoiceScanner();
+      setInvoiceScanStatus("切換到其他畫面後，相機已自動關閉。需要時請重新啟動雙 QR 掃描。");
+      setStatus("相機已自動關閉。回到本頁後可重新啟動雙 QR 掃描。");
+    }
+  });
+  window.addEventListener("pagehide", () => stopInvoiceScanner());
+
   function hasReviewData() {
     if (!parsedFields) return false;
     return Boolean(
@@ -293,6 +545,7 @@
   }
 
   function clearPhoto() {
+    stopInvoiceScanner();
     if (window.clearReceiptCaptureReturn) window.clearReceiptCaptureReturn();
     activeFile = null;
     parsedFields = null;
@@ -312,7 +565,7 @@
     setStatus("照片已清除。尚未上傳或儲存任何發票照片。");
   }
 
-  async function handleFile(file) {
+  async function handleFile(file, predecodedCodes = null) {
     if (!file) return;
     window.__familyReceiptPhotoReturned = true;
     if (window.clearReceiptCaptureReturn) window.clearReceiptCaptureReturn();
@@ -343,7 +596,9 @@
 
     try {
       // QR / 1D barcode decoding also happens in this browser; it does not upload the photo.
-      const codeResults = await decodeLocalCodes(file);
+      const codeResults = Array.isArray(predecodedCodes) && predecodedCodes.length
+        ? predecodedCodes
+        : await decodeLocalCodes(file);
       const currentWorker = await getWorker();
       setStatus("正在本機辨識照片，照片不會傳送到伺服器或 Google。");
       const ocrCanvas = await loadImageCanvas(file, MAX_OCR_IMAGE_EDGE);
