@@ -497,17 +497,17 @@
         </div>
         <p id="reports-loading" class="muted hidden">正在計算財務報表…</p>
         <section class="report-block">
-          <div class="report-heading"><div><h3>月份收支摘要</h3><p class="muted tiny" id="monthly-report-period"></p></div><span class="count" id="monthly-report-count">0 筆交易</span></div>
+          <div class="report-heading"><div><h3>月份收支摘要</h3><p class="muted tiny" id="monthly-report-period"></p></div><div class="report-heading-actions"><span class="count" id="monthly-report-count">0 筆交易</span><button class="secondary small" id="export-monthly-report" type="button" disabled>下載 CSV</button></div></div>
           <div id="monthly-report-summary" class="report-summary-grid"></div>
           <div id="monthly-report-empty" class="empty-state hidden"><h3>這個月份尚無收支資料</h3><p class="muted">新增交易後，這裡會顯示收入、支出與淨收支。</p></div>
         </section>
         <section class="report-block">
-          <div class="report-heading"><div><h3>年度收支趨勢</h3><p class="muted tiny">依月份及幣別呈現，避免跨幣別混合加總。</p></div></div>
+          <div class="report-heading"><div><h3>年度收支趨勢</h3><p class="muted tiny">依月份及幣別呈現，避免跨幣別混合加總。</p></div><button class="secondary small" id="export-yearly-report" type="button" disabled>下載 CSV</button></div>
           <div id="yearly-report-list" class="yearly-report-list"></div>
           <div id="yearly-report-empty" class="empty-state hidden"><h3>年度尚無收支資料</h3></div>
         </section>
         <section class="report-block">
-          <div class="report-heading"><div><h3>分類收支分析</h3><p class="muted tiny" id="category-report-period"></p></div></div>
+          <div class="report-heading"><div><h3>分類收支分析</h3><p class="muted tiny" id="category-report-period"></p></div><button class="secondary small" id="export-category-report" type="button" disabled>下載 CSV</button></div>
           <div id="category-report-list" class="category-report-list"></div>
           <div id="category-report-empty" class="empty-state hidden"><h3>這段期間沒有分類收支資料</h3></div>
         </section>
