@@ -121,6 +121,13 @@ def test_paper_einvoice_uses_full_frame_multi_qr_detection_and_local_pair_valida
     assert "for (const code of detected || []) acceptInvoiceQrPayload(code.rawValue);" in script.text
     assert "if (!invoiceLeftQrValue && typeof window.jsQR === \"function\")" in script.text
     assert "async function captureAndDecodeInvoicePhoto()" in script.text
+    capture_start = script.text.index("async function captureAndDecodeInvoicePhoto()")
+    capture_end = script.text.index("async function createNativeInvoiceBarcodeDetector()", capture_start)
+    capture_handler = script.text[capture_start:capture_end]
+    assert "decodeLocalCodes(file, invoiceBarcodeDetector)" in capture_handler
+    assert "const codes = await decodeInvoicePhotoWithJsQr(file)" not in capture_handler
+    assert "本次讀到 " in capture_handler
+
     assert "const codes = await decodeInvoicePhotoWithJsQr(file)" in script.text
     assert "async function decodeInvoicePhotoWithJsQr(file)" in script.text
     assert "async function decodeInvoiceVideoFrameWithJsQr()" in script.text
