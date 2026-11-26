@@ -5,7 +5,7 @@
 This runbook documents the guarded production migration workflow. It does not authorize or execute a production migration.
 
 - Production baseline for this migration: `f5b7d9e1a3c5` (family invitations and cross-currency bill payment fields already deployed).
-- Repository Alembic target: `a8c4e2f6b1d3` (cross-currency bill payment fields plus structured purchase line items).
+- Repository Alembic target: `a8c4e2f6b1d3` (structured purchase line items only; cross-currency bill payment fields are already deployed).
 - The deployed production baseline is `f5b7d9e1a3c5`; rehearse the pending migration from that exact revision to `a8c4e2f6b1d3` on a fresh restored snapshot. The target adds only the `purchase_line_items` table and its constraints/index.
 - The production migration workflow is manual-only and requires a fresh backup, a successful restore test, a successful restored-snapshot rehearsal, a host allowlist, and an exact target confirmation.
 
