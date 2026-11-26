@@ -595,7 +595,7 @@
         setInvoiceScanStatus("已讀取發票基本資料，正在帶入記帳欄位…");
         await completeInvoiceQrScan();
       } else if (invoiceRightQrValue) {
-        setInvoiceScanStatus("已找到商品明細碼，正在尋找發票基本資料碼…");
+        setInvoiceScanStatus("目前只讀到商品明細；發票日期與金額尚未辨識。請按下方「拍照辨識（備用）」保留畫面繼續辨識；商品明細不是記帳必要資料。");
       } else {
         setInvoiceScanStatus("正在自動搜尋整個畫面的 QR Code。先讀到發票基本資料碼即可完成，不必等商品明細碼。");
       }
