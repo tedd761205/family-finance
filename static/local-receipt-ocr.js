@@ -424,7 +424,7 @@
   }
 
   function preferredRearCamera(devices) {
-    const rear = devices.filter((device) => device.kind === "videoinput");
+    const rear = devices.filter((device) => device.kind === "videoinput" && !/front|user|前置/i.test(device.label));
     const mainLens = rear.find((device) => /back|rear|main|主鏡頭|後置/i.test(device.label) && !/ultra.?wide|超廣角|0[.,]5x|0[.,]6x/i.test(device.label));
     return mainLens || rear.find((device) => !/ultra.?wide|超廣角|0[.,]5x|0[.,]6x/i.test(device.label)) || rear[0] || null;
   }
@@ -432,7 +432,7 @@
   async function refreshInvoiceCameraControls() {
     if (!invoiceCameraSelect || !navigator.mediaDevices?.enumerateDevices) return;
     const devices = await navigator.mediaDevices.enumerateDevices();
-    const cameras = devices.filter((device) => device.kind === "videoinput");
+    const cameras = devices.filter((device) => device.kind === "videoinput" && !/front|user|前置/i.test(device.label));
     const selectedId = invoiceCameraTrack?.getSettings?.().deviceId || invoiceCameraDeviceId;
     invoiceCameraSelect.replaceChildren();
     cameras.forEach((device, index) => {
