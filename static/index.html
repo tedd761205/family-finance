@@ -289,10 +289,11 @@
                 <strong>辨識結果，請核對後再帶入</strong>
                 <span class="tiny muted">欄位皆可修改</span>
               </div>
+              <p id="local-receipt-review-hint" class="local-receipt-review-hint" role="status" aria-live="polite">請先確認總金額與消費日期，再帶入記帳表單。</p>
               <div class="local-receipt-review-grid">
                 <label class="field">商家名稱<input id="local-receipt-merchant" type="text" maxlength="100" placeholder="請確認或輸入商家名稱"></label>
-                <label class="field">總金額<input id="local-receipt-amount" type="number" min="0" step="0.01" placeholder="請確認金額"></label>
-                <label class="field">消費日期<input id="local-receipt-date" type="date"></label>
+                <label class="field">總金額（必填）<input id="local-receipt-amount" type="number" min="0" step="0.01" placeholder="請確認金額"></label>
+                <label class="field">消費日期（必填）<input id="local-receipt-date" type="date"></label>
                 <label class="field">發票號碼<input id="local-receipt-invoice-number" type="text" maxlength="20" placeholder="選填"></label>
                 <label class="field">賣方統一編號<input id="local-receipt-seller-tax-id" type="text" inputmode="numeric" maxlength="10" placeholder="選填"></label>
                 <label class="field">買方統一編號<input id="local-receipt-buyer-tax-id" type="text" inputmode="numeric" maxlength="10" placeholder="選填"></label>
@@ -758,6 +759,6 @@
   <script src="/static/app.js" defer></script>
   <script src="/static/reconciliation.js" defer></script>
   <script src="/static/local-receipt-parser.js?v=20261126-2" defer></script>
-  <script src="/static/local-receipt-ocr.js?v=20261126-12" defer></script>
+  <script src="/static/local-receipt-ocr.js?v=20261126-13" defer></script>
 </body>
 </html>

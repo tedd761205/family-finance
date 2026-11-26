@@ -726,3 +726,4 @@ button:disabled {
     transition-duration: .01ms !important;
   }
 }
+.local-receipt-review-hint{margin:-4px 0 14px;padding:10px 12px;border-radius:9px;background:#f0f5f1;color:#3d5d4a;font-size:13px;line-height:1.6}

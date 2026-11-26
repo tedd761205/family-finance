@@ -43,6 +43,7 @@
   const sellerTaxIdInput = $("local-receipt-seller-tax-id");
   const buyerTaxIdInput = $("local-receipt-buyer-tax-id");
   const itemsInput = $("local-receipt-items");
+  const reviewHint = $("local-receipt-review-hint");
 
   if (!cameraButton || !chooseButton || !cameraInput || !fileInput || !window.FamilyReceiptParser) return;
 
@@ -853,13 +854,35 @@
   window.addEventListener("pagehide", () => stopInvoiceScanner());
 
   function hasReviewData() {
-    if (!parsedFields) return false;
-    return Boolean(
-      (amountInput && amountInput.value.trim()) ||
-      (dateInput && dateInput.value.trim()) ||
-      (invoiceNumberInput && invoiceNumberInput.value.trim()) ||
-      (merchantInput && merchantInput.value.trim())
-    );
+    if (!parsedFields || !amountInput || !dateInput) return false;
+    const amountText = amountInput.value.trim();
+    const amount = Number(amountText);
+    const date = dateInput.value.trim();
+    const validAmount = amountText !== "" && Number.isFinite(amount) && amount > 0;
+    const validDate = /^\d{4}-\d{2}-\d{2}$/.test(date);
+    return validAmount && validDate;
+  }
+
+  function updateReviewReadiness() {
+    const amountText = amountInput?.value.trim() || "";
+    const amount = Number(amountText);
+    const date = dateInput?.value.trim() || "";
+    const validAmount = amountText !== "" && Number.isFinite(amount) && amount > 0;
+    const validDate = /^\d{4}-\d{2}-\d{2}$/.test(date);
+    const ready = hasReviewData();
+    fillButton.disabled = isProcessing || !ready;
+    if (reviewHint) {
+      if (!validAmount && !validDate) {
+        reviewHint.textContent = "尚缺總金額與消費日期，請先補上這兩項。只讀到發票號碼不代表資料已完整。";
+      } else if (!validAmount) {
+        reviewHint.textContent = "尚缺有效的總金額，請確認發票總計或手動輸入金額。";
+      } else if (!validDate) {
+        reviewHint.textContent = "尚缺消費日期，請核對發票日期或手動選擇日期。";
+      } else {
+        reviewHint.textContent = "總金額與消費日期已填妥；帶入後仍請核對商家、帳戶及分類。";
+      }
+    }
+    return ready;
   }
 
   function effectiveReceiptType() {
@@ -885,7 +908,7 @@
     ).join("\n");
     receiptTypeSelect.value = "auto";
     reviewPanel.classList.remove("hidden");
-    fillButton.disabled = !hasReviewData();
+    updateReviewReadiness();
   }
 
   function renderCandidates(fields, codeResults) {
@@ -908,7 +931,7 @@
       candidates.appendChild(item);
     }
     candidates.classList.toggle("hidden", pieces.length === 0);
-    fillButton.disabled = isProcessing || !hasReviewData();
+    updateReviewReadiness();
   }
 
   function clearPhoto() {
@@ -1143,8 +1166,6 @@
     }
   });
   [merchantInput, amountInput, dateInput, invoiceNumberInput].forEach((input) => {
-    input?.addEventListener("input", () => {
-      fillButton.disabled = !hasReviewData();
-    });
+    input?.addEventListener("input", updateReviewReadiness);
   });
 })();
