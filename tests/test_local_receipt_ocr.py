@@ -91,7 +91,7 @@ def test_paper_einvoice_uses_full_frame_multi_qr_detection_and_local_pair_valida
         styles = client.get("/static/styles.css")
 
     assert page.status_code == 200
-    assert '/static/local-receipt-ocr.js?v=20261126-14' in page.text
+    assert '/static/local-receipt-ocr.js?v=20261126-15' in page.text
     assert 'id="local-receipt-invoice-scan"' in page.text
     assert 'id="local-receipt-invoice-video"' in page.text
     assert 'id="local-receipt-left-guide"' not in page.text
@@ -243,3 +243,14 @@ def test_receipt_import_tracks_manual_date_edits_and_resets_tracking_for_new_dra
     assert 'transactionDateField?.addEventListener("change"' in script
     assert "transactionDateWasEdited = false" in script
     assert "transactionDateWasEdited = true" in script
+
+
+
+def test_receipt_field_source_labels_have_consistent_mobile_readable_style():
+    with TestClient(app) as client:
+        page = client.get("/")
+        styles = client.get("/static/styles.css")
+
+    assert '/static/local-receipt-ocr.js?v=20261126-15' in page.text
+    assert ".local-receipt-field-source" in styles.text
+    assert "overflow-wrap:anywhere" in styles.text
