@@ -129,8 +129,11 @@ def test_paper_einvoice_uses_full_frame_multi_qr_detection_and_local_pair_valida
     assert "if (!invoiceBarcodeDetector && !jsQrAvailable)" in script.text
     assert "The live scan callback owns invoiceScanBusy" in script.text
     assert "manual capture fallback" in script.text
-    assert "pendingInvoiceCameraCapture = true" in script.text
-    assert "cameraInput.click()" in script.text
+    assert "void captureAndDecodeInvoicePhoto();" in script.text
+    assert "目前只讀到商品明細" in script.text
+    capture_start = script.text.index('invoiceCaptureButton?.addEventListener("click"')
+    capture_end = script.text.index('invoiceStopButton?.addEventListener("click"', capture_start)
+    assert "cameraInput.click()" not in script.text[capture_start:capture_end]
     assert "const fallbackCodes = await decodeInvoicePhotoWithJsQr(file)" in script.text
     assert "while (invoiceScanBusy && Date.now() - waitStarted < 2500)" not in script.text
     assert 'invoiceCaptureButton.textContent = "正在拍攝…"' in script.text
@@ -165,7 +168,7 @@ def test_live_invoice_camera_stops_cleanly_and_keeps_receipt_photo_fallback():
     assert "相機權限未開啟" in script.text
     assert "不會上傳照片" in page.text or "照片不會傳送到伺服器或 Google" in script.text
 
-def test_invoice_native_camera_saves_transaction_workspace_before_opening_camera():
+def test_invoice_fallback_capture_uses_live_camera_stream_without_leaving_workspace():
     with TestClient(app) as client:
         script = client.get("/static/local-receipt-ocr.js").text
 
@@ -173,5 +176,6 @@ def test_invoice_native_camera_saves_transaction_workspace_before_opening_camera
     end = script.index('invoiceStopButton?.addEventListener("click"', start)
     handler = script[start:end]
 
-    assert "window.prepareReceiptCaptureReturn()" in handler
-    assert handler.index("window.prepareReceiptCaptureReturn()") < handler.index("cameraInput.click()")
+    assert "captureAndDecodeInvoicePhoto()" in handler
+    assert "cameraInput.click()" not in handler
+    assert "native camera" in handler.lower()
