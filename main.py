@@ -132,6 +132,10 @@ def app_config():
     """Return public frontend configuration only; never expose OAuth secrets."""
     return {
         "google_client_id": os.getenv("GOOGLE_CLIENT_ID", ""),
+        # 採買明細等正式資料庫遷移完成後，再由 Render 環境變數開啟。
+        "purchase_line_items_enabled": os.getenv(
+            "PURCHASE_LINE_ITEMS_ENABLED", ""
+        ).strip().lower() in {"1", "true", "yes", "on"},
     }
 
 
