@@ -93,7 +93,7 @@ def test_paper_einvoice_has_live_dual_qr_guides_and_local_pair_validation():
     assert "右 QR Code" in page.text
 
     assert "navigator.mediaDevices.getUserMedia" in script.text
-    assert "function preferredRearCamera(devices)" in script.text
+    assert "function preferredRearCamera(devices, rememberedId = \"\", activeDeviceId = \"\")" in script.text
     assert "main|主鏡頭|後置" in script.text
     assert "ultra.?wide|超廣角|0[.,]5x|0[.,]6x" in script.text
     assert "video.deviceId = { exact: deviceId }" in script.text
@@ -107,6 +107,12 @@ def test_paper_einvoice_has_live_dual_qr_guides_and_local_pair_validation():
     assert "new window.BarcodeDetector({ formats: [\"qr_code\"] })" in script.text
     assert "invoiceBarcodeDetector.detect(invoiceVideo)" in script.text
     assert "window.setInterval(scanInvoiceCameraFrame, 160)" in script.text
+    assert "function configureInvoiceCameraTrack(track)" in script.text
+    assert "advanced.zoom = Math.min(maxZoom, Math.max(minZoom, 1))" in script.text
+    assert "INVOICE_CAMERA_STORAGE_KEY" in script.text
+    assert "rememberInvoiceCameraId(invoiceCameraSelect.value)" in script.text
+    assert "Math.round(width * 0.49)" in script.text
+    assert 'region.side === "left" ? "attemptBoth" : "dontInvert"' in script.text
     assert "parseTaiwanInvoiceQr(leftValue, rightValue)" in script.text
     assert "handleFile(file, codes)" in script.text
 
