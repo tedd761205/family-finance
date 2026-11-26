@@ -2,7 +2,8 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const parser = require("../static/local-receipt-parser.js");
 
-const leftQr = "AB1122334410205239999000001440000015400000000001234567ydXZt4LAN1UHN/j1juVcRA==:**********:3:3:1:乾電池:1:105:";
+// Official MoF example: exactly 77 fixed-header characters before the extension.
+const leftQr = "AB112233441020523999900000144000001540000000001234567ydXZt4LAN1UHN/j1juVcRA==:**********:3:3:1:乾電池:1:105:";
 const rightQr = "**口罩:1:210:牛奶:1:25";
 
 test("parses Taiwan e-invoice QR header, date, total and seller tax ID", () => {
@@ -59,4 +60,40 @@ test("distinguishes three-part invoices and ordinary receipts", () => {
   assert.equal(parser.detectReceiptType("收據", false), "receipt");
   assert.equal(parser.detectReceiptType("手寫收據", false), "handwritten");
   assert.equal(parser.detectReceiptType("一般交易單", false), "unknown");
+});
+
+
+test("parses a current ROC-year QR header and reads date and total from its fixed fields", () => {
+  const currentLeftQr = [
+    "CD12345678",
+    "1151126",
+    "9876",
+    (1250).toString(16).toUpperCase().padStart(8, "0"),
+    (1313).toString(16).toUpperCase().padStart(8, "0"),
+    "00000000",
+    "87654321",
+    "AAAAAAAAAAAAAAAAAAAAAAAA"
+  ].join("");
+  assert.equal(currentLeftQr.length, 77);
+  const result = parser.parseTaiwanInvoiceQr(currentLeftQr, null);
+  assert.ok(result);
+  assert.equal(result.invoiceNumber, "CD12345678");
+  assert.equal(result.date, "2026-11-26");
+  assert.equal(result.salesAmount, "1250");
+  assert.equal(result.totalAmount, "1313");
+  assert.equal(result.sellerTaxId, "87654321");
+});
+
+test("multi-QR capture fallback preserves the decoded basic QR for field parsing", () => {
+  const result = parser.parseReceiptData(
+    "發票號碼 CD12345678",
+    [
+      { format: "QR Code", value: leftQr.split(":")[0], side: null },
+      { format: "QR Code", value: rightQr, side: null }
+    ]
+  );
+  assert.equal(result.source, "qr");
+  assert.equal(result.invoiceNumber, "AB11223344");
+  assert.equal(result.date, "2013-05-23");
+  assert.equal(result.amount, "340");
 });
