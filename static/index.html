@@ -248,18 +248,12 @@
           <p id="local-receipt-status" class="local-receipt-status" role="status" aria-live="polite">紙本電子發票請使用「雙 QR 掃描」；一般收據、手寫憑證請拍攝整張照片。第一次使用收據 OCR 會下載辨識程式與繁體中文模型，會使用網路流量；不會呼叫付費 OCR API，也不會上傳照片。</p>
           <section id="local-receipt-invoice-camera" class="local-receipt-invoice-camera hidden" aria-label="電子發票雙 QR Code 即時掃描">
             <div class="local-receipt-invoice-camera-heading">
-              <strong>將發票下方兩個 QR Code 對準紅框</strong>
-              <span class="tiny muted">請保持發票平整、避免反光，讓左右 QR Code 完整入框。</span>
+              <strong>整張發票進入畫面即可，自動尋找 QR Code</strong>
+              <span class="tiny muted">不必分左右、不必拿正；橫拿、倒拿或稍微傾斜都會自動辨識。請讓發票下方兩個 QR 都完整入鏡。</span>
             </div>
             <p id="local-receipt-invoice-scan-status" class="local-receipt-invoice-scan-status" role="status" aria-live="polite">正在準備相機…</p>
             <div class="local-receipt-video-stage">
               <video id="local-receipt-invoice-video" autoplay muted playsinline></video>
-              <div class="local-receipt-qr-guide left" id="local-receipt-left-guide">
-                <span>左 QR Code</span>
-              </div>
-              <div class="local-receipt-qr-guide right" id="local-receipt-right-guide">
-                <span>右 QR Code</span>
-              </div>
             </div>
             <div class="local-receipt-camera-controls" aria-label="相機鏡頭與縮放設定">
               <label for="local-receipt-invoice-camera-select">使用鏡頭</label>
@@ -271,7 +265,7 @@
               <span class="tiny muted">優先使用一般主鏡頭；若手機支援光學／數位縮放，可在此拉近。若 QR Code 仍太小，可切換其他後置鏡頭。</span>
             </div>
             <div class="local-receipt-invoice-scan-actions">
-              <button class="primary" id="local-receipt-invoice-capture" type="button" disabled>拍照辨識左右碼</button>
+              <button class="primary" id="local-receipt-invoice-capture" type="button" disabled>拍照補掃（備用）</button>
               <button class="secondary" id="local-receipt-invoice-stop" type="button">停止掃描</button>
             </div>
           </section>
@@ -764,6 +758,6 @@
   <script src="/static/app.js" defer></script>
   <script src="/static/reconciliation.js" defer></script>
   <script src="/static/local-receipt-parser.js?v=20261126-2" defer></script>
-  <script src="/static/local-receipt-ocr.js?v=20261126-4" defer></script>
+  <script src="/static/local-receipt-ocr.js?v=20261126-5" defer></script>
 </body>
 </html>
