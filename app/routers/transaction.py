@@ -735,7 +735,12 @@ def update_transaction(
 
     changes = payload.model_dump(exclude_unset=True)
     purchase_items_were_provided = "purchase_items" in changes
-    purchase_items_payload = changes.pop("purchase_items", [])
+    changes.pop("purchase_items", None)
+    purchase_items_payload = (
+        payload.purchase_items
+        if purchase_items_were_provided
+        else []
+    )
 
     new_type = changes.get(
         "transaction_type",
