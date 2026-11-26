@@ -71,7 +71,7 @@ jobs:
           if len(heads) != 1:
               raise SystemExit(f"Expected exactly one Alembic head, found: {heads}")
 
-          baseline_revision = "f2a4c6e8b0d2"
+          baseline_revision = "f5b7d9e1a3c5"
           expected_existing = {
               "accounts", "alembic_version", "audit_logs", "categories",
               "credit_card_payments", "families", "family_members",
@@ -86,7 +86,7 @@ jobs:
               "reconciliation_exclusions", "reconciliation_issues",
           }
           expected_existing.add("family_invitations")
-          expected_new = set()
+          expected_new = {"purchase_line_items"}
           engine = create_engine(url, pool_pre_ping=True, connect_args={"connect_timeout": 10})
           try:
               with engine.connect() as connection:
@@ -105,9 +105,6 @@ jobs:
                       SELECT column_name FROM information_schema.columns
                       WHERE table_schema='public' AND table_name='bill_payments'
                   """)).scalars())
-                  unexpected_payment_columns = sorted({
-                      "account_amount", "account_currency_code", "exchange_rate", "exchange_difference"
-                  } & payment_columns)
                   if version_rows != [baseline_revision]:
                       raise SystemExit(
                           "Restored public.alembic_version must contain exactly "
@@ -122,11 +119,6 @@ jobs:
                       raise SystemExit(f"Restored baseline is missing tables: {missing_existing}")
                   if already_migrated:
                       raise SystemExit(f"Unexpected target tables already exist: {already_migrated}")
-                  if unexpected_payment_columns:
-                      raise SystemExit(
-                          "Restored baseline already contains cross-currency payment columns: "
-                          f"{unexpected_payment_columns}"
-                      )
                   counts = {}
                   for table in ("families", "users", "accounts", "categories", "transactions", "transfers", "credit_card_payments", "bills", "bill_payments"):
                       counts[table] = connection.execute(text(f'SELECT count(*) FROM public."{table}"')).scalar_one()
@@ -175,7 +167,7 @@ jobs:
           PGOPTIONS: "-c search_path=public"
         run: |
           set -euo pipefail
-          python -m alembic upgrade f5b7d9e1a3c5 2>&1 | tee migration-rehearsal-artifacts/alembic-upgrade.log
+          python -m alembic upgrade a8c4e2f6b1d3 2>&1 | tee migration-rehearsal-artifacts/alembic-upgrade.log
           python -m alembic current 2>&1 | tee migration-rehearsal-artifacts/alembic-current.txt
 
       - name: Verify upgraded schema and preserved baseline data
@@ -191,12 +183,7 @@ jobs:
           from sqlalchemy import create_engine, text
           from sqlalchemy.engine import make_url
 
-          expected_new = {
-              "bills", "recurring_bills", "bill_payments", "attachments",
-              "ocr_tasks", "notifications", "export_templates",
-              "export_template_versions", "export_schedules", "export_runs",
-              "family_invitations",
-          }
+          expected_new = {"purchase_line_items"}
           expected_counts = {}
           with open("migration-rehearsal-artifacts/baseline.txt", encoding="utf-8") as f:
               for line in f:
@@ -208,7 +195,7 @@ jobs:
                       expected_counts[parts[0]] = int(parts[1])
 
           scripts = ScriptDirectory.from_config(Config("alembic.ini"))
-          expected_revision = {"f5b7d9e1a3c5"}
+          expected_revision = {"a8c4e2f6b1d3"}
           engine = create_engine(make_url(os.environ["DATABASE_URL"]), pool_pre_ping=True)
           try:
               with engine.connect() as connection:
@@ -261,6 +248,8 @@ jobs:
                       "ix_family_invitations_family_id",
                       "ix_family_invitations_email",
                       "ix_family_invitations_pending_family_email",
+                      "ix_purchase_line_items_family_transaction",
+                      "uq_purchase_line_items_family_id_id",
                   }
                   indexes = set(connection.execute(text("""
                       SELECT indexname FROM pg_indexes WHERE schemaname='public'
@@ -298,6 +287,8 @@ jobs:
                       "family_invitations_family_id_fkey",
                       "family_invitations_invited_by_user_id_fkey",
                       "family_invitations_accepted_by_user_id_fkey",
+                      "fk_purchase_line_items_family_transaction",
+                      "fk_purchase_line_items_created_by_user",
                   }
                   foreign_keys = set(connection.execute(text("""
                       SELECT conname FROM pg_constraint
@@ -355,6 +346,10 @@ jobs:
                       "ck_bill_payments_account_currency_code",
                       "ck_bill_payments_payment_exchange_difference_zero",
                       "ck_bill_payments_same_currency_consistent",
+                      "ck_purchase_line_items_item_name_not_blank",
+                      "ck_purchase_line_items_quantity_positive",
+                      "ck_purchase_line_items_unit_price_nonnegative",
+                      "ck_purchase_line_items_line_total_nonnegative",
                   }
                   check_constraints = set(connection.execute(text("""
                       SELECT conname FROM pg_constraint
