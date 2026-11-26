@@ -478,7 +478,7 @@
   }
 
   function isUltraWideCameraLabel(label) {
-    return /ultra.?wide|ultra.?wide.?angle|0[.,]5\\s*x|0[.,]6\\s*x|0[.,]5x|0[.,]6x|超廣角|超广角|超廣角鏡頭/i.test(String(label || ""));
+    return /ultra.?wide|ultra.?wide.?angle|0[.,]5\s*x|0[.,]6\s*x|0[.,]5x|0[.,]6x|超廣角|超广角|超廣角鏡頭/i.test(String(label || ""));
   }
 
   function preferredRearCamera(devices, rememberedId = "", activeDeviceId = "") {
@@ -494,7 +494,7 @@
       const label = String(device.label || "");
       let score = -index;
       if (isUltraWideCameraLabel(label) || /telephoto|periscope|macro|depth|長焦|微距/i.test(label)) score -= 500;
-      if (/main|primary|standard|normal|主鏡頭|主相機|標準鏡頭|1[.,]0\\s*x/i.test(label)) score += 200;
+      if (/main|primary|standard|normal|主鏡頭|主相機|標準鏡頭|1[.,]0\s*x/i.test(label)) score += 200;
       if (/back|rear|facing back|後置|後鏡頭/i.test(label)) score += 100;
       if (device.deviceId === activeDeviceId && !label) score += 50;
       return { device, score };
