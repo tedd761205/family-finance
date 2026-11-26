@@ -731,3 +731,7 @@ button:disabled {
 
 /* Receipt field provenance labels: readable text remains the source of status. */
 .local-receipt-field-source{display:inline-block;margin-top:5px;padding:2px 7px;border-radius:7px;background:#f1f4f2;color:#53645b;font-size:12px;font-weight:500;line-height:1.6;overflow-wrap:anywhere}
+
+
+/* Clear-filter control remains readable and tappable beside the apply action. */
+#clear-transaction-filters:disabled{opacity:.5;cursor:not-allowed}
