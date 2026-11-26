@@ -112,8 +112,10 @@ def test_paper_einvoice_has_live_dual_qr_guides_and_local_pair_validation():
     assert "advanced.zoom = Math.min(maxZoom, Math.max(minZoom, 1))" in script.text
     assert "INVOICE_CAMERA_STORAGE_KEY" in script.text
     assert "rememberInvoiceCameraId(invoiceCameraSelect.value)" in script.text
-    assert "Math.round(width * 0.49)" in script.text
-    assert 'region.side === "left" ? "attemptBoth" : "dontInvert"' in script.text
+    assert "Math.round(width * 0.58)" in script.text
+    assert "Math.round(width * 0.42)" in script.text
+    assert "workspace.scrollIntoView({ behavior: \"smooth\", block: \"start\" })" in script.text
+    assert 'inversionAttempts: "attemptBoth"' in script.text
     assert "parseTaiwanInvoiceQr(leftValue, rightValue)" in script.text
     assert "handleFile(file, codes)" in script.text
 
