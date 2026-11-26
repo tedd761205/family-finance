@@ -361,7 +361,7 @@ def test_purchase_item_visibility_follows_parent_transaction_own_scope(purchase_
         f"/transactions/{transaction_id}?family_id={family_id}",
         headers=member_headers,
     )
-    assert hidden_detail.status_code == 404
+    assert hidden_detail.status_code == 403
 
     hidden_list = purchase_api_client.get(
         f"/transactions?family_id={family_id}",
@@ -372,3 +372,22 @@ def test_purchase_item_visibility_follows_parent_transaction_own_scope(purchase_
         row["id"] != transaction_id
         for row in hidden_list.json()["transactions"]
     )
+
+
+def test_purchase_item_editor_and_invoice_bridge_are_wired_for_mobile_transactions(purchase_api_client):
+    with purchase_api_client as client:
+        page = client.get("/")
+        javascript = client.get("/static/app.js").text
+        receipt_script = client.get("/static/local-receipt-ocr.js").text
+        css = client.get("/static/styles.css").text
+
+    assert page.status_code == 200
+    assert 'id="purchase-items-panel"' in page.text
+    assert 'id="purchase-item-add"' in page.text
+    assert 'id="purchase-items-total"' in page.text
+    assert 'id="purchase-items-apply-total"' in page.text
+    assert "purchase_items:type===\"expense\"?readPurchaseItems():[]" in javascript
+    assert "window.setTransactionPurchaseItems" in receipt_script
+    assert "structuredItems.map((item)" in receipt_script
+    assert ".purchase-item-row" in css
+    assert "@media(max-width:760px)" in css
