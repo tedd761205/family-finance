@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#173b35">
   <title>家庭記帳系統</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261126-3">
+  <link rel="stylesheet" href="/static/styles.css?v=20261126-4">
   <style>
     .browser-help{margin-top:26px;padding:20px;border:1px solid #dce8e0;border-radius:14px;background:#fff}
     .browser-help-title{margin:0 0 8px;color:#1b5142;font-size:17px;font-weight:750}
@@ -251,6 +251,7 @@
               <strong>將發票下方兩個 QR Code 對準紅框</strong>
               <span class="tiny muted">請保持發票平整、避免反光，讓左右 QR Code 完整入框。</span>
             </div>
+            <p id="local-receipt-invoice-scan-status" class="local-receipt-invoice-scan-status" role="status" aria-live="polite">正在準備相機…</p>
             <div class="local-receipt-video-stage">
               <video id="local-receipt-invoice-video" autoplay muted playsinline></video>
               <div class="local-receipt-qr-guide left" id="local-receipt-left-guide">
@@ -269,7 +270,6 @@
               <input id="local-receipt-invoice-zoom" type="range" min="1" max="1" step="0.1" value="1" disabled>
               <span class="tiny muted">優先使用一般主鏡頭；若手機支援光學／數位縮放，可在此拉近。若 QR Code 仍太小，可切換其他後置鏡頭。</span>
             </div>
-            <p id="local-receipt-invoice-scan-status" class="local-receipt-invoice-scan-status" role="status" aria-live="polite">正在準備相機…</p>
             <div class="local-receipt-invoice-scan-actions">
               <button class="secondary" id="local-receipt-invoice-stop" type="button">停止掃描</button>
             </div>
@@ -763,6 +763,6 @@
   <script src="/static/app.js" defer></script>
   <script src="/static/reconciliation.js" defer></script>
   <script src="/static/local-receipt-parser.js?v=20261126-2" defer></script>
-  <script src="/static/local-receipt-ocr.js?v=20261126-2" defer></script>
+  <script src="/static/local-receipt-ocr.js?v=20261126-3" defer></script>
 </body>
 </html>
