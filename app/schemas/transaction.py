@@ -21,6 +21,62 @@ class TransactionType(str, Enum):
     OPENING_BALANCE = "opening_balance"
 
 
+
+
+
+class PurchaseLineItemCreate(BaseModel):
+    """交易底下的採買商品輸入資料。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    item_name: str = Field(min_length=1, max_length=120)
+    quantity: Decimal = Field(
+        gt=0,
+        max_digits=20,
+        decimal_places=4,
+    )
+    unit: str | None = Field(default=None, max_length=24)
+    unit_price: Decimal = Field(
+        ge=0,
+        max_digits=20,
+        decimal_places=4,
+    )
+
+    @field_validator("item_name")
+    @classmethod
+    def validate_item_name(cls, value):
+        value = value.strip()
+        if not value:
+            raise ValueError("商品名稱不可空白")
+        return value
+
+    @field_validator("unit")
+    @classmethod
+    def normalize_unit(cls, value):
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
+
+
+class PurchaseLineItemResponse(BaseModel):
+    """採買商品明細回傳資料。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    family_id: int
+    transaction_id: int
+    item_name: str
+    quantity: Decimal
+    unit: str | None = None
+    unit_price: Decimal
+    line_total: Decimal
+    sort_order: int
+    created_by: int
+    created_at: datetime
+
+
 class TransactionBase(BaseModel):
     """交易共用欄位"""
 
@@ -81,6 +137,10 @@ class TransactionCreate(TransactionBase):
     """新增交易"""
 
     account_id: int = Field(gt=0)
+    purchase_items: list[PurchaseLineItemCreate] = Field(
+        default_factory=list,
+        max_length=100,
+    )
 
 
 class TransactionUpdate(BaseModel):
@@ -115,6 +175,17 @@ class TransactionUpdate(BaseModel):
     )
 
     note: str | None = None
+    purchase_items: list[PurchaseLineItemCreate] | None = Field(
+        default=None,
+        max_length=100,
+    )
+
+    @field_validator("purchase_items")
+    @classmethod
+    def validate_purchase_items_not_null(cls, value):
+        if value is None:
+            raise ValueError("purchase_items 不可為 null；未修改明細時請省略此欄位")
+        return value
 
     @field_validator("description", "external_reference", "note")
     @classmethod
@@ -169,3 +240,4 @@ class TransactionResponse(TransactionBase):
     created_by: int
     created_at: datetime
     updated_at: datetime
+    purchase_items: list[PurchaseLineItemResponse] = Field(default_factory=list)
