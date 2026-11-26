@@ -676,3 +676,53 @@ textarea:focus-visible {
  .purchase-items-footer{align-items:stretch;flex-direction:column}
  .purchase-items-footer button{width:100%;min-height:44px}
 }
+
+/* System-wide comfort baseline: predictable touch targets and reduced motion. */
+button,
+[role="button"] {
+  touch-action: manipulation;
+}
+button.primary,
+button.secondary,
+button.danger {
+  min-height: 42px;
+}
+.workspace-shortcut {
+  min-height: 42px;
+}
+button:active:not(:disabled) {
+  filter: brightness(.96);
+}
+button:disabled {
+  cursor: not-allowed;
+}
+#app-view > section[id$="-view"] {
+  scroll-margin-top: 16px;
+}
+@media (max-width: 760px) {
+  button.primary,
+  button.secondary,
+  button.danger,
+  .workspace-shortcut {
+    min-height: 46px;
+  }
+  .field input:not([type="checkbox"]):not([type="radio"]),
+  .field select,
+  .field textarea {
+    min-height: 46px;
+    font-size: 16px;
+  }
+  .field textarea {
+    min-height: 104px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}

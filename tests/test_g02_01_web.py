@@ -56,3 +56,14 @@ def test_frontend_handles_session_and_family_loading_errors_safely():
     assert "家庭清單載入失敗：" in javascript
     assert "伺服器端 Token 撤銷未確認" in javascript
     assert "let revoked=false" in javascript
+
+def test_mobile_ux_foundation_uses_comfortable_touch_targets_and_accessible_motion():
+    with TestClient(app) as client:
+        css = client.get("/static/styles.css")
+
+    assert css.status_code == 200
+    assert "System-wide comfort baseline" in css.text
+    assert "min-height: 46px" in css.text
+    assert 'font-size: 16px' in css.text
+    assert "prefers-reduced-motion: reduce" in css.text
+    assert "touch-action: manipulation" in css.text
