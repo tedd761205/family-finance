@@ -112,21 +112,28 @@ def test_paper_einvoice_uses_full_frame_multi_qr_detection_and_local_pair_valida
     assert "BARCODE_POLYFILL_SRC" in script.text
     assert "const detected = await detector.detect(canvas)" in script.text
     assert "horizontal or vertical" in script.text or "orientation" in script.text
-    assert "window.setInterval(scanInvoiceCameraFrame, 220)" in script.text
+    assert "window.setInterval(scanInvoiceCameraFrame, 350)" in script.text
     assert "function configureInvoiceCameraTrack(track)" in script.text
     assert "advanced.zoom = Math.min(maxZoom, Math.max(minZoom, 1))" in script.text
     assert "INVOICE_CAMERA_STORAGE_KEY" in script.text
     assert "rememberInvoiceCameraId(invoiceCameraSelect.value)" in script.text
-    assert "The ZBar detector above scans the whole invoice" in script.text
-    assert "rather than on-screen position" in script.text
+    assert "for (const code of detected || []) acceptInvoiceQrPayload(code.rawValue);" in script.text
+    assert "if (!invoiceLeftQrValue && typeof window.jsQR === \"function\")" in script.text
     assert "async function captureAndDecodeInvoicePhoto()" in script.text
-    assert "const codes = await decodeLocalCodes(file, invoiceBarcodeDetector, true)" in script.text
+    assert "const codes = await decodeInvoicePhotoWithJsQr(file)" in script.text
+    assert "async function decodeInvoicePhotoWithJsQr(file)" in script.text
+    assert "async function decodeInvoiceVideoFrameWithJsQr()" in script.text
     assert "let invoiceCaptureRequested = false" in script.text
-    assert "while (invoiceScanBusy && Date.now() - waitStarted < 2500)" in script.text
+    assert "let invoiceCaptureGeneration = 0" in script.text
+    assert "scanGeneration !== invoiceCaptureGeneration" in script.text
+    assert "if (!invoiceBarcodeDetector && !jsQrAvailable)" in script.text
+    assert "The live scan callback owns invoiceScanBusy" in script.text
+    assert "manual capture fallback" in script.text
+    assert "while (invoiceScanBusy && Date.now() - waitStarted < 2500)" not in script.text
     assert 'invoiceCaptureButton.textContent = "正在拍攝…"' in script.text
     assert 'setInvoiceScanStatus("已拍照，正在解析發票 QR Code…")' in script.text
     assert "if (!leftValue || isProcessing) return;" in script.text
-    assert "if (invoiceCaptureRequested) return;" in script.text
+    assert "if (invoiceCaptureRequested || scanGeneration !== invoiceCaptureGeneration) return;" in script.text
     assert "if (!invoiceCameraStream || invoiceScanBusy) return;" not in script.text
     assert 'invoiceCaptureButton.textContent = "正在拍攝…"' in script.text
     assert "#local-receipt-invoice-capture.is-capturing" in styles.text
