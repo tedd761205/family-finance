@@ -256,7 +256,7 @@ jobs:
           if url.database != "neondb":
               raise SystemExit("Refusing to proceed: unexpected production database name.")
 
-          baseline = "c7d9e1f3a5b7"
+          baseline = "f2a4c6e8b0d2"
           existing = {
               "accounts", "alembic_version", "audit_logs", "categories",
               "credit_card_payments", "families", "family_members",
@@ -268,9 +268,9 @@ jobs:
               "export_template_versions", "export_schedules", "export_runs",
               "bank_import_batches", "bank_import_rows",
               "reconciliation_sessions", "reconciliation_matches",
-              "reconciliation_exclusions", "reconciliation_issues",
+              "reconciliation_exclusions", "reconciliation_issues", "family_invitations",
           }
-          new_tables = {"family_invitations"}
+          new_tables = set()
           scripts = ScriptDirectory.from_config(Config("alembic.ini"))
           expected_chain = [
               "a7c9e1f3b5d7",
@@ -291,7 +291,10 @@ jobs:
                   )
           invitation_revision = scripts.get_revision("f2a4c6e8b0d2")
           if invitation_revision is None or invitation_revision.down_revision != "c7d9e1f3a5b7":
-              raise SystemExit("Family invitation migration is missing or is not based on the verified production revision.")
+              raise SystemExit("Family invitation migration is missing or is not based on the verified historical revision.")
+          cross_currency_revision = scripts.get_revision("f5b7d9e1a3c5")
+          if cross_currency_revision is None or cross_currency_revision.down_revision != "f2a4c6e8b0d2":
+              raise SystemExit("Cross-currency bill payment migration is missing or is not based on the current production revision.")
 
           engine = create_engine(url, pool_pre_ping=True, connect_args={"connect_timeout": 10})
           try:
@@ -314,7 +317,7 @@ jobs:
                       if missing or already_new or unexpected:
                           raise SystemExit(f"Schema differs from audited baseline: missing={missing}, already_new={already_new}, unexpected={unexpected}.")
                       counts = {}
-                      for table in ("families", "users", "accounts", "categories", "transactions", "transfers", "credit_card_payments"):
+                      for table in ("families", "users", "accounts", "categories", "transactions", "transfers", "credit_card_payments", "bills", "bill_payments"):
                           counts[table] = connection.execute(text(f'SELECT count(*) FROM "{table}"')).scalar_one()
           finally:
               engine.dispose()
@@ -324,7 +327,7 @@ jobs:
           print(f"Production endpoint matched Neon API endpoint and configured host: {expected_host}")
           print(f"Neon API confirmed project {project_id}, branch {branch_id} (production).")
           print(f"Current Alembic baseline: {baseline}")
-          print("Authorized Alembic target: f2a4c6e8b0d2")
+          print("Authorized Alembic target: f5b7d9e1a3c5")
           print(f"Verified baseline tables: {len(existing)}")
           print("Selected production row counts:")
           for table, count in counts.items():
@@ -337,7 +340,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           set -euo pipefail
-          python -m alembic upgrade f2a4c6e8b0d2 2>&1 | tee production-alembic-upgrade.log
+          python -m alembic upgrade f5b7d9e1a3c5 2>&1 | tee production-alembic-upgrade.log
           python -m alembic current 2>&1 | tee production-alembic-current.txt
 
       - name: Verify production schema and preserved data
@@ -365,12 +368,12 @@ jobs:
                   parts = line.strip().split(": ", 1)
                   if len(parts) == 2 and parts[0] in {
                       "families", "users", "accounts", "categories",
-                      "transactions", "transfers", "credit_card_payments"
+                      "transactions", "transfers", "credit_card_payments", "bills", "bill_payments"
                   }:
                       counts_before[parts[0]] = int(parts[1])
 
           scripts = ScriptDirectory.from_config(Config("alembic.ini"))
-          expected_revision = {"f2a4c6e8b0d2"}
+          expected_revision = {"f5b7d9e1a3c5"}
           engine = create_engine(make_url(os.environ["DATABASE_URL"]), pool_pre_ping=True, connect_args={"connect_timeout": 10})
           try:
               with engine.connect() as connection:
@@ -509,11 +512,46 @@ jobs:
                       "ck_reconciliation_issues_source_required",
                       "ck_reconciliation_issues_resolution",
                       "ck_reconciliation_issues_reason",
+                      "ck_bill_payments_account_amount_positive",
+                      "ck_bill_payments_exchange_rate_positive",
+                      "ck_bill_payments_account_currency_code",
+                      "ck_bill_payments_payment_exchange_difference_zero",
+                      "ck_bill_payments_same_currency_consistent",
                   }
                   check_constraints = set(connection.execute(text("""
                       SELECT conname FROM pg_constraint
                       WHERE contype='c' AND connamespace='public'::regnamespace
                   """)).scalars())
+                  required_payment_columns = {
+                      "account_amount", "account_currency_code", "exchange_rate", "exchange_difference"
+                  }
+                  payment_columns = set(connection.execute(text("""
+                      SELECT column_name FROM information_schema.columns
+                      WHERE table_schema='public' AND table_name='bill_payments'
+                  """)).scalars())
+                  missing_payment_columns = sorted(required_payment_columns - payment_columns)
+                  if missing_payment_columns:
+                      raise SystemExit(f"Missing cross-currency bill payment columns: {missing_payment_columns}")
+                  inconsistent_legacy_payments = connection.execute(text("""
+                      SELECT count(*)
+                      FROM public.bill_payments AS payment
+                      JOIN public.accounts AS account
+                        ON account.family_id = payment.family_id AND account.id = payment.account_id
+                      LEFT JOIN public.transactions AS linked_transaction
+                        ON linked_transaction.family_id = payment.family_id
+                       AND linked_transaction.bill_payment_id = payment.id
+                      WHERE payment.account_amount IS NULL
+                         OR payment.account_currency_code IS NULL
+                         OR payment.exchange_rate <> 1
+                         OR payment.exchange_difference <> 0
+                         OR payment.account_amount <> COALESCE(linked_transaction.amount, payment.amount)
+                         OR payment.account_currency_code <> COALESCE(linked_transaction.currency_code, account.currency_code)
+                  """)).scalar_one()
+                  if inconsistent_legacy_payments:
+                      raise SystemExit(
+                          "Existing same-currency bill payments were not backfilled unchanged: "
+                          f"{inconsistent_legacy_payments} inconsistent rows."
+                      )
                   missing_checks = sorted(required_checks - check_constraints)
                   if missing_checks:
                       raise SystemExit(f"Missing required G-03 check constraints: {missing_checks}.")

@@ -4,9 +4,9 @@
 
 This runbook documents the guarded production migration workflow. It does not authorize or execute a production migration.
 
-- Production baseline observed by the read-only preflight: `49ed3855c31c`.
-- Repository Alembic head: `a7c9e1f3b5d7`.
-- The six pending revisions have successfully upgraded a restored Neon snapshot from the production baseline.
+- Production baseline for this migration: `f2a4c6e8b0d2` (family invitations already deployed).
+- Repository Alembic target: `f5b7d9e1a3c5` (cross-currency bill payment fields).
+- The cross-currency bill payment revision must be rehearsed on a fresh restored snapshot from `f2a4c6e8b0d2` before production execution.
 - The production migration workflow is manual-only and requires a fresh backup, a successful restore test, a successful restored-snapshot rehearsal, a host allowlist, and an exact target confirmation.
 
 ## Required GitHub configuration
@@ -37,7 +37,7 @@ Supply three successful GitHub Actions run IDs:
 
 The workflow verifies each run's repository, workflow path, branch, status, conclusion, chronology, and required artifacts. The restore workflow also records a provenance artifact containing the exact backup run ID and the `g01-restore-test` confirmation; the production gate downloads it and requires it to match the selected backup run. It also compares migration source files in the rehearsal commit with current `main`. Documentation-only or workflow-only commits do not force a needless rehearsal; changes to migration sources, dependencies, Alembic configuration, or the role-catalog validator do.
 
-The restore provenance artifact was added by this hardening change. Therefore, the previously successful restore run `44294853198` predates that artifact and cannot be used for a future production migration dispatch. After this PR is merged, run a fresh backup if the existing backup is older than 24 hours, then run Neon Restore Test and the restored-snapshot Migration Rehearsal again. The new restore test resets the isolated branch to the baseline, so the rehearsal must run after it.
+The restore provenance artifact is required for the production gate. Use a fresh backup, restore it to `g01-restore-test`, then rehearse from the restored `f2a4c6e8b0d2` baseline to `f5b7d9e1a3c5`. The restore test resets the isolated branch, so the rehearsal must run after it.
 
 Latest successful evidence at the time this runbook was written:
 
@@ -65,11 +65,11 @@ Before running `alembic upgrade head`, the workflow:
 - Verifies successful backup, restore-test, and rehearsal runs and the available backup/rehearsal artifacts.
 - Confirms the rehearsal's migration sources match the current `main`.
 - Confirms the Neon API reports the pinned project ID and production branch ID/name, then independently matches the production endpoint hostname and database name `neondb`.
-- Opens a read-only transaction and requires the exact production baseline revision `49ed3855c31c`.
-- Requires the audited 18-table baseline and refuses if any of the ten new G-01 tables already exist or unexpected public tables are present.
+- Opens a read-only transaction and requires the exact production baseline revision `f2a4c6e8b0d2`.
+- Requires the exact 35-table baseline at `f2a4c6e8b0d2`, refuses if any of the four cross-currency bill-payment columns already exist, and refuses unexpected public tables.
 - Captures selected existing row counts before migration.
 
-After migration, it verifies the repository Alembic head, all ten new tables, six required indexes, two category-scope triggers, unchanged selected existing row counts, and the role catalog. It uploads a report artifact.
+After migration, it verifies the repository Alembic head, all existing finance tables and the four new bill-payment conversion columns, existing required indexes and five new bill-payment check constraints, two category-scope triggers, unchanged selected existing row counts, and the role catalog. It uploads a report artifact.
 
 ## Failure and rollback policy
 
