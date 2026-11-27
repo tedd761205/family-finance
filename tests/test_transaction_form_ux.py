@@ -139,7 +139,9 @@ def test_scenic_background_is_available_and_accessibly_faded_behind_content():
 
     assert scenery.status_code == 200
     assert "<svg" in scenery.text
-    assert "mountain" not in scenery.text.lower() or "viewBox" in scenery.text
+    assert "linearGradient id=\"sky\"" in scenery.text
+    assert "linearGradient id=\"lake\"" in scenery.text
+    assert "path d=" in scenery.text
     assert 'background-image: url("/static/images/family-finance-scenery.svg")' in styles
     assert "mask-image: linear-gradient" in styles
     assert "height: 430px" in styles
