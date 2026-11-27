@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#173b35">
   <title>家庭記帳系統</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261127-6">
+  <link rel="stylesheet" href="/static/styles.css?v=20261127-7">
   <style>
     .browser-help{margin-top:26px;padding:20px;border:1px solid #dce8e0;border-radius:14px;background:#fff}
     .browser-help-title{margin:0 0 8px;color:#1b5142;font-size:17px;font-weight:750}
@@ -28,6 +28,10 @@
         <h1>讓每一筆家庭收支，<br>都清楚有跡可循。</h1>
         <p class="intro-copy">帳戶、帳單與家庭支出集中管理，讓家人一起掌握財務狀況。</p>
         <ul class="benefits"><li>家庭帳務集中管理</li><li>帳單與付款分開記錄</li><li>依家庭角色管理資料權限</li></ul>
+        <div class="kawaii-intro-art" aria-label="家庭理財 Q 版小夥伴">
+          <img src="/static/images/family-finance-kawaii-mascots.svg" alt="戴眼鏡的小貓、粉紅存錢豬與薄荷綠計算機機器人一起整理家庭帳本">
+          <span class="kawaii-intro-caption">今天也一起把小錢錢照顧好！</span>
+        </div>
         <section id="android-browser-help" class="browser-help hidden" aria-live="polite">
           <p class="browser-help-title">尚未自動開啟瀏覽器？</p>
           <p class="browser-help-copy">請依照下面步驟，用 Chrome 開啟家庭記帳系統：</p>
@@ -68,6 +72,17 @@
         <button class="secondary" id="logout-button" type="button">登出</button>
       </div>
       <div id="notice-app" class="notice" role="status" aria-live="polite"></div>
+      <section class="kawaii-dashboard-banner" aria-label="家庭理財小夥伴歡迎區">
+        <div class="kawaii-dashboard-copy">
+          <span class="kawaii-banner-kicker">FAMILY FINANCE CLUB</span>
+          <h2>一起把每一筆帳，<br>整理得可愛又清楚！</h2>
+          <p>小貓幫忙記錄、存錢豬照顧儲蓄、計算機夥伴陪你核對數字。</p>
+          <div class="kawaii-formula-chips"><span>Σ 收支整理</span><span>∫ 細心水帳</span><span>π 理財日常</span></div>
+        </div>
+        <img class="kawaii-dashboard-art" src="/static/images/family-finance-kawaii-mascots.svg" alt="家庭理財小貓、存錢豬與計算機機器人">
+        <span class="kawaii-sparkle sparkle-one" aria-hidden="true">✦</span>
+        <span class="kawaii-sparkle sparkle-two" aria-hidden="true">✧</span>
+      </section>
       <section class="panel family-panel">
         <div class="section-heading"><div><h2>我的家庭</h2><p class="muted">選擇要管理的家庭，或建立新的家庭空間。</p></div><span class="count" id="family-count">0 個家庭</span></div>
         <div id="family-list" class="family-list"></div>
