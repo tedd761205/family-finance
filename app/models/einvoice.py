@@ -169,7 +169,7 @@ class EInvoiceItem(Base):
     source_line_number: Mapped[int | None] = mapped_column(nullable=True)
     category_id: Mapped[int | None] = mapped_column(
         BigInteger,
-        ForeignKey("categories.id", ondelete="RESTRICT"),
+        ForeignKey("categories.id", name="fk_einvoice_items_category", ondelete="RESTRICT"),
         nullable=True,
     )
     category_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
