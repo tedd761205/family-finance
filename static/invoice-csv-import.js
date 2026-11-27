@@ -708,6 +708,9 @@
     } catch (_) {
       persistenceAvailable = false;
     }
+    if (!persistenceAvailable && currentInvoiceMode === "history") {
+      currentInvoiceMode = "preview";
+    }
     showInvoiceMode(currentInvoiceMode);
   }
 
