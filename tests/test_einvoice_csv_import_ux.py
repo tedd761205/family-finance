@@ -103,6 +103,7 @@ def test_einvoice_saved_history_and_save_action_are_wired_to_family_scoped_apis(
     assert "invoices.length > 1000" in invoice_script.text
     assert "totalItems > 20000" in invoice_script.text
     assert "invoice.items.length > 1000" in invoice_script.text
+    assert "!/^\\d{8}$/.test(invoice.merchantTaxId)" in invoice_script.text
     assert invoice_script.text.index("const sequence = ++historyRequestSequence;") < invoice_script.text.index("if (!bridge || !familyId)")
     assert "不會自動新增收入或支出" in invoice_script.text
 
