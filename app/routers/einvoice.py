@@ -3,7 +3,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
-from sqlalchemy import exists, or_
+from sqlalchemy import cast, exists, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -387,7 +387,7 @@ def list_einvoices(
     if month:
         year, month_number = (int(value) for value in month.split("-"))
         month_start = date(year, month_number, 1)
-        month_end = date(year + (month_number == 12), 1 if month_number == 12 else month_number + 1, 1)
+        month_end = date(year + 1, 1, 1) if month_number == 12 else date(year, month_number + 1, 1)
         query = query.filter(EInvoice.invoice_date >= month_start, EInvoice.invoice_date < month_end)
 
     if start_date:
@@ -421,7 +421,7 @@ def list_einvoices(
             EInvoice.invoice_status.ilike(pattern, escape="\\"),
             EInvoice.carrier_type.ilike(pattern, escape="\\"),
         ]
-        search_terms.append(EInvoice.invoice_date.cast(String).ilike(pattern, escape="\\"))
+        search_terms.append(cast(EInvoice.invoice_date, String).ilike(pattern, escape="\\"))
         search_terms.append(
             exists().where(
                 EInvoiceItem.family_id == family_id,
