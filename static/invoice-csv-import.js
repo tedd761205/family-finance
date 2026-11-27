@@ -226,7 +226,7 @@
   }
 
   function normalizeSearchTerm(value) {
-    return String(value || "").normalize("NFKC").toLocaleLowerCase("zh-TW").replace(/\\s+/g, "");
+    return String(value || "").normalize("NFKC").toLocaleLowerCase("zh-TW").replace(/\s+/g, "");
   }
 
   function invoiceMatchesSearch(invoice, query) {
@@ -238,6 +238,7 @@
       invoice.merchantName,
       invoice.merchantTaxId,
       invoice.date,
+      invoice.date.replace(/-/g, ""),
       invoice.invoiceStatus,
       invoice.carrierType,
       statusText(invoice),
@@ -245,7 +246,7 @@
     ];
     if (textValues.some(value => normalizeSearchTerm(value).includes(term))) return true;
 
-    const numericTerm = term.replace(/[^\\d.-]/g, "");
+    const numericTerm = term.replace(/[^\d.-]/g, "");
     if (!numericTerm) return false;
     const amounts = [
       formatMoney(invoice.totalCents),
@@ -253,7 +254,7 @@
       ...invoice.items.map(item => formatMoney(item.amountCents)),
       ...invoice.items.map(item => String(item.amountCents / 100))
     ];
-    return amounts.some(value => normalizeSearchTerm(value).replace(/[^\\d.-]/g, "").includes(numericTerm));
+    return amounts.some(value => normalizeSearchTerm(value).replace(/[^\d.-]/g, "").includes(numericTerm));
   }
 
   function getVisibleInvoices() {
