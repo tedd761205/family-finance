@@ -21,9 +21,9 @@ def test_einvoice_workspace_is_reachable_from_primary_navigation_and_shortcuts()
     assert 'id="einvoice-csv-view"' in page.text
     assert 'id="close-einvoice-csv"' in page.text
     assert '"open-einvoice-csv":"einvoice-csv-view"' in script.text
-    assert "/static/app.js?v=20261127-2" in page.text
-    assert "/static/invoice-csv-import.js?v=20261127-3" in page.text
-    assert "/static/invoice-csv-import.css?v=20261127-3" in page.text
+    assert "/static/app.js?v=20261127-3" in page.text
+    assert "/static/invoice-csv-import.js?v=20261127-5" in page.text
+    assert "/static/invoice-csv-import.css?v=20261127-4" in page.text
 
 
 def test_einvoice_preview_has_clear_action_month_filter_and_pagination():
@@ -59,3 +59,32 @@ def test_einvoice_preview_has_clear_action_month_filter_and_pagination():
     assert ".einvoice-search-row" in styles.text
     assert ".einvoice-search-label input" in styles.text
     assert "@media(max-width:760px)" in styles.text
+
+
+def test_invoice_history_and_explicit_save_are_present_and_permission_aware():
+    with TestClient(app) as client:
+        page = client.get("/")
+        app_script = client.get("/static/app.js")
+        invoice_script = client.get("/static/invoice-csv-import.js")
+        styles = client.get("/static/invoice-csv-import.css")
+
+    assert page.status_code == 200
+    assert app_script.status_code == 200
+    assert invoice_script.status_code == 200
+    assert styles.status_code == 200
+    assert "window.FamilyFinanceBridge" in app_script.text
+    assert "getSelectedFamilyId:()=>selectedFamilyId" in app_script.text
+    assert 'id="einvoice-mode-history"' in invoice_script.text
+    assert "async function refreshPersistenceAvailability()" in invoice_script.text
+    assert 'bridge.api("/einvoices/availability")' in invoice_script.text
+    assert "家庭歷史發票（待啟用）" in invoice_script.text
+    assert 'id="einvoice-history-query"' in invoice_script.text
+    assert 'id="einvoice-csv-save"' in invoice_script.text
+    assert "async function saveCurrentPreview()" in invoice_script.text
+    assert "async function loadHistoryInvoices()" in invoice_script.text
+    assert 'bridge.api("/einvoices/imports?family_id="' in invoice_script.text
+    assert 'bridge.api("/einvoices?"' in invoice_script.text
+    assert "carrier_number" not in invoice_script.text
+    assert "不會建立任何收入或支出交易" in invoice_script.text
+    assert ".einvoice-history-filters" in styles.text
+    assert ".einvoice-mode-tab.active" in styles.text
