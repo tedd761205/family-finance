@@ -17,6 +17,7 @@ from app.models.transaction import Transaction
 from app.models.user import User
 from app.permission_catalog import PERMISSION_CATALOG
 from main import app
+from app.routers.reconciliation import _invoice_payment_context
 
 
 EINVOICE_RECONCILIATION_TEST_ROOTS = [
@@ -334,3 +335,17 @@ def test_einvoice_payment_is_suggested_and_manually_reconciled_without_duplicate
         assert transaction.amount == original_amount
         assert transaction.is_voided is False
         assert payment.is_voided is False
+
+
+def test_invoice_reconciliation_lookup_is_disabled_until_persistence_is_enabled(monkeypatch):
+    monkeypatch.delenv("EINVOICE_PERSISTENCE_ENABLED", raising=False)
+
+    # The helper must short-circuit before touching the DB, because production
+    # may not have the optional e-invoice posting tables migrated yet.
+    assert _invoice_payment_context(
+        db=None,
+        user=None,
+        family_id=1,
+        transaction_ids=[123],
+        transaction_scope="family",
+    ) == {}
