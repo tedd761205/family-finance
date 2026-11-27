@@ -380,16 +380,18 @@ def test_invoice_category_suggestions_are_isolated_by_family(family_context):
     )
     assert other_family.status_code == 201, other_family.text
     other_family_id = other_family.json()["family_id"]
-    foreign_category = client.get(
-        f"/categories?family_id={other_family_id}&category_type=expense",
+    foreign_category_response = client.post(
+        f"/categories?family_id={other_family_id}",
         headers=headers,
+        json={"category_type": "expense", "name": "另一家庭交通"},
     )
-    assert foreign_category.status_code == 200, foreign_category.text
+    assert foreign_category_response.status_code == 201, foreign_category_response.text
+    foreign_category_id = foreign_category_response.json()["id"]
 
     rejected = client.put(
         f"/einvoices/{invoice['id']}/items/{item['id']}/category?family_id={family_id}",
         headers=headers,
-        json={"category_id": category_id + 999999, "remember_rule": True},
+        json={"category_id": foreign_category_id, "remember_rule": True},
     )
     assert rejected.status_code == 404
 
