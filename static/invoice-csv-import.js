@@ -821,9 +821,11 @@
       currentPage = 1;
       pageSize = 10;
       previewSaved = false;
-      const activeFamilyId = window.FamilyFinanceInvoiceBridge?.getFamilyId();
+      const invoiceBridge = window.FamilyFinanceInvoiceBridge;
+      const activeFamilyId = invoiceBridge?.getFamilyId();
       const familyMatches = Boolean(previewFamilyId && activeFamilyId && String(activeFamilyId) === previewFamilyId);
-      document.getElementById("einvoice-csv-save").disabled = !familyMatches;
+      const canImport = Boolean(invoiceBridge?.hasPermission("invoices.import"));
+      document.getElementById("einvoice-csv-save").disabled = !(familyMatches && canImport);
       document.getElementById("einvoice-csv-save").textContent = "儲存發票紀錄";
       document.getElementById("einvoice-csv-filter").value = "all";
       document.getElementById("einvoice-csv-search").value = "";
@@ -831,12 +833,15 @@
       document.getElementById("einvoice-csv-page-size").value = "10";
       fillMonthOptions(parsedResult.invoices);
       document.getElementById("einvoice-csv-filename").textContent = file.name;
-      if (familyMatches) {
-        message.classList.add("is-success");
-        message.textContent = "已在此裝置完成解析。原始 CSV 不會上傳伺服器，也尚未寫入正式帳務。";
-      } else {
+      if (!familyMatches) {
         message.classList.add("is-error");
         message.textContent = "已完成本機解析，但目前沒有可用的家庭或解析期間已切換家庭。請先確認家庭，再重新選取 CSV 才能保存。";
+      } else if (!canImport) {
+        message.classList.add("is-error");
+        message.textContent = "已完成本機解析；目前帳號只有查看權限，沒有匯入發票的權限。";
+      } else {
+        message.classList.add("is-success");
+        message.textContent = "已在此裝置完成解析。原始 CSV 不會上傳伺服器，也尚未寫入正式帳務。";
       }
       renderInvoices();
     } catch (error) {
@@ -929,15 +934,19 @@
       if (historyList) { historyList.replaceChildren(); historyList.removeAttribute("aria-busy"); }
       if (historyPagination) { historyPagination.replaceChildren(); historyPagination.classList.add("hidden"); }
 
-      const activeFamilyId = window.FamilyFinanceInvoiceBridge?.getFamilyId();
+      const invoiceBridge = window.FamilyFinanceInvoiceBridge;
+      const activeFamilyId = invoiceBridge?.getFamilyId();
       const familyMatches = Boolean(previewFamilyId && activeFamilyId && String(activeFamilyId) === String(previewFamilyId));
+      const canImport = Boolean(invoiceBridge?.hasPermission("invoices.import"));
       const saveButton = document.getElementById("einvoice-csv-save");
-      if (parsedResult && !previewSaved && saveButton) saveButton.disabled = !familyMatches;
-      if (parsedResult && !previewSaved && !familyMatches) {
+      if (parsedResult && !previewSaved && saveButton) saveButton.disabled = !(familyMatches && canImport);
+      if (parsedResult && !previewSaved && (!familyMatches || !canImport)) {
         const message = document.getElementById("einvoice-csv-message");
         if (message) {
           message.className = "einvoice-message is-error";
-          message.textContent = "家庭已切換；目前 CSV 預覽仍屬於原家庭。請清除預覽並在目前家庭重新選取 CSV，避免存錯家庭。";
+          message.textContent = !familyMatches
+            ? "家庭已切換；目前 CSV 預覽仍屬於原家庭。請清除預覽並在目前家庭重新選取 CSV，避免存錯家庭。"
+            : "目前帳號只有查看權限，沒有匯入發票的權限。";
         }
       }
       if (!document.getElementById("einvoice-csv-view")?.classList.contains("hidden")) loadHistory();
