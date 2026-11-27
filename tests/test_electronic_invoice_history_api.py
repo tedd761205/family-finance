@@ -28,12 +28,14 @@ def invoice_api_client(monkeypatch):
         app.dependency_overrides.pop(get_db, None)
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="module", autouse=True)
 def ensure_electronic_invoice_schema():
     from app.database import Base, engine
     from app import models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+    yield
+    Base.metadata.drop_all(bind=engine)
 
 
 def seed_invoice_permissions():
