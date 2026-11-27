@@ -109,7 +109,7 @@ def test_warm_visual_theme_stylesheet_cache_is_refreshed():
         page = client.get("/")
 
     assert page.status_code == 200
-    assert '/static/styles.css?v=20261126-8' in page.text
+    assert '/static/styles.css?v=20261127-1' in page.text
 
 
 def test_brighter_warm_theme_keeps_warm_neutrals_and_distinct_semantic_colors():
