@@ -103,12 +103,33 @@
 .einvoice-page-number:hover,.einvoice-page-number.active { border-color:#c6ddce; background:#e5f1e9; color:#174b3d; font-weight:800; }
 .einvoice-page-number:focus-visible { outline:3px solid #4b8f72; outline-offset:2px; }
 .einvoice-page-ellipsis { padding:0 2px; color:#89968c; font-size:12px; }
+.einvoice-history-panel { margin:2px 0 20px; padding:16px; border:1px solid #dfe9dd; border-radius:18px; background:linear-gradient(145deg,#fffefa,#f5faf4); }
+.einvoice-history-panel .einvoice-list-heading { align-items:center; margin:0 0 12px; }
+.einvoice-history-filters { display:grid; grid-template-columns:minmax(240px,2fr) repeat(3,minmax(130px,1fr)) auto auto; align-items:end; gap:9px; margin-bottom:10px; }
+.einvoice-history-search,.einvoice-history-filter { display:grid; gap:5px; min-width:0; color:#62756a; font-size:12px; }
+.einvoice-history-search input,.einvoice-history-filter input,.einvoice-history-filter select { width:100%; min-width:0; box-sizing:border-box; min-height:42px; padding:8px 10px; border:1px solid #d6e1d6; border-radius:10px; background:#fff; color:#315745; font:inherit; font-size:13px; }
+.einvoice-history-search input:focus,.einvoice-history-filter input:focus,.einvoice-history-filter select:focus { outline:3px solid rgba(75,143,114,.2); border-color:#6b9d7c; }
+.einvoice-history-voided { display:flex; align-items:center; gap:6px; min-height:42px; color:#62756a; font-size:12px; white-space:nowrap; }
+.einvoice-history-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:8px; }
+.einvoice-history-detail { margin-top:8px; }
+.einvoice-save-button { min-height:44px; padding:10px 16px; white-space:nowrap; }
+.einvoice-save-button:disabled { opacity:.55; cursor:not-allowed; }
+.einvoice-upload-actions { display:flex; align-items:center; flex:0 0 auto; gap:8px; }
+.einvoice-upload-actions .einvoice-clear-button { width:auto; }
+.einvoice-history-card { background:#fff; }
 @media(max-width:760px) {
   .einvoice-workspace-heading { margin:-3px -3px 14px; padding:15px 13px; border-radius:19px; background-size:auto 180%; }
   .einvoice-workspace-heading h2 { font-size:20px; }
   .einvoice-workspace-heading .muted { max-width:230px; font-size:11px; }
   .einvoice-upload-heading { align-items:stretch; flex-direction:column; gap:9px; }
-  .einvoice-clear-button { width:100%; }
+  .einvoice-upload-actions { width:100%; display:grid; grid-template-columns:1fr 1fr; }
+  .einvoice-upload-actions .einvoice-save-button,.einvoice-upload-actions .einvoice-clear-button { width:100%; min-width:0; padding:9px 8px; white-space:normal; }
+  .einvoice-history-panel { padding:12px; }
+  .einvoice-history-filters { grid-template-columns:1fr 1fr; gap:8px; }
+  .einvoice-history-search { grid-column:1/-1; }
+  .einvoice-history-filter:nth-of-type(4) { grid-column:1/-1; }
+  .einvoice-history-panel .einvoice-list-heading { align-items:flex-start; }
+  .einvoice-history-card .einvoice-card-top { align-items:flex-start; }
   .einvoice-list-toolbar { width:100%; align-items:stretch; flex-direction:column; gap:9px; }
   .einvoice-search-row { width:100%; min-width:0; }
   .einvoice-filter-controls { width:100%; display:grid; grid-template-columns:1fr 1fr; justify-content:stretch; }
