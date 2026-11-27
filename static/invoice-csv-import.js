@@ -692,6 +692,45 @@
   }
 
   async function savePreview() {
+  function validatePreviewForSave() {
+    const invoices = parsedResult?.invoices || [];
+    if (!invoices.length) return "目前沒有可保存的發票資料。";
+    if (invoices.length > 1000) {
+      return "單次最多保存 1,000 張發票；目前有 " + invoices.length +
+        " 張，請分批選取較小的 CSV 檔案。";
+    }
+
+    let totalItems = 0;
+    for (const invoice of invoices) {
+      if (invoice.items.length > 1000) {
+        return "發票 " + invoice.invoiceNumber +
+          " 有超過 1,000 筆明細，請分批匯入或先檢查來源資料。";
+      }
+      totalItems += invoice.items.length;
+      if (invoice.merchantName && invoice.merchantName.length > 200) {
+        return "發票 " + invoice.invoiceNumber + " 的店家名稱超過 200 個字元，請先修正來源資料。";
+      }
+      if (invoice.merchantTaxId && !/^\\d{8}$/.test(invoice.merchantTaxId)) {
+        return "發票 " + invoice.invoiceNumber + " 的店家統一編號不是 8 位數字，請先修正來源資料。";
+      }
+      if (invoice.invoiceStatus && invoice.invoiceStatus.length > 60) {
+        return "發票 " + invoice.invoiceNumber + " 的發票狀態文字過長，請先修正來源資料。";
+      }
+      if (invoice.carrierType && invoice.carrierType.length > 100) {
+        return "發票 " + invoice.invoiceNumber + " 的載具類型文字過長，請先修正來源資料。";
+      }
+      const longItem = invoice.items.find(item => !item.itemName || item.itemName.length > 200);
+      if (longItem) {
+        return "發票 " + invoice.invoiceNumber + " 含有空白或超過 200 個字元的商品名稱，請先修正來源資料。";
+      }
+    }
+    if (totalItems > 20000) {
+      return "單次最多保存 20,000 筆商品／折扣明細；目前有 " + totalItems +
+        " 筆，請分批匯入。";
+    }
+    return null;
+  }
+
     if (!parsedResult || previewSaved) return;
     const bridge = window.FamilyFinanceInvoiceBridge;
     const familyId = bridge?.getFamilyId();
@@ -713,6 +752,13 @@
       message.textContent = "家庭已切換，為避免發票存入錯誤家庭，請清除目前預覽並在正確家庭重新選取 CSV。";
       const saveButton = document.getElementById("einvoice-csv-save");
       if (saveButton) saveButton.disabled = true;
+      return;
+    }
+    const validationError = validatePreviewForSave();
+    if (validationError) {
+      const message = document.getElementById("einvoice-csv-message");
+      message.className = "einvoice-message is-error";
+      message.textContent = validationError;
       return;
     }
     const file = document.getElementById("einvoice-csv-file");
