@@ -156,7 +156,7 @@ def save_invoice_import(
         db.add(batch)
         db.flush()
 
-            for incoming, detail_total, difference, validation_status in prepared:
+        for incoming, detail_total, difference, validation_status in prepared:
             invoice = ElectronicInvoice(
                 family_id=family_id,
                 import_batch_id=batch.id,
