@@ -1441,3 +1441,387 @@ textarea:focus-visible,
     background: var(--surface);
   }
 }
+
+
+/* --------------------------------------------------
+   Soft scenic family theme
+   A calm mountain-and-lake panorama fades behind the workspace.
+   Muted coastal blue actions, jade support and champagne details.
+-------------------------------------------------- */
+:root {
+  color-scheme: light;
+  --page-bg: #f3f5f2;
+  --surface: #fffefa;
+  --surface-raised: #ffffff;
+  --surface-muted: #eff3f4;
+  --surface-soft: #e8f2ed;
+  --text: #36434a;
+  --text-muted: #64737a;
+  --border: #dce4e6;
+  --line: #e6ebea;
+
+  --accent: #58788b;
+  --accent-strong: #49697c;
+  --accent-soft: #eaf1f4;
+  --accent-warm: #c5a46a;
+
+  --jade: #73ad99;
+  --jade-strong: #2d7662;
+  --jade-soft: #e8f3ed;
+
+  --success-bg: #e5f2eb;
+  --success-text: #286b56;
+  --warning-bg: #fbf3e2;
+  --warning-text: #806128;
+  --danger-bg: #fce9e5;
+  --danger-text: #a33f34;
+
+  --nav-ink: #36434a;
+  --nav-muted: #64737a;
+  --nav-accent: #58788b;
+  --nav-accent-soft: #eaf1f4;
+  --nav-border: #dce4e6;
+}
+
+html {
+  background: var(--page-bg);
+}
+
+body {
+  position: relative;
+  isolation: isolate;
+  color: var(--text);
+  background: linear-gradient(180deg, #edf3f5 0%, #f5f5f0 440px, var(--page-bg) 100%);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  z-index: -1;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: min(620px, 76vh);
+  pointer-events: none;
+  background-image: url("/static/images/family-finance-scenery.svg");
+  background-position: center top;
+  background-repeat: no-repeat;
+  background-size: cover;
+  opacity: .84;
+  mask-image: linear-gradient(to bottom, #000 0%, #000 58%, transparent 100%);
+}
+
+.brand,
+.intro h1,
+.welcome-row h1,
+h2,
+h3,
+h4 {
+  color: var(--text);
+}
+
+.brand-mark {
+  background: linear-gradient(145deg, #698a9c, var(--accent-strong));
+  box-shadow: 0 5px 14px rgba(73, 105, 124, .16);
+  border: 1px solid rgba(197, 164, 106, .48);
+}
+
+.eyebrow {
+  color: #8a7044;
+}
+
+.top-note,
+.muted,
+.tiny,
+.quick-card-description,
+.coming,
+footer {
+  color: var(--text-muted);
+}
+
+.panel,
+.quick-card,
+.quick-tool-group,
+.account-card,
+.transaction-card,
+.bill-card,
+.bill-payment-card,
+.recurring-bill-card,
+.family-role-card,
+.family-role-member-card,
+.report-currency-card,
+.yearly-currency-block,
+.category-report-item,
+.family-member-card,
+.notification-admin-card,
+.export-admin-card,
+.reconciliation-session-card,
+.reconciliation-row-card,
+.reconciliation-kpi,
+.reconciliation-ledger-card,
+.reconciliation-issue-card,
+.attachment-admin-card,
+.import-batch-card {
+  background: rgba(255, 254, 250, .96);
+  border-color: var(--border);
+}
+
+.panel {
+  box-shadow: 0 14px 38px rgba(54, 67, 74, .065);
+}
+
+.auth-panel,
+.family-panel,
+.accounts-panel,
+.transactions-panel,
+.transfers-panel,
+.credit-card-payments-panel,
+.bills-panel,
+.bill-payments-panel,
+.recurring-bills-panel,
+.reports-panel,
+.family-roles-panel {
+  background: rgba(255, 254, 250, .94);
+  border-color: rgba(220, 228, 230, .94);
+}
+
+.more-tools-panel,
+.transaction-filters,
+.accounts-summary,
+.tabs,
+.purchase-items-panel,
+.local-receipt-review-hint,
+.ocr-extracted-text {
+  background: rgba(239, 243, 244, .94);
+  border-color: var(--border);
+}
+
+.quick-card-button,
+.family-card {
+  background: rgba(255, 254, 250, .97);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.quick-card-button:hover,
+.family-card:hover,
+.family-card.selected {
+  background: #edf3f5;
+  border-color: #a9bdc7;
+}
+
+.quick-icon,
+.empty-icon,
+.benefits li:before {
+  background: var(--jade-soft);
+  color: var(--jade-strong);
+}
+
+.field,
+.purchase-item-field {
+  color: #4a5b62;
+}
+
+.field input,
+.field select,
+.field textarea,
+.purchase-item-field input {
+  background: #fffefa;
+  border-color: #d8e2e4;
+  color: var(--text);
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus,
+.purchase-item-field input:focus {
+  border-color: #7896a5;
+  box-shadow: 0 0 0 3px rgba(88, 120, 139, .17);
+}
+
+.primary {
+  background: #58788b;
+  color: #fff;
+  box-shadow: 0 3px 9px rgba(73, 105, 124, .13);
+}
+
+.primary:hover:not(:disabled) {
+  background: #49697c;
+}
+
+.secondary {
+  background: #eaf1f4;
+  color: #49697c;
+  border: 1px solid #d4e0e4;
+}
+
+.secondary:hover:not(:disabled) {
+  background: #e0eaee;
+}
+
+.danger {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+  border: 1px solid #f0d4cd;
+}
+
+.danger:hover:not(:disabled) {
+  background: #f6ddd7;
+}
+
+.notice.error {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+  border: 1px solid #f0d4cd;
+}
+
+.notice.success {
+  background: var(--success-bg);
+  color: var(--success-text);
+  border: 1px solid #cce3d8;
+}
+
+.count,
+.transaction-status,
+.bill-status-paid {
+  background: var(--success-bg);
+  color: var(--success-text);
+}
+
+.bill-status-overdue {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+
+.bill-status-open {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+
+.bill-status-voided {
+  background: #eef0f1;
+  color: #5e6b76;
+}
+
+.accounts-summary,
+.account-actions,
+.bill-card-details,
+.purchase-items-footer,
+.report-block,
+.subpanel {
+  border-color: var(--line);
+}
+
+.account-balance,
+.bill-total,
+.recurring-bill-amount strong,
+.purchase-items-footer strong,
+.report-metric.net strong {
+  color: var(--accent-strong);
+}
+
+.transaction-amount.income,
+.bill-payment-amount.income,
+.report-metric.income strong {
+  color: var(--jade-strong);
+}
+
+.transaction-amount.expense,
+.bill-payment-amount.expense,
+.report-metric.expense strong {
+  color: #9e7057;
+}
+
+.yearly-bar-fill {
+  background: #7896a5;
+}
+
+.yearly-bar-fill.expense {
+  background: #c5a46a;
+}
+
+.category-report-fill {
+  background: #73ad99;
+}
+
+.category-report-track,
+.yearly-bar-track {
+  background: #e7edee;
+}
+
+.workspace-shortcuts {
+  background: rgba(255, 254, 250, .97);
+  border-color: var(--border);
+  box-shadow: 0 5px 18px rgba(54, 67, 74, .07);
+  backdrop-filter: blur(12px);
+}
+
+.workspace-shortcut {
+  background: #eff3f4;
+  color: #4a606b;
+}
+
+.workspace-shortcut:hover,
+.workspace-shortcut.active {
+  background: var(--accent-soft);
+  border-color: #c5d5dc;
+  color: var(--accent-strong);
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+.quick-card-button:focus-visible,
+.app-nav-button:focus-visible {
+  outline-color: #7896a5;
+}
+
+.local-receipt-field-source {
+  background: #eef3f1;
+  color: #526c63;
+}
+
+.purchase-items-panel {
+  border-color: #d7e5df;
+  background: rgba(242, 247, 244, .96);
+}
+
+.purchase-item-row {
+  border-color: #dce7e3;
+  background: #fffefa;
+}
+
+.purchase-item-field input {
+  border-color: #d8e2e4;
+}
+
+@media (max-width: 760px) {
+  body::before {
+    height: 430px;
+    background-size: auto 430px;
+    opacity: .62;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  body::before {
+    opacity: .34;
+  }
+  .workspace-shortcuts,
+  .auth-panel,
+  .family-panel,
+  .accounts-panel,
+  .transactions-panel,
+  .transfers-panel,
+  .credit-card-payments-panel,
+  .bills-panel,
+  .bill-payments-panel,
+  .recurring-bills-panel,
+  .reports-panel,
+  .family-roles-panel {
+    backdrop-filter: none;
+    background: var(--surface);
+  }
+}
