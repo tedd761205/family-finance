@@ -108,25 +108,24 @@ def save_invoice_import(
 
     invoice_numbers = list({item.invoice_number for item in payload.invoices})
     existing_rows = db.query(
-        ElectronicInvoice.invoice_date,
         ElectronicInvoice.invoice_number,
     ).filter(
         ElectronicInvoice.family_id == family_id,
         ElectronicInvoice.invoice_number.in_(invoice_numbers),
     ).all()
-    existing_keys = {(row.invoice_date, row.invoice_number) for row in existing_rows}
+    existing_numbers = {row.invoice_number for row in existing_rows}
 
-    seen_keys: set[tuple[date, str]] = set()
+    seen_numbers: set[str] = set()
     prepared: list[tuple[Any, Decimal | None, Decimal | None, str]] = []
     duplicate_count = 0
     detail_count = 0
 
     for incoming in payload.invoices:
-        key = (incoming.invoice_date, incoming.invoice_number)
-        if key in existing_keys or key in seen_keys:
+        invoice_number = incoming.invoice_number
+        if invoice_number in existing_numbers or invoice_number in seen_numbers:
             duplicate_count += 1
             continue
-        seen_keys.add(key)
+        seen_numbers.add(invoice_number)
 
         item_total = sum((row.amount for row in incoming.items), Decimal("0"))
         detail_total = item_total if incoming.items else None
