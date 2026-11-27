@@ -268,7 +268,7 @@ jobs:
                       "ix_einvoices_family_transaction",
                       "uq_einvoice_batches_family_id_id",
                       "uq_einvoices_family_id_id",
-                      "uq_einvoices_family_number_unique",
+                      "uq_einvoices_family_number_active",
                       "ix_einvoice_items_family_invoice",
                       "ix_einvoice_items_family_name",
                       "uq_einvoice_items_family_id_id",
