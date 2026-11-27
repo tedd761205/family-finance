@@ -283,6 +283,7 @@ def list_electronic_invoices(
             ElectronicInvoice.merchant_tax_id.ilike(pattern, escape="\\"),
             ElectronicInvoice.invoice_status.ilike(pattern, escape="\\"),
             cast(ElectronicInvoice.invoice_date, String).ilike(pattern, escape="\\"),
+            ElectronicInvoice.invoice_period.ilike(pattern, escape="\\"),
             cast(ElectronicInvoice.total_amount, String).ilike(pattern, escape="\\"),
             item_match,
         ))
