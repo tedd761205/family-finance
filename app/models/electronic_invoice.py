@@ -11,7 +11,6 @@ from sqlalchemy import (
     Index,
     Numeric,
     String,
-    Text,
     UniqueConstraint,
     func,
 )
@@ -98,7 +97,6 @@ class ElectronicInvoice(Base):
             name="ck_einvoices_tax_id_format",
         ),
         CheckConstraint("total_amount >= 0", name="ck_einvoices_total_nonnegative"),
-        CheckConstraint("detail_total_amount IS NULL OR detail_total_amount >= -9999999999999999", name="ck_einvoices_detail_total_range"),
         CheckConstraint("currency_code ~ '^[A-Z]{3}$'", name="ck_einvoices_currency_format"),
         CheckConstraint(
             "validation_status IN ('matched', 'mismatch', 'missing_details', 'duplicate_in_file')",
