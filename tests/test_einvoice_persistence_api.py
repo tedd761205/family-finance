@@ -388,6 +388,25 @@ def test_invoice_category_suggestions_are_isolated_by_family(family_context):
     assert foreign_category_response.status_code == 201, foreign_category_response.text
     foreign_category_id = foreign_category_response.json()["id"]
 
+    other_payload = invoice_payload("LM12345678")
+    other_payload["items"] = [{"item_name": "捷運票", "amount": "50.00", "source_line": 2}]
+    other_saved = client.post(
+        f"/einvoices/imports?family_id={other_family_id}",
+        headers=headers,
+        json={"invoices": [other_payload]},
+    )
+    assert other_saved.status_code == 201, other_saved.text
+    other_invoice = client.get(
+        f"/einvoices?family_id={other_family_id}", headers=headers
+    ).json()["invoices"][0]
+    other_detail = client.get(
+        f"/einvoices/{other_invoice['id']}?family_id={other_family_id}",
+        headers=headers,
+    )
+    assert other_detail.status_code == 200, other_detail.text
+    other_item = other_detail.json()["invoice"]["items"][0]
+    assert other_item["suggested_category_id"] is None
+
     rejected = client.put(
         f"/einvoices/{invoice['id']}/items/{item['id']}/category?family_id={family_id}",
         headers=headers,
