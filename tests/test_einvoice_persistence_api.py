@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.database import Base, engine
 from app import models  # noqa: F401
+from app.models.permission import Permission
+from app.permission_catalog import PERMISSION_CATALOG
 from main import app
 
 
@@ -16,6 +18,12 @@ def ensure_persistent_einvoice_schema():
     if engine is None:
         pytest.skip("A disposable PostgreSQL DATABASE_URL is required for persistent invoice API tests")
     Base.metadata.create_all(bind=engine)
+    with Session(engine) as db:
+        existing = {permission.code for permission in db.query(Permission).all()}
+        for permission in PERMISSION_CATALOG:
+            if permission["code"] not in existing:
+                db.add(Permission(**permission))
+        db.commit()
 
 
 @pytest.fixture
