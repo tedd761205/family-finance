@@ -710,7 +710,7 @@
       if (invoice.merchantName && invoice.merchantName.length > 200) {
         return "發票 " + invoice.invoiceNumber + " 的店家名稱超過 200 個字元，請先修正來源資料。";
       }
-      if (invoice.merchantTaxId && !/^\\d{8}$/.test(invoice.merchantTaxId)) {
+      if (invoice.merchantTaxId && !/^\d{8}$/.test(invoice.merchantTaxId)) {
         return "發票 " + invoice.invoiceNumber + " 的店家統一編號不是 8 位數字，請先修正來源資料。";
       }
       if (invoice.invoiceStatus && invoice.invoiceStatus.length > 60) {
