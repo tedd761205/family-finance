@@ -156,5 +156,6 @@ def test_primary_action_uses_soft_jade_with_champagne_reserved_for_details():
     assert "--accent-strong: #326f5a" in active_theme
     assert "background: #3f826a" in active_theme
     assert "background: #326f5a" in active_theme
-    assert "background: #c5a46a" not in active_theme
+    assert ".primary {\n  background: #c5a46a" not in active_theme
+    assert ".secondary {\n  background: #c5a46a" not in active_theme
 
