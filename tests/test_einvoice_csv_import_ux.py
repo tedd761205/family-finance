@@ -91,6 +91,7 @@ def test_einvoice_saved_history_and_save_action_are_wired_to_family_scoped_apis(
     assert 'id="einvoice-history-status"' in invoice_script.text
     assert 'id="einvoice-history-pagination"' in invoice_script.text
     assert "function invoicePeriodLabel(period)" in invoice_script.text
+    assert 'match(/^(\\d{4})(02|04|06|08|10|12)$/)' in invoice_script.text
     assert "invoicePeriodLabel(invoice.invoice_period)" in invoice_script.text
     assert 'function loadInvoiceHistoryDetail(invoiceId, detailHost, familyId, includeVoided)' in invoice_script.text
     assert 'params.set("include_voided", "true")' in invoice_script.text
