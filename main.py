@@ -64,6 +64,7 @@ from app.routers.account_overview import (
 from app.routers.g01_07 import router as g01_07_router
 from app.routers.bank_import import router as bank_import_router
 from app.routers.reconciliation import router as reconciliation_router
+from app.routers.electronic_invoice import router as electronic_invoice_router
 
 
 # --------------------------------------------------
@@ -108,6 +109,7 @@ app.include_router(account_overview_router)
 app.include_router(g01_07_router)
 app.include_router(bank_import_router)
 app.include_router(reconciliation_router)
+app.include_router(electronic_invoice_router)
 
 
 # --------------------------------------------------
