@@ -86,7 +86,12 @@ jobs:
               "reconciliation_exclusions", "reconciliation_issues",
           }
           expected_existing.add("family_invitations")
-          expected_new = {"purchase_line_items"}
+          expected_new = {
+              "purchase_line_items",
+              "electronic_invoice_import_batches",
+              "electronic_invoices",
+              "electronic_invoice_items",
+          }
           engine = create_engine(url, pool_pre_ping=True, connect_args={"connect_timeout": 10})
           try:
               with engine.connect() as connection:
@@ -167,7 +172,7 @@ jobs:
           PGOPTIONS: "-c search_path=public"
         run: |
           set -euo pipefail
-          python -m alembic upgrade a8c4e2f6b1d3 2>&1 | tee migration-rehearsal-artifacts/alembic-upgrade.log
+          python -m alembic upgrade b9c1d3e5f7a9 2>&1 | tee migration-rehearsal-artifacts/alembic-upgrade.log
           python -m alembic current 2>&1 | tee migration-rehearsal-artifacts/alembic-current.txt
 
       - name: Verify upgraded schema and preserved baseline data
@@ -183,7 +188,12 @@ jobs:
           from sqlalchemy import create_engine, text
           from sqlalchemy.engine import make_url
 
-          expected_new = {"purchase_line_items"}
+          expected_new = {
+              "purchase_line_items",
+              "electronic_invoice_import_batches",
+              "electronic_invoices",
+              "electronic_invoice_items",
+          }
           expected_counts = {}
           with open("migration-rehearsal-artifacts/baseline.txt", encoding="utf-8") as f:
               for line in f:
@@ -195,7 +205,7 @@ jobs:
                       expected_counts[parts[0]] = int(parts[1])
 
           scripts = ScriptDirectory.from_config(Config("alembic.ini"))
-          expected_revision = {"a8c4e2f6b1d3"}
+          expected_revision = {"b9c1d3e5f7a9"}
           engine = create_engine(make_url(os.environ["DATABASE_URL"]), pool_pre_ping=True)
           try:
               with engine.connect() as connection:
@@ -250,6 +260,19 @@ jobs:
                       "ix_family_invitations_pending_family_email",
                       "ix_purchase_line_items_family_transaction",
                       "uq_purchase_line_items_family_id_id",
+                      "ix_einvoice_batches_family_created",
+                      "ix_einvoices_family_date",
+                      "ix_einvoices_family_number",
+                      "ix_einvoices_family_merchant_date",
+                      "ix_einvoices_family_batch",
+                      "ix_einvoices_family_transaction",
+                      "uq_einvoice_batches_family_id_id",
+                      "uq_einvoices_family_id_id",
+                      "uq_einvoices_family_period_number_active",
+                      "ix_einvoices_family_period_number",
+                      "ix_einvoice_items_family_invoice",
+                      "ix_einvoice_items_family_name",
+                      "uq_einvoice_items_family_id_id",
                   }
                   indexes = set(connection.execute(text("""
                       SELECT indexname FROM pg_indexes WHERE schemaname='public'
@@ -289,6 +312,16 @@ jobs:
                       "family_invitations_accepted_by_user_id_fkey",
                       "fk_purchase_line_items_family_transaction",
                       "fk_purchase_line_items_created_by_user",
+                      "fk_einvoice_batches_family",
+                      "fk_einvoice_batches_created_by",
+                      "fk_einvoices_family_batch",
+                      "fk_einvoices_family_transaction",
+                      "fk_einvoices_family",
+                      "fk_einvoices_created_by",
+                      "fk_einvoices_updated_by",
+                      "fk_einvoices_voided_by",
+                      "fk_einvoice_items_family_invoice",
+                      "fk_einvoice_items_created_by",
                   }
                   foreign_keys = set(connection.execute(text("""
                       SELECT conname FROM pg_constraint
@@ -350,6 +383,18 @@ jobs:
                       "ck_purchase_line_items_quantity_positive",
                       "ck_purchase_line_items_unit_price_nonnegative",
                       "ck_purchase_line_items_line_total_nonnegative",
+                      "ck_einvoice_batches_received_positive",
+                      "ck_einvoice_batches_saved_nonnegative",
+                      "ck_einvoice_batches_duplicate_nonnegative",
+                      "ck_einvoice_batches_counts_consistent",
+                      "ck_einvoices_number_format",
+                      "ck_einvoices_period_format",
+                      "ck_einvoices_tax_id_format",
+                      "ck_einvoices_total_nonnegative",
+                      "ck_einvoices_currency_format",
+                      "ck_einvoices_validation_status",
+                      "ck_einvoice_items_name_not_blank",
+                      "ck_einvoice_items_sort_order_nonnegative",
                   }
                   check_constraints = set(connection.execute(text("""
                       SELECT conname FROM pg_constraint
@@ -428,9 +473,9 @@ jobs:
 
                   print(f"Final Alembic revision: {sorted(current)}")
                   print(f"Public table count after upgrade: {len(tables)}")
-                  print(f"G-03 tables verified: {len(expected_new)}")
+                  print(f"New tables verified: {len(expected_new)}")
                   print(f"Required indexes verified: {len(required_indexes)}")
-                  print(f"Required G-03 foreign keys verified: {len(required_foreign_keys)}")
+                  print(f"Required foreign keys verified: {len(required_foreign_keys)}")
                   payment_columns = set(connection.execute(text("""
                       SELECT column_name FROM information_schema.columns
                       WHERE table_schema='public' AND table_name='bill_payments'
@@ -442,10 +487,51 @@ jobs:
                   if missing_payment_columns:
                       raise SystemExit(f"Missing cross-currency bill payment columns: {missing_payment_columns}")
                   print(f"Cross-currency bill payment columns verified: {len(required_payment_columns)}")
-                  print(f"Required G-03 check constraints verified: {len(required_checks)}")
+                  print(f"Required check constraints verified: {len(required_checks)}")
                   print(f"Required category-scope triggers verified: {len(required_triggers)}")
                   print("Selected baseline data row counts remained unchanged.")
-                  print("Active reconciliation.update permission and all restored finance/bookkeeping system-role grants verified.")
+                  invoice_permissions = {
+                      code: connection.execute(text("""
+                          SELECT id FROM public.permissions WHERE code = :code AND is_active = true
+                      """), {"code": code}).scalar_one_or_none()
+                      for code in ("invoices.view", "invoices.import", "invoices.void")
+                  }
+                  if any(value is None for value in invoice_permissions.values()):
+                      raise SystemExit("Missing active electronic invoice permissions after migration rehearsal.")
+                  expected_invoice_roles = {
+                      "invoices.view": {"家庭管理員", "財務管理員", "一般成員", "記帳人員", "檢視人員"},
+                      "invoices.import": {"家庭管理員", "財務管理員", "一般成員", "記帳人員"},
+                      "invoices.void": {"家庭管理員", "財務管理員", "一般成員", "記帳人員"},
+                  }
+                  for code, expected_roles in expected_invoice_roles.items():
+                      granted_roles = set(connection.execute(text("""
+                          SELECT r.name FROM public.roles r
+                          JOIN public.role_permissions rp ON rp.role_id = r.id
+                          WHERE r.is_system = true AND rp.permission_id = :permission_id
+                      """), {"permission_id": invoice_permissions[code]}).scalars())
+                      missing_roles = sorted(expected_roles - granted_roles)
+                      if missing_roles:
+                          raise SystemExit(f"Invoice permission {code} missing from system roles: {missing_roles}")
+
+                  invoice_scopes = {
+                      row.name: row.scope
+                      for row in connection.execute(text("""
+                          SELECT r.name, s.scope FROM public.roles r
+                          JOIN public.role_data_scopes s ON s.role_id = r.id
+                          WHERE r.is_system = true AND s.resource = 'invoices'
+                      """)).all()
+                  }
+                  expected_invoice_scopes = {
+                      "家庭管理員": "family",
+                      "財務管理員": "family",
+                      "一般成員": "own",
+                      "記帳人員": "family",
+                      "檢視人員": "family",
+                  }
+                  if invoice_scopes != expected_invoice_scopes:
+                      raise SystemExit(f"Invoice role data scopes do not match the approved catalog: {invoice_scopes}")
+
+                  print("Active reconciliation.update and electronic invoice permissions/scopes verified.")
           finally:
               engine.dispose()
           PY

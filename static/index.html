@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#173b35">
   <title>家庭記帳系統</title>
   <link rel="stylesheet" href="/static/styles.css?v=20261127-7">
-  <link rel="stylesheet" href="/static/invoice-csv-import.css?v=20261127-3">
+  <link rel="stylesheet" href="/static/invoice-csv-import.css?v=20261127-4">
   <style>
     .browser-help{margin-top:26px;padding:20px;border:1px solid #dce8e0;border-radius:14px;background:#fff}
     .browser-help-title{margin:0 0 8px;color:#1b5142;font-size:17px;font-weight:750}
@@ -101,7 +101,7 @@
         <button class="app-nav-button active hidden" type="button" data-nav-key="overview" data-nav-action="overview" data-permissions="dashboard.view" aria-current="page"><span class="nav-icon" aria-hidden="true">⌂</span><span class="nav-label">總覽</span></button>
         <button class="app-nav-button hidden" type="button" data-nav-key="entry" data-nav-target="open-transactions" data-permissions="transactions.view"><span class="nav-icon" aria-hidden="true">＋</span><span class="nav-label">記帳</span></button>
         <button class="app-nav-button hidden" type="button" data-nav-key="bills" data-nav-target="open-bills" data-permissions="bills.view"><span class="nav-icon" aria-hidden="true">單</span><span class="nav-label">帳單</span></button>
-        <button class="app-nav-button hidden" type="button" data-nav-key="invoice" data-nav-target="open-einvoice-csv" data-permissions="imports.view"><span class="nav-icon" aria-hidden="true">發</span><span class="nav-label">發票</span></button>
+        <button class="app-nav-button hidden" type="button" data-nav-key="invoice" data-nav-target="open-einvoice-csv" data-permissions="invoices.view"><span class="nav-icon" aria-hidden="true">發</span><span class="nav-label">發票</span></button>
         <button class="app-nav-button hidden" type="button" data-nav-key="reconcile" data-nav-target="open-bank-reconciliation" data-permissions="reconciliation.view"><span class="nav-icon" aria-hidden="true">對</span><span class="nav-label">對帳</span></button>
         <button class="app-nav-button hidden" type="button" data-nav-key="more" data-nav-action="more" aria-expanded="false" aria-controls="more-tools-panel"><span class="nav-icon" aria-hidden="true">☷</span><span class="nav-label">更多</span></button>
       </nav>
@@ -112,7 +112,7 @@
         <button type="button" class="workspace-shortcut" data-target="open-transactions" data-permissions="transactions.view">收支</button>
         <button type="button" class="workspace-shortcut" data-target="open-transfers" data-permissions-all="accounts.transfer,transactions.view">轉帳</button>
         <button type="button" class="workspace-shortcut" data-target="open-bills" data-permissions="bills.view">帳單</button>
-        <button type="button" class="workspace-shortcut" data-target="open-einvoice-csv" data-permissions="imports.view">發票</button>
+        <button type="button" class="workspace-shortcut" data-target="open-einvoice-csv" data-permissions="invoices.view">發票</button>
         <button type="button" class="workspace-shortcut" data-target="open-reports" data-permissions="reports.view">報表</button>
         <button type="button" class="workspace-shortcut" data-target="open-bank-reconciliation" data-permissions="reconciliation.view">對帳</button>
       </nav>
@@ -784,10 +784,10 @@
       window.setTimeout(() => panel.classList.remove("hidden"), 1800);
     })();
   </script>
-  <script src="/static/app.js?v=20261127-2" defer></script>
+  <script src="/static/app.js?v=20261127-3" defer></script>
   <script src="/static/reconciliation.js" defer></script>
   <script src="/static/local-receipt-parser.js?v=20261126-3" defer></script>
   <script src="/static/local-receipt-ocr.js?v=20261126-15" defer></script>
-  <script src="/static/invoice-csv-import.js?v=20261127-3" defer></script>
+  <script src="/static/invoice-csv-import.js?v=20261127-9" defer></script>
 </body>
 </html>

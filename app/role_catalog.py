@@ -69,6 +69,10 @@ FINANCE_PERMISSIONS = [
     "imports.confirm",
     "imports.void",
 
+    "invoices.view",
+    "invoices.import",
+    "invoices.void",
+
     "attachments.view",
     "attachments.upload",
     "attachments.void",
@@ -127,6 +131,10 @@ MEMBER_PERMISSIONS = [
     "imports.create",
     "imports.confirm",
 
+    "invoices.view",
+    "invoices.import",
+    "invoices.void",
+
     "attachments.view",
     "attachments.upload",
 
@@ -178,6 +186,10 @@ BOOKKEEPER_PERMISSIONS = [
     "imports.confirm",
     "imports.void",
 
+    "invoices.view",
+    "invoices.import",
+    "invoices.void",
+
     "attachments.view",
     "attachments.upload",
 
@@ -208,6 +220,7 @@ VIEWER_PERMISSIONS = [
     "family.view",
     "members.view",
     "exchange_rates.view",
+    "invoices.view",
 ]
 
 
@@ -218,7 +231,7 @@ ADMIN_SCOPES = {
     "transactions": "family", "accounts": "family", "categories": "family",
     "recurring_bills": "family", "bills": "family", "payments": "family",
     "reconciliation": "family", "reports": "family", "exports": "family",
-    "imports": "family", "attachments": "family", "ocr": "family",
+    "imports": "family", "invoices": "family", "attachments": "family", "ocr": "family",
     "audit_logs": "family",
 }
 
@@ -226,14 +239,14 @@ FINANCE_SCOPES = {
     "transactions": "family", "accounts": "family", "categories": "family",
     "recurring_bills": "family", "bills": "family", "payments": "family",
     "reconciliation": "family", "reports": "family", "exports": "family",
-    "imports": "family", "attachments": "family", "ocr": "family",
+    "imports": "family", "invoices": "family", "attachments": "family", "ocr": "family",
     "audit_logs": "family",
 }
 
 MEMBER_SCOPES = {
     "transactions": "own", "accounts": "family", "categories": "family",
     "recurring_bills": "own", "bills": "own", "payments": "own",
-    "reports": "own", "exports": "own", "imports": "own",
+    "reports": "own", "exports": "own", "imports": "own", "invoices": "own",
     "attachments": "own", "ocr": "own",
 }
 
@@ -241,14 +254,14 @@ BOOKKEEPER_SCOPES = {
     "transactions": "family", "accounts": "family", "categories": "family",
     "recurring_bills": "family", "bills": "family", "payments": "family",
     "reconciliation": "family", "reports": "family", "exports": "family",
-    "imports": "family", "attachments": "family", "ocr": "family",
+    "imports": "family", "invoices": "family", "attachments": "family", "ocr": "family",
 }
 
 VIEWER_SCOPES = {
     "transactions": "family", "accounts": "family", "categories": "family",
     "recurring_bills": "family", "bills": "family", "payments": "family",
     "reconciliation": "family", "reports": "family", "exports": "family",
-    "attachments": "family", "ocr": "family",
+    "invoices": "family", "attachments": "family", "ocr": "family",
 }
 
 

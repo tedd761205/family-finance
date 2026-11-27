@@ -450,4 +450,9 @@ PERMISSION_CATALOG = [
     {"code": "exports.schedule", "name": "管理定期匯出", "description": "建立、修改及停用定期匯出排程", "category": "exports"},
     {"code": "exports.download", "name": "下載匯出檔案", "description": "下載本人資料範圍內且仍有權限的匯出檔案", "category": "exports"},
     {"code": "exports.dashboard", "name": "查看匯出管理統計", "description": "查看家庭匯出執行統計及管理追蹤", "category": "exports"},
+
+    # 電子發票管理
+    {"code": "invoices.view", "name": "查看發票", "description": "查看家庭已保存的電子發票及商品明細", "category": "invoices"},
+    {"code": "invoices.import", "name": "匯入發票", "description": "保存電子發票匯入批次及解析明細", "category": "invoices"},
+    {"code": "invoices.void", "name": "作廢發票紀錄", "description": "作廢錯誤或重複的已保存發票紀錄並保留歷史", "category": "invoices"},
 ]
