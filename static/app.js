@@ -16,6 +16,11 @@ const token = () => sessionStorage.getItem(TOKEN_KEY);
 function notice(target, message, type="success"){const el=$(target);el.textContent=message;el.className="notice show "+type;}
 function clearNotice(target){const el=$(target);el.textContent="";el.className="notice";}
 async function api(path, options={}){const headers={"Content-Type":"application/json",...(options.headers||{})};if(token())headers.Authorization="Bearer "+token();const response=await fetch(API+path,{...options,headers});let data={};try{data=await response.json();}catch{}if(!response.ok){if(response.status===401&&token()){sessionStorage.removeItem(TOKEN_KEY);showAuth();}const error=new Error(data.detail||"目前無法完成操作，請稍後再試。");error.status=response.status;throw error;}return data;}
+window.FamilyFinanceInvoiceBridge = {
+  request: api,
+  getFamilyId: () => selectedFamilyId,
+  hasPermission: (code) => currentFamilyPermissionCodes.has(code),
+};
 function setMode(next){mode=next;$("login-tab").classList.toggle("active",mode==="login");$("register-tab").classList.toggle("active",mode==="register");$("name-wrap").classList.toggle("hidden",mode!=="register");$("form-title").textContent=mode==="login"?"歡迎回來":"建立家庭帳號";$("form-desc").textContent=mode==="login"?"使用 Email 與密碼登入家庭記帳系統。":"建立帳號後即可建立家庭或加入家人邀請。";$("submit-auth").textContent=mode==="login"?"登入":"建立帳號";$("password").autocomplete=mode==="login"?"current-password":"new-password";clearNotice("notice");}
 function showAuth(){currentUser=null;$("auth-view").classList.remove("hidden");$("app-view").classList.add("hidden");}
 function showApp(){$("auth-view").classList.add("hidden");$("app-view").classList.remove("hidden");}
@@ -109,6 +114,7 @@ async function loadFamilies(){
       card.classList.add("selected");
       notice("notice-app","已切換至「"+family.family_name+"」。","success");
       await refreshFamilyNavigationPermissions();
+      window.dispatchEvent(new CustomEvent("family-finance-family-changed", { detail: { familyId: selectedFamilyId } }));
       if(!$("accounts-view").classList.contains("hidden")){await loadAccounts();}
       if(!$("transactions-view").classList.contains("hidden")){await showTransactions();}
       if(!$("transfers-view").classList.contains("hidden")){await showTransfers();}
@@ -125,6 +131,7 @@ async function loadFamilies(){
     list.append(card);
   }
   await refreshFamilyNavigationPermissions();
+  window.dispatchEvent(new CustomEvent("family-finance-family-changed", { detail: { familyId: selectedFamilyId } }));
 }
 function accountTypeLabel(type){return({bank:"銀行帳戶",time_deposit:"定期存款",cash:"現金",credit_card:"信用卡",e_wallet:"電子支付",other:"其他"})[type]||type;}
 function money(value,currency){const amount=Number(value||0);try{return new Intl.NumberFormat("zh-TW",{style:"currency",currency:currency||"TWD",minimumFractionDigits:2,maximumFractionDigits:2}).format(amount);}catch{return amount.toFixed(2)+" "+(currency||"");}}
