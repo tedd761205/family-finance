@@ -93,10 +93,10 @@ def test_warm_family_theme_uses_cream_sage_palette_with_readable_semantic_states
     with TestClient(app) as client:
         styles = client.get("/static/styles.css").text
 
-    assert "--page-bg: #f5efe3" in styles
-    assert "--surface: #fffdf7" in styles
-    assert "--accent: #347b56" in styles
-    assert "--accent-warm: #c87552" in styles
+    assert "--page-bg: #f5f5f0" in styles
+    assert "--surface: #fffefa" in styles
+    assert "--accent: #2456a6" in styles
+    assert "--accent-warm: #c5a46a" in styles
     assert "background:" in styles
     assert "var(--danger-bg)" in styles
     assert "var(--success-bg)" in styles
@@ -109,19 +109,24 @@ def test_warm_visual_theme_stylesheet_cache_is_refreshed():
         page = client.get("/")
 
     assert page.status_code == 200
-    assert '/static/styles.css?v=20261127-1' in page.text
+    assert '/static/styles.css?v=20261127-2' in page.text
 
 
-def test_brighter_warm_theme_keeps_warm_neutrals_and_distinct_semantic_colors():
+def test_blue_jade_champagne_theme_keeps_warm_surfaces_and_distinct_semantic_colors():
     with TestClient(app) as client:
         styles = client.get("/static/styles.css").text
 
-    assert "--accent-strong: #285f43" in styles
-    assert "--accent-soft: #e1eee2" in styles
-    assert "--success-bg: #e2f0e3" in styles
-    assert "--warning-bg: #fff0d5" in styles
-    assert "--danger-bg: #fce7e3" in styles
-    assert "rgba(220, 178, 124, .34)" in styles
-    assert "rgba(146, 181, 143, .30)" in styles
-    assert "background: #5f9866" in styles
-    assert "background: #cf805d" in styles
+    assert "--accent-strong: #1c4389" in styles
+    assert "--accent-soft: #e7effa" in styles
+    assert "--success-bg: #e5f2eb" in styles
+    assert "--warning-bg: #fbf3e2" in styles
+    assert "--danger-bg: #fce9e5" in styles
+    assert "rgba(179, 204, 235, .30)" in styles
+    assert "rgba(198, 165, 106, .20)" in styles
+    assert "background: #4779bd" in styles
+    assert "background: #c5a46a" in styles
+    assert "--jade: #73ad99" in styles
+    assert "--jade-strong: #2d7662" in styles
+    assert "--jade-soft: #e8f3ed" in styles
+    assert "--surface-muted: #edf3f8" in styles
+    assert "--surface-soft: #e8f2ed" in styles
