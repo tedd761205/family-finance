@@ -306,7 +306,16 @@ def _invoice_posting_detail(db: Session, posting: EInvoicePosting) -> dict:
     }
 
 
-def _invoice_expense_category(db: Session, family_id: int, invoice_id: int) -> int | None:
+def _invoice_expense_category(
+    db: Session, family_id: int, invoice_id: int, current_user: User
+) -> int | None:
+    try:
+        category_scope = _require_category_scope(
+            db, current_user, family_id, "categories.view"
+        )
+    except HTTPException:
+        return None
+
     positive_items = db.query(EInvoiceItem).filter(
         EInvoiceItem.family_id == family_id,
         EInvoiceItem.invoice_id == invoice_id,
@@ -317,12 +326,17 @@ def _invoice_expense_category(db: Session, family_id: int, invoice_id: int) -> i
     category_ids = {item.category_id for item in positive_items}
     if len(category_ids) != 1:
         return None
-    category = db.query(Category).filter(
+    category_query = db.query(Category).filter(
         Category.id == next(iter(category_ids)),
         or_(Category.family_id == family_id, Category.family_id.is_(None)),
         Category.category_type == "expense",
         Category.is_active.is_(True),
-    ).first()
+    )
+    if category_scope == "own":
+        category_query = category_query.filter(
+            or_(Category.family_id.is_(None), Category.created_by == current_user.id)
+        )
+    category = category_query.first()
     return category.id if category else None
 
 
@@ -357,7 +371,7 @@ def _append_invoice_payments(
     if not payments:
         return []
 
-    category_id = _invoice_expense_category(db, family_id, invoice.id)
+    category_id = _invoice_expense_category(db, family_id, invoice.id, current_user)
     created = []
     for data in payments:
         if data.payment_date.tzinfo is None or data.payment_date.utcoffset() is None:
