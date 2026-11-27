@@ -8,7 +8,12 @@
   let currentFilter = "all";
   let currentMonth = "all";
   let currentSearch = "";
+  let currentSourceFilename = "";
+  let currentSourceSha256 = null;
   let currentPage = 1;
+  let historyPage = 1;
+  let historyLoaded = false;
+  let historyItems = new Map();
   let pageSize = 10;
 
   function make(tag, className, text) {
@@ -426,6 +431,10 @@
   function resetPreview(ask) {
     if (ask && parsedResult && !window.confirm("清除目前選取的檔案與發票預覽？此預覽尚未存入資料庫。")) return;
     parsedResult = null;
+    currentSourceFilename = "";
+    currentSourceSha256 = null;
+    const saveButton = document.getElementById("einvoice-csv-save");
+    if (saveButton) saveButton.disabled = true;
     currentFilter = "all";
     currentMonth = "all";
     currentSearch = "";
@@ -461,6 +470,12 @@
     months.forEach(month => select.add(new Option(month.replace("-", " 年 ") + " 月", month)));
   }
 
+  async function calculateSha256(buffer) {
+    if (!window.crypto?.subtle) return null;
+    const digest = await window.crypto.subtle.digest("SHA-256", buffer);
+    return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
+  }
+
   async function handleFile(file) {
     const message = document.getElementById("einvoice-csv-message");
     const results = document.getElementById("einvoice-csv-results");
@@ -478,7 +493,10 @@
       return;
     }
     try {
-      const text = decodeBytes(await file.arrayBuffer());
+      const buffer = await file.arrayBuffer();
+      currentSourceFilename = file.name;
+      currentSourceSha256 = await calculateSha256(buffer);
+      const text = decodeBytes(buffer);
       parsedResult = parseText(text);
       currentFilter = "all";
       currentMonth = "all";
@@ -492,10 +510,16 @@
       fillMonthOptions(parsedResult.invoices);
       document.getElementById("einvoice-csv-filename").textContent = file.name;
       message.classList.add("is-success");
-      message.textContent = "已在此裝置完成解析。原始 CSV 不會上傳伺服器，也尚未寫入正式帳務。";
+      message.textContent = "已在此裝置完成解析。原始 CSV 不會上傳伺服器；確認保存後只會傳送解析出的發票與商品明細，不會自動建立支出。";
+      const saveButton = document.getElementById("einvoice-csv-save");
+      if (saveButton) saveButton.disabled = false;
       renderInvoices();
     } catch (error) {
       parsedResult = null;
+      currentSourceFilename = "";
+      currentSourceSha256 = null;
+      const saveButton = document.getElementById("einvoice-csv-save");
+      if (saveButton) saveButton.disabled = true;
       message.classList.add("is-error");
       message.textContent = error.message || "讀取 CSV 失敗，請確認檔案格式。";
     }
@@ -507,6 +531,11 @@
     const section = make("section", "subpanel einvoice-csv-import");
     section.id = "einvoice-csv-import";
     section.innerHTML =
+      '<div class="einvoice-mode-tabs" role="tablist" aria-label="發票工作區">' +
+        '<button id="einvoice-mode-preview" class="einvoice-mode-tab active" type="button" role="tab" aria-selected="true">匯入與檢查</button>' +
+        '<button id="einvoice-mode-history" class="einvoice-mode-tab" type="button" role="tab" aria-selected="false">家庭歷史發票</button>' +
+      '</div>' +
+      '<div class="einvoice-preview-mode">' +
       '<div class="einvoice-upload-box">' +
         '<div class="einvoice-upload-heading"><label class="field">選擇電子發票 CSV 檔案' +
           '<input id="einvoice-csv-file" type="file" accept=".csv,.txt,text/csv,text/plain"></label>' +
@@ -515,6 +544,7 @@
         '<p id="einvoice-csv-filename" class="einvoice-filename">尚未選擇檔案</p></div>' +
       '<p id="einvoice-csv-message" class="einvoice-message" role="status" aria-live="polite"></p>' +
       '<div id="einvoice-csv-results" class="hidden">' +
+        '<div class="einvoice-save-row"><p>確認後將發票與明細保存到家庭發票庫；原始 CSV 與載具號碼不會上傳，也不會建立正式交易。</p><button id="einvoice-csv-save" class="primary small" type="button" disabled>保存到家庭發票庫</button></div>' +
         '<div id="einvoice-csv-summary" class="einvoice-kpi-grid"></div>' +
         '<div class="einvoice-list-heading"><div><h3>發票檢查結果</h3><p class="tiny muted">表頭總額與商品／折扣明細逐張核對；負數折扣會保留。</p></div>' +
           '<div class="einvoice-list-toolbar">' +
@@ -530,7 +560,22 @@
         '<div id="einvoice-csv-diagnostics" class="einvoice-diagnostics hidden"></div>' +
         '<div id="einvoice-csv-list" class="einvoice-card-list"></div>' +
         '<nav id="einvoice-csv-pagination" class="einvoice-pagination hidden" aria-label="電子發票分頁"></nav>' +
-        '<p class="einvoice-local-footnote">目前為本機檢查預覽：不會寫入資料庫、不會新增正式交易，也不會與銀行／信用卡 CSV 匯入混用。清除預覽或重新整理頁面後，請重新選取檔案。</p>' +
+        '<p class="einvoice-local-footnote">預覽僅暫存在此裝置。只有按下「保存到家庭發票庫」並確認後，解析出的發票資料才會保存；不會自動新增家庭支出。</p>' +
+      '</div></div>' +
+      '<div id="einvoice-history-mode" class="hidden">' +
+        '<div class="einvoice-history-intro"><h3>家庭歷史發票</h3><p>搜尋已保存的家庭發票，不必重新匯入 CSV。依帳號權限顯示家庭或本人建立的紀錄。</p></div>' +
+        '<form id="einvoice-history-filter" class="einvoice-history-filters">' +
+          '<label class="einvoice-history-search">關鍵字<input id="einvoice-history-query" type="search" maxlength="120" placeholder="發票號碼、店家、統編、商品或金額"></label>' +
+          '<label>月份<input id="einvoice-history-month" type="month"></label>' +
+          '<label>核對狀態<select id="einvoice-history-status"><option value="all">全部狀態</option><option value="matched">核對一致</option><option value="mismatch">金額不一致</option><option value="missing_details">缺少明細</option><option value="duplicate">疑似重複</option></select></label>' +
+          '<label>最低金額<input id="einvoice-history-min" type="number" min="0" step="0.01" inputmode="decimal" placeholder="不限"></label>' +
+          '<label>最高金額<input id="einvoice-history-max" type="number" min="0" step="0.01" inputmode="decimal" placeholder="不限"></label>' +
+          '<div class="einvoice-history-actions"><button class="primary small" type="submit">搜尋發票</button><button id="einvoice-history-clear" class="secondary small" type="button">清除條件</button></div>' +
+        '</form>' +
+        '<p id="einvoice-history-message" class="einvoice-message" role="status" aria-live="polite"></p>' +
+        '<div id="einvoice-history-summary" class="einvoice-history-summary"></div>' +
+        '<div id="einvoice-history-list" class="einvoice-history-list"></div>' +
+        '<nav id="einvoice-history-pagination" class="einvoice-pagination hidden" aria-label="歷史發票分頁"></nav>' +
       '</div>';
     workspace.append(section);
 
@@ -541,6 +586,23 @@
       handleFile(file);
     });
     document.getElementById("einvoice-csv-clear").addEventListener("click", () => resetPreview(true));
+    document.getElementById("einvoice-csv-save").addEventListener("click", saveCurrentPreview);
+    document.getElementById("einvoice-mode-preview").addEventListener("click", () => switchInvoiceMode("preview"));
+    document.getElementById("einvoice-mode-history").addEventListener("click", () => switchInvoiceMode("history"));
+    document.getElementById("einvoice-history-filter").addEventListener("submit", event => {
+      event.preventDefault();
+      historyPage = 1;
+      loadHistoryInvoices();
+    });
+    document.getElementById("einvoice-history-clear").addEventListener("click", () => {
+      document.getElementById("einvoice-history-query").value = "";
+      document.getElementById("einvoice-history-month").value = "";
+      document.getElementById("einvoice-history-status").value = "all";
+      document.getElementById("einvoice-history-min").value = "";
+      document.getElementById("einvoice-history-max").value = "";
+      historyPage = 1;
+      loadHistoryInvoices();
+    });
     const searchInput = document.getElementById("einvoice-csv-search");
     const searchClear = document.getElementById("einvoice-csv-search-clear");
     searchInput.addEventListener("input", event => {
@@ -579,6 +641,288 @@
       document.getElementById("einvoice-csv-view")?.classList.add("hidden");
       document.querySelector('[data-nav-key="overview"]')?.click();
     });
+  }
+
+
+  function getBridge() {
+    return window.FamilyFinanceBridge;
+  }
+
+  function showInvoiceMode(mode) {
+    const preview = document.querySelector(".einvoice-preview-mode");
+    const history = document.getElementById("einvoice-history-mode");
+    const previewTab = document.getElementById("einvoice-mode-preview");
+    const historyTab = document.getElementById("einvoice-mode-history");
+    if (!preview || !history || !previewTab || !historyTab) return;
+    const showHistory = mode === "history";
+    preview.classList.toggle("hidden", showHistory);
+    history.classList.toggle("hidden", !showHistory);
+    previewTab.classList.toggle("active", !showHistory);
+    historyTab.classList.toggle("active", showHistory);
+    previewTab.setAttribute("aria-selected", String(!showHistory));
+    historyTab.setAttribute("aria-selected", String(showHistory));
+    const saveButton = document.getElementById("einvoice-csv-save");
+    const bridge = getBridge();
+    const canSave = bridge?.hasPermission?.("imports.create") && bridge?.hasPermission?.("imports.confirm");
+    if (saveButton) saveButton.classList.toggle("hidden", !canSave);
+  }
+
+  function switchInvoiceMode(mode) {
+    showInvoiceMode(mode);
+    if (mode === "history") {
+      historyPage = 1;
+      loadHistoryInvoices();
+    }
+  }
+
+  function currentFamilyId() {
+    const value = getBridge()?.getSelectedFamilyId?.();
+    return Number.isInteger(Number(value)) && Number(value) > 0 ? Number(value) : null;
+  }
+
+  async function saveCurrentPreview() {
+    const bridge = getBridge();
+    const familyId = currentFamilyId();
+    const button = document.getElementById("einvoice-csv-save");
+    const message = document.getElementById("einvoice-csv-message");
+    if (!parsedResult || !familyId || !bridge?.api) {
+      message.className = "einvoice-message is-error";
+      message.textContent = "請先登入並選擇家庭，再保存發票資料。";
+      return;
+    }
+    if (!bridge.hasPermission?.("imports.create") || !bridge.hasPermission?.("imports.confirm")) {
+      message.className = "einvoice-message is-error";
+      message.textContent = "目前帳號沒有保存發票的權限。";
+      return;
+    }
+    const count = parsedResult.invoices.length;
+    const amount = formatMoney(parsedResult.totalCents);
+    const accepted = window.confirm(
+      "確認將這次解析的 " + count + " 張發票（總額 " + amount + "）保存到目前家庭的歷史發票庫？\n\n同一家庭已存在的發票號碼會略過，不會建立任何收入或支出交易。原始 CSV 與載具號碼不會上傳。"
+    );
+    if (!accepted) return;
+    button.disabled = true;
+    message.className = "einvoice-message";
+    message.textContent = "正在保存家庭發票資料…";
+    const invoices = parsedResult.invoices.map(invoice => ({
+      invoice_number: invoice.invoiceNumber,
+      date: invoice.date,
+      merchant_tax_id: invoice.merchantTaxId,
+      merchant_name: invoice.merchantName,
+      total_amount: (invoice.totalCents / 100).toFixed(2),
+      invoice_status: invoice.invoiceStatus,
+      carrier_type: invoice.carrierType,
+      duplicate: invoice.duplicate === true,
+      items: invoice.items.map(item => ({
+        item_name: item.itemName,
+        amount: (item.amountCents / 100).toFixed(2),
+        source_line: item.line
+      }))
+    }));
+    try {
+      const result = await bridge.api("/einvoices/imports?family_id=" + familyId, {
+        method: "POST",
+        body: JSON.stringify({
+          source_filename: currentSourceFilename,
+          source_sha256: currentSourceSha256,
+          invoices
+        })
+      });
+      message.className = "einvoice-message is-success";
+      message.textContent = result.message + " 匯入批次 #" + result.batch.id + "。原始 CSV、載具號碼均未保存，且尚未建立正式交易。";
+      historyLoaded = false;
+    } catch (error) {
+      message.className = "einvoice-message is-error";
+      message.textContent = "保存失敗：" + error.message;
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  function setHistoryMessage(message, isError = false) {
+    const node = document.getElementById("einvoice-history-message");
+    if (!node) return;
+    node.textContent = message || "";
+    node.className = "einvoice-message" + (message ? (isError ? " is-error" : " is-success") : "");
+  }
+
+  function statusLabel(value) {
+    return ({
+      matched: "核對一致",
+      mismatch: "金額不一致",
+      missing_details: "缺少明細",
+      duplicate: "疑似重複"
+    })[value] || "待檢查";
+  }
+
+  function formatHistoryMoney(value) {
+    const amount = Number(value || 0);
+    return "NT$ " + money.format(amount);
+  }
+
+  function renderHistoryPagination(total, pageSize) {
+    const host = document.getElementById("einvoice-history-pagination");
+    if (!host) return;
+    host.replaceChildren();
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    historyPage = Math.min(Math.max(1, historyPage), totalPages);
+    if (!total) {
+      host.classList.add("hidden");
+      return;
+    }
+    host.classList.remove("hidden");
+    const start = (historyPage - 1) * pageSize + 1;
+    const end = Math.min(total, historyPage * pageSize);
+    const info = make("span", "einvoice-page-info", "顯示第 " + start + "–" + end + " 張，共 " + total + " 張 · 第 " + historyPage + "／" + totalPages + " 頁");
+    const controls = make("div", "einvoice-page-controls");
+    const previous = make("button", "secondary small einvoice-page-button", "上一頁");
+    previous.type = "button";
+    previous.disabled = historyPage <= 1;
+    previous.addEventListener("click", () => { historyPage -= 1; loadHistoryInvoices(); });
+    const next = make("button", "secondary small einvoice-page-button", "下一頁");
+    next.type = "button";
+    next.disabled = historyPage >= totalPages;
+    next.addEventListener("click", () => { historyPage += 1; loadHistoryInvoices(); });
+    controls.append(previous, next);
+    host.append(info, controls);
+  }
+
+  function renderHistoryInvoices(result) {
+    const list = document.getElementById("einvoice-history-list");
+    const summary = document.getElementById("einvoice-history-summary");
+    if (!list || !summary) return;
+    list.replaceChildren();
+    summary.textContent = "找到 " + result.total + " 張已保存發票";
+    if (!result.invoices.length) {
+      list.append(make("p", "einvoice-empty", "找不到符合條件的歷史發票。試試其他關鍵字或清除篩選條件。"));
+      renderHistoryPagination(0, 20);
+      return;
+    }
+    result.invoices.forEach(invoice => {
+      const card = make("article", "einvoice-card einvoice-history-card");
+      const top = make("div", "einvoice-card-top");
+      const main = make("div", "einvoice-card-main");
+      main.append(
+        make("strong", "einvoice-merchant", invoice.merchant_name || "未提供店家"),
+        make("span", "einvoice-date", invoice.invoice_date + " · " + invoice.invoice_number)
+      );
+      const amount = make("strong", "einvoice-amount", formatHistoryMoney(invoice.total_amount));
+      top.append(main, amount);
+      card.append(top);
+      const meta = make("div", "einvoice-card-meta");
+      meta.append(
+        make("span", "einvoice-item-count", invoice.merchant_tax_id || "無統編資料"),
+        make("span", "einvoice-status" + (invoice.verification_status === "matched" ? " is-good" : " is-warn"), statusLabel(invoice.verification_status)),
+        make("span", "einvoice-item-count", invoice.is_duplicate ? "檔案內重複" : "已保存")
+      );
+      card.append(meta);
+      const line = make("div", "einvoice-reconcile-line");
+      line.append(
+        make("span", "", "明細合計 " + formatHistoryMoney(invoice.detail_total)),
+        make("strong", invoice.verification_status === "matched" ? "is-good-text" : "is-warn-text", "差額 " + formatHistoryMoney(invoice.difference_amount))
+      );
+      card.append(line);
+      const actions = make("div", "einvoice-history-card-actions");
+      const detailButton = make("button", "secondary small", "查看商品明細");
+      detailButton.type = "button";
+      detailButton.addEventListener("click", () => toggleHistoryDetails(card, invoice, detailButton));
+      actions.append(detailButton);
+      card.append(actions);
+      list.append(card);
+    });
+    renderHistoryPagination(result.total, 20);
+  }
+
+  async function toggleHistoryDetails(card, invoice, button) {
+    const bridge = getBridge();
+    const familyId = currentFamilyId();
+    if (!bridge?.api || !familyId) return;
+    let details = card.querySelector(".einvoice-items");
+    if (details) {
+      details.remove();
+      button.textContent = "查看商品明細";
+      return;
+    }
+    button.disabled = true;
+    button.textContent = "載入中…";
+    try {
+      const result = await bridge.api("/einvoices/" + invoice.id + "?family_id=" + familyId);
+      const detail = make("div", "einvoice-items");
+      detail.append(make("p", "tiny muted", "發票狀態：" + (invoice.invoice_status || "未提供") + " · 保存批次 #" + invoice.import_batch_id));
+      const itemList = make("ul", "einvoice-item-list");
+      result.invoice.items.forEach(item => {
+        const row = make("li", "einvoice-item");
+        row.append(
+          make("span", "einvoice-item-name", item.item_name),
+          make("strong", Number(item.amount) < 0 ? "is-negative" : "", formatHistoryMoney(item.amount))
+        );
+        itemList.append(row);
+      });
+      if (!result.invoice.items.length) itemList.append(make("li", "tiny muted", "這張發票沒有可用的商品明細。"));
+      detail.append(itemList);
+      if (getBridge()?.hasPermission?.("imports.void") && !invoice.is_voided) {
+        const voidButton = make("button", "secondary small", "作廢這筆發票紀錄");
+        voidButton.type = "button";
+        voidButton.addEventListener("click", async () => {
+          const reason = window.prompt("請輸入作廢原因（必填）：", "重複或匯入錯誤");
+          if (!reason || !reason.trim()) return;
+          if (!window.confirm("作廢這張發票保存紀錄？商品明細會保留，正式收支交易不會變更。")) return;
+          voidButton.disabled = true;
+          try {
+            await bridge.api("/einvoices/" + invoice.id + "/void?family_id=" + familyId + "&reason=" + encodeURIComponent(reason.trim()), {method:"POST"});
+            setHistoryMessage("發票 " + invoice.invoice_number + " 已作廢保存紀錄；帳務交易未受影響。");
+            await loadHistoryInvoices();
+          } catch (error) {
+            setHistoryMessage("作廢失敗：" + error.message, true);
+            voidButton.disabled = false;
+          }
+        });
+        detail.append(voidButton);
+      }
+      card.append(detail);
+      button.textContent = "收起商品明細";
+    } catch (error) {
+      setHistoryMessage("讀取發票明細失敗：" + error.message, true);
+      button.textContent = "重新載入明細";
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function loadHistoryInvoices() {
+    const bridge = getBridge();
+    const familyId = currentFamilyId();
+    if (!bridge?.api || !familyId) {
+      setHistoryMessage("請先登入並選擇家庭，再查詢歷史發票。", true);
+      return;
+    }
+    if (!bridge.hasPermission?.("imports.view")) {
+      setHistoryMessage("目前帳號沒有查看家庭歷史發票的權限。", true);
+      return;
+    }
+    setHistoryMessage("正在搜尋家庭歷史發票…");
+    const params = new URLSearchParams({
+      family_id: String(familyId),
+      skip: String((historyPage - 1) * 20),
+      limit: "20",
+      verification_status: document.getElementById("einvoice-history-status").value
+    });
+    const query = document.getElementById("einvoice-history-query").value.trim();
+    const month = document.getElementById("einvoice-history-month").value;
+    const min = document.getElementById("einvoice-history-min").value.trim();
+    const max = document.getElementById("einvoice-history-max").value.trim();
+    if (query) params.set("q", query);
+    if (month) params.set("month", month);
+    if (min) params.set("min_amount", min);
+    if (max) params.set("max_amount", max);
+    try {
+      const result = await bridge.api("/einvoices?" + params.toString());
+      renderHistoryInvoices(result);
+      historyLoaded = true;
+      setHistoryMessage("");
+    } catch (error) {
+      setHistoryMessage("歷史發票查詢失敗：" + error.message, true);
+    }
   }
 
   window.EInvoiceCsvPreview = { parseText };
