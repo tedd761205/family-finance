@@ -157,8 +157,7 @@ def save_invoice_import(
         db.add(batch)
         db.flush()
 
-        saved_ids: list[int] = []
-        for incoming, detail_total, difference, validation_status in prepared:
+            for incoming, detail_total, difference, validation_status in prepared:
             invoice = ElectronicInvoice(
                 family_id=family_id,
                 import_batch_id=batch.id,
@@ -178,7 +177,6 @@ def save_invoice_import(
             )
             db.add(invoice)
             db.flush()
-            saved_ids.append(invoice.id)
 
             db.add_all([
                 ElectronicInvoiceItem(
@@ -325,7 +323,10 @@ def get_electronic_invoice(
         ElectronicInvoiceItem.invoice_id == invoice.id,
     ).order_by(ElectronicInvoiceItem.sort_order, ElectronicInvoiceItem.id).all()
     data = _invoice_list_item(invoice, len(items)).model_dump()
-    data["items"] = items
+    data["items"] = [
+        {"id": item.id, "item_name": item.item_name, "amount": item.amount, "sort_order": item.sort_order}
+        for item in items
+    ]
     return ElectronicInvoiceDetail.model_validate(data)
 
 
@@ -376,7 +377,10 @@ def void_electronic_invoice(
             ElectronicInvoiceItem.invoice_id == invoice.id,
         ).order_by(ElectronicInvoiceItem.sort_order, ElectronicInvoiceItem.id).all()
         data = _invoice_list_item(invoice, len(items)).model_dump()
-        data["items"] = items
+        data["items"] = [
+            {"id": item.id, "item_name": item.item_name, "amount": item.amount, "sort_order": item.sort_order}
+            for item in items
+        ]
         return ElectronicInvoiceDetail.model_validate(data)
     except IntegrityError:
         db.rollback()
