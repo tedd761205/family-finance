@@ -3,7 +3,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
-from sqlalchemy import cast, exists, or_
+from sqlalchemy import String, cast, exists, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
