@@ -22,7 +22,7 @@ def test_einvoice_workspace_is_reachable_from_primary_navigation_and_shortcuts()
     assert 'id="close-einvoice-csv"' in page.text
     assert '"open-einvoice-csv":"einvoice-csv-view"' in script.text
     assert "/static/app.js?v=20261127-3" in page.text
-    assert "/static/invoice-csv-import.js?v=20261127-7" in page.text
+    assert "/static/invoice-csv-import.js?v=20261127-8" in page.text
     assert "/static/invoice-csv-import.css?v=20261127-4" in page.text
 
 
@@ -78,7 +78,7 @@ def test_einvoice_saved_history_and_save_action_are_wired_to_family_scoped_apis(
     assert 'id="open-bank-imports"' in page.text
     assert 'id="open-bank-imports" type="button" data-permissions="imports.view"' in page.text
     assert "/static/app.js?v=20261127-3" in page.text
-    assert "/static/invoice-csv-import.js?v=20261127-7" in page.text
+    assert "/static/invoice-csv-import.js?v=20261127-8" in page.text
     assert "/static/invoice-csv-import.css?v=20261127-4" in page.text
 
     assert "window.FamilyFinanceInvoiceBridge" in script.text
@@ -90,6 +90,8 @@ def test_einvoice_saved_history_and_save_action_are_wired_to_family_scoped_apis(
     assert 'id="einvoice-history-start"' in invoice_script.text
     assert 'id="einvoice-history-status"' in invoice_script.text
     assert 'id="einvoice-history-pagination"' in invoice_script.text
+    assert "function invoicePeriodLabel(period)" in invoice_script.text
+    assert "invoicePeriodLabel(invoice.invoice_period)" in invoice_script.text
     assert 'function loadInvoiceHistoryDetail(invoiceId, detailHost, familyId, includeVoided)' in invoice_script.text
     assert 'params.set("include_voided", "true")' in invoice_script.text
     assert 'family-finance-family-changed' in invoice_script.text
