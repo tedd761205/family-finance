@@ -38,9 +38,9 @@ def test_einvoice_preview_has_clear_action_month_filter_and_pagination():
     assert 'id="einvoice-csv-month"' in invoice_script.text
     assert 'id="einvoice-csv-page-size"' in invoice_script.text
     assert 'id="einvoice-csv-pagination"' in invoice_script.text
-    assert 'new Option("10 張", "10")' in invoice_script.text
-    assert 'new Option("20 張", "20")' in invoice_script.text
-    assert 'new Option("50 張", "50")' in invoice_script.text
+    assert '<option value="10">10 張</option>' in invoice_script.text
+    assert '<option value="20">20 張</option>' in invoice_script.text
+    assert '<option value="50">50 張</option>' in invoice_script.text
     assert 'let pageSize = 10;' in invoice_script.text
     assert "function resetPreview(ask)" in invoice_script.text
     assert "function renderPagination(total)" in invoice_script.text
