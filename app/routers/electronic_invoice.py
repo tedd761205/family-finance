@@ -111,6 +111,7 @@ def save_invoice_import(
         ElectronicInvoice.invoice_number,
     ).filter(
         ElectronicInvoice.family_id == family_id,
+        ElectronicInvoice.is_voided.is_(False),
         ElectronicInvoice.invoice_number.in_(invoice_numbers),
     ).all()
     existing_numbers = {row.invoice_number for row in existing_rows}
