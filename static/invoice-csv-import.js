@@ -492,7 +492,7 @@
   }
 
   function invoicePeriodLabel(period) {
-    const match = String(period || "").match(/^(\\d{4})(02|04|06|08|10|12)$/);
+    const match = String(period || "").match(/^(\d{4})(02|04|06|08|10|12)$/);
     if (!match) return "期別未提供";
     const startMonth = Number(match[2]) - 1;
     return match[1] + " 年 " + String(startMonth).padStart(2, "0") + "–" + match[2] + " 月期";
