@@ -12,8 +12,8 @@
   let currentSourceSha256 = null;
   let currentPage = 1;
   let historyPage = 1;
-  let historyLoaded = false;
-  let historyItems = new Map();
+  let currentInvoiceMode = "preview";
+  let isSavingPreview = false;
   let pageSize = 10;
 
   function make(tag, className, text) {
@@ -513,8 +513,9 @@
       document.getElementById("einvoice-csv-filename").textContent = file.name;
       message.classList.add("is-success");
       message.textContent = "已在此裝置完成解析。原始 CSV 不會上傳伺服器；確認保存後只會傳送解析出的發票與商品明細，不會自動建立支出。";
+      showInvoiceMode(currentInvoiceMode);
       const saveButton = document.getElementById("einvoice-csv-save");
-      if (saveButton) saveButton.disabled = false;
+      if (saveButton) saveButton.disabled = !getBridge()?.hasPermission?.("imports.create") || !getBridge()?.hasPermission?.("imports.confirm");
       renderInvoices();
     } catch (error) {
       parsedResult = null;
@@ -580,6 +581,11 @@
         '<nav id="einvoice-history-pagination" class="einvoice-pagination hidden" aria-label="歷史發票分頁"></nav>' +
       '</div>';
     workspace.append(section);
+    showInvoiceMode("preview");
+    window.addEventListener("family-finance:permissions-updated", () => {
+      showInvoiceMode(currentInvoiceMode);
+      if (currentInvoiceMode === "history") loadHistoryInvoices();
+    });
 
     const fileInput = document.getElementById("einvoice-csv-file");
     fileInput.addEventListener("change", event => {
@@ -651,6 +657,7 @@
   }
 
   function showInvoiceMode(mode) {
+    currentInvoiceMode = mode;
     const preview = document.querySelector(".einvoice-preview-mode");
     const history = document.getElementById("einvoice-history-mode");
     const previewTab = document.getElementById("einvoice-mode-preview");
@@ -665,8 +672,11 @@
     historyTab.setAttribute("aria-selected", String(showHistory));
     const saveButton = document.getElementById("einvoice-csv-save");
     const bridge = getBridge();
-    const canSave = bridge?.hasPermission?.("imports.create") && bridge?.hasPermission?.("imports.confirm");
-    if (saveButton) saveButton.classList.toggle("hidden", !canSave);
+    const canSave = Boolean(bridge?.hasPermission?.("imports.create") && bridge?.hasPermission?.("imports.confirm"));
+    if (saveButton) {
+      saveButton.classList.toggle("hidden", !canSave);
+      saveButton.disabled = !canSave || !parsedResult || isSavingPreview;
+    }
   }
 
   function switchInvoiceMode(mode) {
@@ -703,6 +713,7 @@
       "確認將這次解析的 " + count + " 張發票（總額 " + amount + "）保存到目前家庭的歷史發票庫？\n\n同一家庭已存在的發票號碼會略過，不會建立任何收入或支出交易。原始 CSV 與載具號碼不會上傳。"
     );
     if (!accepted) return;
+    isSavingPreview = true;
     button.disabled = true;
     message.className = "einvoice-message";
     message.textContent = "正在保存家庭發票資料…";
@@ -737,7 +748,8 @@
       message.className = "einvoice-message is-error";
       message.textContent = "保存失敗：" + error.message;
     } finally {
-      button.disabled = false;
+      isSavingPreview = false;
+      showInvoiceMode(currentInvoiceMode);
     }
   }
 
