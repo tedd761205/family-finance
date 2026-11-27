@@ -319,7 +319,7 @@ def _invoice_expense_category(db: Session, family_id: int, invoice_id: int) -> i
         return None
     category = db.query(Category).filter(
         Category.id == next(iter(category_ids)),
-        Category.family_id.in_([family_id]) | Category.family_id.is_(None),
+        or_(Category.family_id == family_id, Category.family_id.is_(None)),
         Category.category_type == "expense",
         Category.is_active.is_(True),
     ).first()
@@ -1246,6 +1246,7 @@ def add_invoice_posting_payments(
             raise HTTPException(status_code=409, detail="已作廢的發票入帳不可新增付款")
         if posting.status == "paid":
             raise HTTPException(status_code=409, detail="此發票已全額付款，無剩餘應付金額")
+        old_status = posting.status
         created_payments = _append_invoice_payments(
             db,
             posting=posting,
@@ -1262,7 +1263,7 @@ def add_invoice_posting_payments(
             action="update",
             entity_type="einvoice_posting",
             entity_id=posting.id,
-            old_values={"status": "unpaid" if posting.status != "paid" else "partially_paid"},
+            old_values={"status": old_status},
             new_values={
                 "status": posting.status,
                 "payment_ids": [payment.id for payment in created_payments],
@@ -1420,7 +1421,7 @@ def void_einvoice(
         entity_id=invoice.id,
         old_values={"is_voided": False},
         new_values={"is_voided": True, "reason": invoice.void_reason},
-        description="作廢家庭發票保存紀錄；不影響其他帳務交易",
+        description="作廢家庭發票保存紀錄；僅允許在入帳已沖銷或從未入帳時執行",
     )
     db.commit()
     db.refresh(invoice)
