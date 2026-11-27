@@ -14,6 +14,7 @@
   let historyPage = 1;
   let currentInvoiceMode = "preview";
   let isSavingPreview = false;
+  let persistenceAvailable = false;
   let pageSize = 10;
 
   function make(tag, className, text) {
@@ -515,7 +516,7 @@
       message.textContent = "已在此裝置完成解析。原始 CSV 不會上傳伺服器；確認保存後只會傳送解析出的發票與商品明細，不會自動建立支出。";
       showInvoiceMode(currentInvoiceMode);
       const saveButton = document.getElementById("einvoice-csv-save");
-      if (saveButton) saveButton.disabled = !getBridge()?.hasPermission?.("imports.create") || !getBridge()?.hasPermission?.("imports.confirm");
+      if (saveButton) saveButton.disabled = !persistenceAvailable || !getBridge()?.hasPermission?.("imports.create") || !getBridge()?.hasPermission?.("imports.confirm");
       renderInvoices();
     } catch (error) {
       parsedResult = null;
@@ -582,10 +583,11 @@
       '</div>';
     workspace.append(section);
     showInvoiceMode("preview");
-    window.addEventListener("family-finance:permissions-updated", () => {
-      showInvoiceMode(currentInvoiceMode);
-      if (currentInvoiceMode === "history") loadHistoryInvoices();
+    window.addEventListener("family-finance:permissions-updated", async () => {
+      await refreshPersistenceAvailability();
+      if (currentInvoiceMode === "history" && persistenceAvailable) loadHistoryInvoices();
     });
+    refreshPersistenceAvailability();
 
     const fileInput = document.getElementById("einvoice-csv-file");
     fileInput.addEventListener("change", event => {
@@ -672,19 +674,41 @@
     historyTab.setAttribute("aria-selected", String(showHistory));
     const saveButton = document.getElementById("einvoice-csv-save");
     const bridge = getBridge();
-    const canSave = Boolean(bridge?.hasPermission?.("imports.create") && bridge?.hasPermission?.("imports.confirm"));
+    const canSave = Boolean(persistenceAvailable && bridge?.hasPermission?.("imports.create") && bridge?.hasPermission?.("imports.confirm"));
+    if (historyTab) {
+      historyTab.disabled = !persistenceAvailable || !bridge?.hasPermission?.("imports.view");
+      historyTab.textContent = persistenceAvailable ? "家庭歷史發票" : "家庭歷史發票（待啟用）";
+      historyTab.title = persistenceAvailable ? "搜尋已保存的家庭發票" : "正式資料庫遷移完成並核准後開放";
+    }
     if (saveButton) {
-      saveButton.classList.toggle("hidden", !canSave);
+      saveButton.classList.toggle("hidden", !bridge?.hasPermission?.("imports.create") || !bridge?.hasPermission?.("imports.confirm"));
+      saveButton.textContent = persistenceAvailable ? "保存到家庭發票庫" : "家庭發票庫待啟用";
       saveButton.disabled = !canSave || !parsedResult || isSavingPreview;
     }
   }
 
   function switchInvoiceMode(mode) {
+    if (mode === "history" && !persistenceAvailable) {
+      setHistoryMessage("家庭歷史發票資料庫尚未啟用；正式資料庫遷移完成並核准後即可使用。", true);
+      return;
+    }
     showInvoiceMode(mode);
     if (mode === "history") {
       historyPage = 1;
       loadHistoryInvoices();
     }
+  }
+
+  async function refreshPersistenceAvailability() {
+    const bridge = getBridge();
+    if (!bridge?.api) return;
+    try {
+      const result = await bridge.api("/einvoices/availability");
+      persistenceAvailable = result.enabled === true;
+    } catch (_) {
+      persistenceAvailable = false;
+    }
+    showInvoiceMode(currentInvoiceMode);
   }
 
   function currentFamilyId() {
@@ -697,6 +721,11 @@
     const familyId = currentFamilyId();
     const button = document.getElementById("einvoice-csv-save");
     const message = document.getElementById("einvoice-csv-message");
+    if (!persistenceAvailable) {
+      message.className = "einvoice-message is-error";
+      message.textContent = "家庭發票資料庫尚未啟用；正式資料庫遷移完成並核准後才能保存。";
+      return;
+    }
     if (!parsedResult || !familyId || !bridge?.api) {
       message.className = "einvoice-message is-error";
       message.textContent = "請先登入並選擇家庭，再保存發票資料。";
@@ -906,6 +935,10 @@
   async function loadHistoryInvoices() {
     const bridge = getBridge();
     const familyId = currentFamilyId();
+    if (!persistenceAvailable) {
+      setHistoryMessage("家庭歷史發票資料庫尚未啟用；正式資料庫遷移完成並核准後即可使用。", true);
+      return;
+    }
     if (!bridge?.api || !familyId) {
       setHistoryMessage("請先登入並選擇家庭，再查詢歷史發票。", true);
       return;
