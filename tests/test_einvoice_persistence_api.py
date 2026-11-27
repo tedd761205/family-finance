@@ -9,7 +9,9 @@ from sqlalchemy.orm import Session
 from app.database import Base, engine
 from app.models import (
     AuditLog,
+    Category,
     EInvoice,
+    EInvoiceCategoryRule,
     EInvoiceImportBatch,
     EInvoiceItem,
     Family,
@@ -29,6 +31,7 @@ from main import app
 PERSISTENT_INVOICE_TEST_TABLES = [
     User.__table__,
     Family.__table__,
+    Category.__table__,
     Permission.__table__,
     FamilyMember.__table__,
     Role.__table__,
@@ -40,6 +43,7 @@ PERSISTENT_INVOICE_TEST_TABLES = [
     EInvoiceImportBatch.__table__,
     EInvoice.__table__,
     EInvoiceItem.__table__,
+    EInvoiceCategoryRule.__table__,
 ]
 
 
@@ -242,7 +246,9 @@ def test_persistent_invoice_routes_require_authentication():
         ("/einvoices/imports", "post"),
         ("/einvoices", "get"),
         ("/einvoices/batches", "get"),
+        ("/einvoices/categories", "get"),
         ("/einvoices/{invoice_id}", "get"),
+        ("/einvoices/{invoice_id}/items/{item_id}/category", "put"),
         ("/einvoices/{invoice_id}/void", "post"),
     ):
         operation = schema["paths"][path][method]
@@ -265,3 +271,126 @@ def test_invoice_persistence_feature_flag_blocks_history_until_enabled(family_co
     monkeypatch.setenv("EINVOICE_PERSISTENCE_ENABLED", "true")
     availability = client.get("/einvoices/availability", headers=headers)
     assert availability.json()["enabled"] is True
+
+
+def test_invoice_item_category_rule_suggests_same_merchant_and_product(family_context):
+    client, headers, family_id = family_context
+
+    category_response = client.post(
+        f"/categories?family_id={family_id}",
+        headers=headers,
+        json={"category_type": "expense", "name": "飲料"},
+    )
+    assert category_response.status_code == 201, category_response.text
+    category_id = category_response.json()["id"]
+
+    first_payload = invoice_payload("EF12345678")
+    first_payload["items"] = [
+        {"item_name": "珍珠奶茶", "amount": "120.50", "source_line": 2},
+    ]
+    first_saved = client.post(
+        f"/einvoices/imports?family_id={family_id}",
+        headers=headers,
+        json={"invoices": [first_payload]},
+    )
+    assert first_saved.status_code == 201, first_saved.text
+
+    first_list = client.get(f"/einvoices?family_id={family_id}", headers=headers)
+    first_invoice = first_list.json()["invoices"][0]
+    first_detail = client.get(
+        f"/einvoices/{first_invoice['id']}?family_id={family_id}",
+        headers=headers,
+    )
+    assert first_detail.status_code == 200, first_detail.text
+    first_item = first_detail.json()["invoice"]["items"][0]
+
+    saved_category = client.put(
+        f"/einvoices/{first_invoice['id']}/items/{first_item['id']}/category?family_id={family_id}",
+        headers=headers,
+        json={"category_id": category_id, "remember_rule": True},
+    )
+    assert saved_category.status_code == 200, saved_category.text
+    assert saved_category.json()["item"]["category_id"] == category_id
+    assert saved_category.json()["item"]["category_source"] == "manual"
+
+    second_payload = invoice_payload("GH12345678")
+    second_payload["items"] = [
+        {"item_name": "珍珠奶茶", "amount": "95.00", "source_line": 2},
+        {"item_name": "折價優惠", "amount": "-10.00", "source_line": 3},
+        {"item_name": "贈品", "amount": "0.00", "source_line": 4},
+    ]
+    second_payload["total_amount"] = "85.00"
+    second_saved = client.post(
+        f"/einvoices/imports?family_id={family_id}",
+        headers=headers,
+        json={"invoices": [second_payload]},
+    )
+    assert second_saved.status_code == 201, second_saved.text
+
+    second_list = client.get(f"/einvoices?family_id={family_id}", headers=headers)
+    second_invoice = next(
+        invoice for invoice in second_list.json()["invoices"]
+        if invoice["invoice_number"] == "GH12345678"
+    )
+    second_detail = client.get(
+        f"/einvoices/{second_invoice['id']}?family_id={family_id}",
+        headers=headers,
+    )
+    assert second_detail.status_code == 200, second_detail.text
+    items = second_detail.json()["invoice"]["items"]
+    assert items[0]["category_id"] is None
+    assert items[0]["suggested_category_id"] == category_id
+    assert items[0]["suggested_category_name"] == "飲料"
+    assert items[0]["suggestion_reason"] == "同店家曾經確認過相同商品的分類"
+
+    # Discounts and zero-value items do not inherit an expense category rule.
+    assert items[1]["suggested_category_id"] is None
+    assert items[2]["suggested_category_id"] is None
+
+
+def test_invoice_category_suggestions_are_isolated_by_family(family_context):
+    client, headers, family_id = family_context
+
+    category_response = client.post(
+        f"/categories?family_id={family_id}",
+        headers=headers,
+        json={"category_type": "expense", "name": "交通"},
+    )
+    assert category_response.status_code == 201, category_response.text
+    category_id = category_response.json()["id"]
+
+    payload = invoice_payload("JK12345678")
+    payload["items"] = [{"item_name": "捷運票", "amount": "50.00", "source_line": 2}]
+    saved = client.post(
+        f"/einvoices/imports?family_id={family_id}",
+        headers=headers,
+        json={"invoices": [payload]},
+    )
+    assert saved.status_code == 201, saved.text
+    invoice = client.get(f"/einvoices?family_id={family_id}", headers=headers).json()["invoices"][0]
+    item = client.get(
+        f"/einvoices/{invoice['id']}?family_id={family_id}",
+        headers=headers,
+    ).json()["invoice"]["items"][0]
+
+    other_family = client.post(
+        "/families",
+        headers=headers,
+        json={"name": "分類隔離測試家庭", "currency": "TWD"},
+    )
+    assert other_family.status_code == 201, other_family.text
+    other_family_id = other_family.json()["family_id"]
+    foreign_category = client.get(
+        f"/categories?family_id={other_family_id}&category_type=expense",
+        headers=headers,
+    )
+    assert foreign_category.status_code == 200, foreign_category.text
+
+    rejected = client.put(
+        f"/einvoices/{invoice['id']}/items/{item['id']}/category?family_id={family_id}",
+        headers=headers,
+        json={"category_id": category_id + 999999, "remember_rule": True},
+    )
+    assert rejected.status_code == 404
+
+
