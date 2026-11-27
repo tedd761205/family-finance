@@ -41,6 +41,8 @@ def test_einvoice_preview_has_clear_action_month_filter_and_pagination():
     assert "invoice.merchantTaxId" in invoice_script.text
     assert 'invoice.date.replace(/-/g, "")' in invoice_script.text
     assert "invoice.items.map(item => item.itemName)" in invoice_script.text
+    assert "const numericTerm = term.replace(/[^\\d.-]/g, \"\")" in invoice_script.text
+    assert "amounts.some(amount => amount === amountCents)" in invoice_script.text
     assert 'id="einvoice-csv-month"' in invoice_script.text
     assert 'id="einvoice-csv-page-size"' in invoice_script.text
     assert 'id="einvoice-csv-pagination"' in invoice_script.text
