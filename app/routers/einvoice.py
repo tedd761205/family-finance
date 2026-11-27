@@ -145,7 +145,8 @@ def _invoice_item_suggestions(
     )
     if category_scope == "own":
         query = query.filter(
-            or_(Category.family_id.is_(None), Category.created_by == user.id)
+            EInvoiceCategoryRule.created_by == user.id,
+            or_(Category.family_id.is_(None), Category.created_by == user.id),
         )
     return {
         (rule.merchant_key, rule.item_name_key): (rule, category)
@@ -642,7 +643,13 @@ def get_einvoice(
         )
 
     for item_json, item in zip(detail["items"], items):
-        item_json["category_name"] = category_names.get(item.category_id)
+        visible_category_name = category_names.get(item.category_id)
+        item_json["category_name"] = visible_category_name
+        # Do not expose another member's category ID to users with own-only scope,
+        # or to users who do not have permission to view categories.
+        if not visible_category_name:
+            item_json["category_id"] = None
+            item_json["category_source"] = None
         if category_scope and not item.category_id and item.amount > 0:
             merchant_key, item_key = _category_rule_keys(
                 invoice.merchant_tax_id, invoice.merchant_name, item.item_name
@@ -765,7 +772,10 @@ def update_einvoice_item_category(
         action="update",
         entity_type="einvoice_item",
         entity_id=item.id,
-        old_values={"category_id": old_category_id},
+        old_values={
+            "category_id": old_category_id,
+            "category_source": item.category_source if old_category_id is not None else None,
+        },
         new_values={
             "category_id": item.category_id,
             "category_name": category.name if category else None,
