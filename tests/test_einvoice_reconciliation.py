@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import Base, engine
+from app import models as all_models
 from app.models.bank_import import BankImportBatch, BankImportRow
 from app.models.einvoice import EInvoice, EInvoiceImportBatch
 from app.models.einvoice_posting import EInvoicePayment, EInvoicePosting
@@ -18,11 +19,37 @@ from app.permission_catalog import PERMISSION_CATALOG
 from main import app
 
 
-@pytest.fixture(scope="session", autouse=True)
-def ensure_einvoice_reconciliation_schema():
-    from app import models  # noqa: F401
+EINVOICE_RECONCILIATION_TEST_ROOTS = [
+    "User", "Family", "FamilyMember", "Role", "Permission", "RolePermission",
+    "MemberRole", "RoleDataScope", "RevokedToken", "AuditLog", "Account",
+    "Transaction", "PurchaseLineItem", "BankImportBatch", "BankImportRow",
+    "EInvoiceImportBatch", "EInvoice", "EInvoiceItem", "EInvoiceCategoryRule",
+    "EInvoicePosting", "EInvoicePayment", "ReconciliationSession",
+    "ReconciliationMatch", "ReconciliationExclusion",
+]
 
-    Base.metadata.create_all(bind=engine)
+
+def _einvoice_reconciliation_schema_tables():
+    required = set()
+    pending = [getattr(all_models, name).__table__ for name in EINVOICE_RECONCILIATION_TEST_ROOTS]
+    while pending:
+        table = pending.pop()
+        if table in required:
+            continue
+        required.add(table)
+        for foreign_key in table.foreign_keys:
+            parent_table = foreign_key.column.table
+            if parent_table not in required:
+                pending.append(parent_table)
+    return [table for table in Base.metadata.sorted_tables if table in required]
+
+
+@pytest.fixture(scope="module", autouse=True)
+def ensure_einvoice_reconciliation_schema():
+    tables = _einvoice_reconciliation_schema_tables()
+    Base.metadata.create_all(bind=engine, tables=tables)
+    yield
+    Base.metadata.drop_all(bind=engine, tables=tables)
 
 
 @pytest.fixture
