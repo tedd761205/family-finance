@@ -75,6 +75,9 @@ def test_invoice_history_and_explicit_save_are_present_and_permission_aware():
     assert "window.FamilyFinanceBridge" in app_script.text
     assert "getSelectedFamilyId:()=>selectedFamilyId" in app_script.text
     assert 'id="einvoice-mode-history"' in invoice_script.text
+    assert "async function refreshPersistenceAvailability()" in invoice_script.text
+    assert 'bridge.api("/einvoices/availability")' in invoice_script.text
+    assert "家庭歷史發票（待啟用）" in invoice_script.text
     assert 'id="einvoice-history-query"' in invoice_script.text
     assert 'id="einvoice-csv-save"' in invoice_script.text
     assert "async function saveCurrentPreview()" in invoice_script.text
