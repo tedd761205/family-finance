@@ -347,6 +347,13 @@ def test_invoice_item_category_rule_suggests_same_merchant_and_product(family_co
     assert items[1]["suggested_category_id"] is None
     assert items[2]["suggested_category_id"] is None
 
+    rejected_discount = client.put(
+        f"/einvoices/{second_invoice['id']}/items/{items[1]['id']}/category?family_id={family_id}",
+        headers=headers,
+        json={"category_id": category_id, "remember_rule": True},
+    )
+    assert rejected_discount.status_code == 422
+
 
 def test_invoice_category_suggestions_are_isolated_by_family(family_context):
     client, headers, family_id = family_context
