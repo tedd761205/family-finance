@@ -25,7 +25,7 @@ PERMISSIONS = (
 ROLE_CODES = {
     "家庭管理員": ("invoices.view", "invoices.import", "invoices.void"),
     "財務管理員": ("invoices.view", "invoices.import", "invoices.void"),
-    "一般成員": ("invoices.view", "invoices.import"),
+    "一般成員": ("invoices.view", "invoices.import", "invoices.void"),
     "記帳人員": ("invoices.view", "invoices.import", "invoices.void"),
     "檢視人員": ("invoices.view",),
 }
