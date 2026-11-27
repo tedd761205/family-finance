@@ -62,8 +62,8 @@ class ElectronicInvoice(Base):
     __table_args__ = (
         UniqueConstraint("family_id", "id", name="uq_einvoices_family_id_id"),
         UniqueConstraint(
-            "family_id", "invoice_date", "invoice_number",
-            name="uq_einvoices_family_date_number",
+            "family_id", "invoice_number",
+            name="uq_einvoices_family_number_unique",
         ),
         ForeignKeyConstraint(
             ["family_id", "import_batch_id"],
