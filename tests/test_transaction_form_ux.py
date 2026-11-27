@@ -27,7 +27,7 @@ def test_recent_transaction_category_default_is_separate_for_income_and_expense(
     assert "saved.categories[type]" in script
     assert "item.category_type === type" in script
     assert 'populateTransactionCategories($("transaction-type").value);\n  applyRecentTransactionDefaults();' in script
-    assert "/static/app.js?v=20261127-2" in page.text
+    assert "/static/app.js?v=20261127-3" in page.text
 
 
 def test_transaction_defaults_storage_errors_do_not_block_transaction_entry():
@@ -71,7 +71,7 @@ def test_transaction_filter_has_clear_action_and_contextual_no_results_message()
     assert 'clear-transaction-filters").addEventListener("click",clearTransactionFilters)' in script
     assert "function clearTransactionFilters()" in script
     assert 'id="clear-transaction-filters"' in page.text
-    assert "/static/app.js?v=20261127-2" in page.text
+    assert "/static/app.js?v=20261127-3" in page.text
 
 
 
