@@ -11,6 +11,7 @@ from sqlalchemy import (
     Index,
     Numeric,
     String,
+    text,
     UniqueConstraint,
     func,
 )
@@ -61,10 +62,6 @@ class ElectronicInvoice(Base):
 
     __table_args__ = (
         UniqueConstraint("family_id", "id", name="uq_einvoices_family_id_id"),
-        UniqueConstraint(
-            "family_id", "invoice_number",
-            name="uq_einvoices_family_number_unique",
-        ),
         ForeignKeyConstraint(
             ["family_id", "import_batch_id"],
             ["electronic_invoice_import_batches.family_id", "electronic_invoice_import_batches.id"],
@@ -104,6 +101,13 @@ class ElectronicInvoice(Base):
         ),
         Index("ix_einvoices_family_date", "family_id", "invoice_date", "id"),
         Index("ix_einvoices_family_number", "family_id", "invoice_number"),
+        Index(
+            "uq_einvoices_family_number_active",
+            "family_id",
+            "invoice_number",
+            unique=True,
+            postgresql_where=text("is_voided IS FALSE"),
+        ),
         Index("ix_einvoices_family_merchant_date", "family_id", "merchant_name", "invoice_date"),
         Index("ix_einvoices_family_batch", "family_id", "import_batch_id"),
         Index("ix_einvoices_family_transaction", "family_id", "linked_transaction_id"),
