@@ -83,6 +83,7 @@ jobs:
       - name: Validate frontend JavaScript syntax
         run: |
           node --check static/app.js
+          node --check static/invoice-csv-import.js
           node --check static/local-receipt-parser.js
           node --check static/local-receipt-ocr.js
           node --test tests/test_local_receipt_parser.cjs

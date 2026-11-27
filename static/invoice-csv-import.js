@@ -16,6 +16,8 @@
   let isSavingPreview = false;
   let persistenceAvailable = false;
   let pageSize = 10;
+  let cachedInvoiceCategories = null;
+  let cachedInvoiceCategoriesFamilyId = null;
 
   function make(tag, className, text) {
     const node = document.createElement(tag);
@@ -879,6 +881,16 @@
     renderHistoryPagination(result.total, 20);
   }
 
+  async function loadInvoiceCategoryOptions(bridge, familyId) {
+    if (cachedInvoiceCategories && cachedInvoiceCategoriesFamilyId === familyId) {
+      return cachedInvoiceCategories;
+    }
+    const result = await bridge.api("/einvoices/categories?family_id=" + familyId);
+    cachedInvoiceCategories = Array.isArray(result.categories) ? result.categories : [];
+    cachedInvoiceCategoriesFamilyId = familyId;
+    return cachedInvoiceCategories;
+  }
+
   async function toggleHistoryDetails(card, invoice, button) {
     const bridge = getBridge();
     const familyId = currentFamilyId();
@@ -895,17 +907,107 @@
       const result = await bridge.api("/einvoices/" + invoice.id + "?family_id=" + familyId);
       const detail = make("div", "einvoice-items");
       detail.append(make("p", "tiny muted", "發票狀態：" + (invoice.invoice_status || "未提供") + " · 保存批次 #" + invoice.import_batch_id));
+
+      const canViewCategories = bridge.hasPermission?.("categories.view") === true;
+      const canUpdateCategories = bridge.hasPermission?.("categories.update") === true;
+      let categories = [];
+      if (canViewCategories) {
+        try {
+          categories = await loadInvoiceCategoryOptions(bridge, familyId);
+        } catch (_) {
+          categories = [];
+        }
+      }
+
       const itemList = make("ul", "einvoice-item-list");
       result.invoice.items.forEach(item => {
         const row = make("li", "einvoice-item");
-        row.append(
+        const itemMain = make("div", "einvoice-item-main");
+        itemMain.append(
           make("span", "einvoice-item-name", item.item_name),
           make("strong", Number(item.amount) < 0 ? "is-negative" : "", formatHistoryMoney(item.amount))
         );
+        row.append(itemMain);
+
+        if (canViewCategories && Number(item.amount) > 0) {
+          const categoryPanel = make("div", "einvoice-item-category");
+          if (item.category_id) {
+            categoryPanel.append(make("span", "einvoice-category-state is-assigned", "已分類：" + (item.category_name || "已設定分類")));
+          } else if (item.suggested_category_id) {
+            categoryPanel.append(make("span", "einvoice-category-state is-suggested", "建議分類：" + item.suggested_category_name));
+          } else {
+            categoryPanel.append(make("span", "einvoice-category-state", "尚未分類"));
+          }
+
+          if (canUpdateCategories && categories.length) {
+            const controls = make("div", "einvoice-category-controls");
+            const select = document.createElement("select");
+            select.className = "einvoice-category-select";
+            select.setAttribute("aria-label", item.item_name + "的支出分類");
+            select.add(new Option("請選擇分類", ""));
+            categories.forEach(category => {
+              select.add(new Option((category.icon ? category.icon + " " : "") + category.name, String(category.id)));
+            });
+            const selectedCategoryId = item.category_id || item.suggested_category_id || "";
+            if (selectedCategoryId && !categories.some(category => Number(category.id) === Number(selectedCategoryId)) && item.category_name) {
+              select.add(new Option(item.category_name + "（目前分類）", String(selectedCategoryId)));
+            }
+            select.value = selectedCategoryId ? String(selectedCategoryId) : "";
+
+            const rememberLabel = make("label", "einvoice-category-remember");
+            const remember = document.createElement("input");
+            remember.type = "checkbox";
+            remember.checked = true;
+            rememberLabel.append(remember, document.createTextNode("記住此店家與商品，下次自動建議"));
+
+            const saveCategory = make("button", "secondary small einvoice-category-save", "保存分類");
+            saveCategory.type = "button";
+            saveCategory.addEventListener("click", async () => {
+              const categoryId = select.value ? Number(select.value) : null;
+              if (!categoryId && remember.checked) {
+                setHistoryMessage("請先選擇分類，才能記住下次的分類建議。", true);
+                return;
+              }
+              saveCategory.disabled = true;
+              try {
+                await bridge.api(
+                  "/einvoices/" + invoice.id + "/items/" + item.id + "/category?family_id=" + familyId,
+                  {
+                    method: "PUT",
+                    body: JSON.stringify({
+                      category_id: categoryId,
+                      remember_rule: remember.checked
+                    })
+                  }
+                );
+                setHistoryMessage(
+                  "「" + item.item_name + "」分類已保存" +
+                  (remember.checked ? "，下次相同店家與商品會自動提供建議。" : "。")
+                );
+                detail.remove();
+                button.textContent = "查看商品明細";
+                button.disabled = false;
+                await toggleHistoryDetails(card, invoice, button);
+              } catch (error) {
+                setHistoryMessage("保存商品分類失敗：" + error.message, true);
+                saveCategory.disabled = false;
+              }
+            });
+
+            controls.append(select, saveCategory);
+            categoryPanel.append(controls, rememberLabel);
+          } else if (canUpdateCategories && !categories.length) {
+            categoryPanel.append(make("span", "tiny muted", "目前沒有可使用的支出分類"));
+          }
+          row.append(categoryPanel);
+        } else if (Number(item.amount) <= 0) {
+          row.append(make("span", "tiny muted", "折扣／零元品項不另行分類"));
+        }
         itemList.append(row);
       });
       if (!result.invoice.items.length) itemList.append(make("li", "tiny muted", "這張發票沒有可用的商品明細。"));
       detail.append(itemList);
+
       if (getBridge()?.hasPermission?.("imports.void") && !invoice.is_voided) {
         const voidButton = make("button", "secondary small", "作廢這筆發票紀錄");
         voidButton.type = "button";
@@ -931,7 +1033,7 @@
       setHistoryMessage("讀取發票明細失敗：" + error.message, true);
       button.textContent = "重新載入明細";
     } finally {
-      button.disabled = false;
+      if (button.isConnected) button.disabled = false;
     }
   }
 
