@@ -22,8 +22,8 @@ def test_einvoice_workspace_is_reachable_from_primary_navigation_and_shortcuts()
     assert 'id="close-einvoice-csv"' in page.text
     assert '"open-einvoice-csv":"einvoice-csv-view"' in script.text
     assert "/static/app.js?v=20261127-3" in page.text
-    assert "/static/invoice-csv-import.js?v=20261127-5" in page.text
-    assert "/static/invoice-csv-import.css?v=20261127-4" in page.text
+    assert "/static/invoice-csv-import.js?v=20261127-6" in page.text
+    assert "/static/invoice-csv-import.css?v=20261127-5" in page.text
 
 
 def test_einvoice_preview_has_clear_action_month_filter_and_pagination():
@@ -88,3 +88,27 @@ def test_invoice_history_and_explicit_save_are_present_and_permission_aware():
     assert "不會建立任何收入或支出交易" in invoice_script.text
     assert ".einvoice-history-filters" in styles.text
     assert ".einvoice-mode-tab.active" in styles.text
+
+
+
+def test_invoice_history_item_category_editor_and_learned_suggestions_are_present():
+    with TestClient(app) as client:
+        invoice_script = client.get("/static/invoice-csv-import.js")
+        styles = client.get("/static/invoice-csv-import.css")
+        page = client.get("/")
+
+    assert invoice_script.status_code == 200
+    assert styles.status_code == 200
+    assert page.status_code == 200
+
+    assert '"/einvoices/categories?family_id="' in invoice_script.text
+    assert '"/einvoices/" + invoice.id + "/items/" + item.id + "/category?family_id="' in invoice_script.text
+    assert "記住此店家與商品，下次自動建議" in invoice_script.text
+    assert "折扣／零元品項不另行分類" in invoice_script.text
+    assert "categories.view" in invoice_script.text
+    assert "categories.update" in invoice_script.text
+    assert ".einvoice-item-category" in styles.text
+    assert ".einvoice-category-select" in styles.text
+    assert ".einvoice-category-remember" in styles.text
+    assert "/static/invoice-csv-import.js?v=20261127-6" in page.text
+    assert "/static/invoice-csv-import.css?v=20261127-5" in page.text
