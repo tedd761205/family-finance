@@ -3480,15 +3480,18 @@ async function refreshFamilyNavigationPermissions(){
   if(!selectedFamilyId){
     currentFamilyPermissionCodes=new Set();
     applyFamilyNavigationPermissions();
+    window.dispatchEvent(new Event("family-finance:permissions-updated"));
     return;
   }
   try{
     const result=await api("/families/"+selectedFamilyId+"/my-permissions");
     currentFamilyPermissionCodes=new Set(result.permission_codes||[]);
     applyFamilyNavigationPermissions();
+    window.dispatchEvent(new Event("family-finance:permissions-updated"));
   }catch(error){
     currentFamilyPermissionCodes=new Set();
     applyFamilyNavigationPermissions();
+    window.dispatchEvent(new Event("family-finance:permissions-updated"));
     notice("notice-app","目前無法確認功能權限，請重新整理後再試。","error");
   }
 }
