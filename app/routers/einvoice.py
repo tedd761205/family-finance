@@ -1370,6 +1370,7 @@ def void_invoice_posting(
         payments = db.query(EInvoicePayment).filter(
             EInvoicePayment.family_id == family_id,
             EInvoicePayment.posting_id == posting.id,
+            EInvoicePayment.is_voided.is_(False),
         ).with_for_update().all()
         transaction_ids = [payment.transaction_id for payment in payments]
         transactions = db.query(Transaction).filter(
