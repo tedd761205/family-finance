@@ -109,7 +109,6 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["voided_by"], ["users.id"], ondelete="RESTRICT", name="fk_einvoices_voided_by"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("family_id", "id", name="uq_einvoices_family_id_id"),
-        sa.UniqueConstraint("family_id", "invoice_number", name="uq_einvoices_family_number_unique"),
         sa.CheckConstraint("invoice_number ~ '^[A-Z]{2}[0-9]{8}$'", name="ck_einvoices_number_format"),
         sa.CheckConstraint("merchant_tax_id IS NULL OR merchant_tax_id ~ '^[0-9]{8}$'", name="ck_einvoices_tax_id_format"),
         sa.CheckConstraint("total_amount >= 0", name="ck_einvoices_total_nonnegative"),
@@ -121,6 +120,13 @@ def upgrade() -> None:
     )
     op.create_index("ix_einvoices_family_date", "electronic_invoices", ["family_id", "invoice_date", "id"])
     op.create_index("ix_einvoices_family_number", "electronic_invoices", ["family_id", "invoice_number"])
+    op.create_index(
+        "uq_einvoices_family_number_active",
+        "electronic_invoices",
+        ["family_id", "invoice_number"],
+        unique=True,
+        postgresql_where=sa.text("is_voided IS FALSE"),
+    )
     op.create_index("ix_einvoices_family_merchant_date", "electronic_invoices", ["family_id", "merchant_name", "invoice_date"])
     op.create_index("ix_einvoices_family_batch", "electronic_invoices", ["family_id", "import_batch_id"])
     op.create_index("ix_einvoices_family_transaction", "electronic_invoices", ["family_id", "linked_transaction_id"])
@@ -231,6 +237,7 @@ def downgrade() -> None:
     op.drop_index("ix_einvoices_family_transaction", table_name="electronic_invoices")
     op.drop_index("ix_einvoices_family_batch", table_name="electronic_invoices")
     op.drop_index("ix_einvoices_family_merchant_date", table_name="electronic_invoices")
+    op.drop_index("uq_einvoices_family_number_active", table_name="electronic_invoices")
     op.drop_index("ix_einvoices_family_number", table_name="electronic_invoices")
     op.drop_index("ix_einvoices_family_date", table_name="electronic_invoices")
     op.drop_table("electronic_invoices")
