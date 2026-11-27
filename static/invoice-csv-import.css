@@ -60,3 +60,58 @@
   .einvoice-filter-label { width:100%; justify-content:space-between; }
   .einvoice-filter-label select { flex:1; max-width:190px; }
 }
+
+/* Dedicated invoice workspace: keep it one tap away from primary navigation. */
+.einvoice-csv-view { scroll-margin-top: 18px; }
+.einvoice-workspace-heading {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  margin:-5px -5px 20px;
+  padding:20px 22px;
+  border:1px solid #dce8d9;
+  border-radius:23px;
+  background:
+    linear-gradient(90deg,rgba(240,248,239,.98) 0%,rgba(255,247,230,.94) 65%,rgba(250,237,239,.88) 100%),
+    url("/static/images/family-finance-kawaii-mascots.svg") no-repeat right 48% / auto 235%;
+  box-shadow:0 8px 22px rgba(81,111,88,.08);
+}
+.einvoice-workspace-heading h2 { margin:0 0 6px; color:#315b48; font-size:24px; }
+.einvoice-workspace-heading .muted { max-width:650px; margin:0; color:#64796b; font-size:13px; line-height:1.7; }
+.einvoice-workspace-heading .heading-actions { flex:0 0 auto; }
+.einvoice-upload-heading { display:flex; align-items:flex-end; justify-content:space-between; gap:14px; }
+.einvoice-upload-heading .field { flex:1 1 420px; min-width:0; margin:0; }
+.einvoice-clear-button { flex:0 0 auto; min-height:44px; padding:10px 18px; }
+.einvoice-clear-button:disabled { opacity:.48; cursor:not-allowed; }
+.einvoice-filter-controls { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:9px; }
+.einvoice-filter-label { display:flex; align-items:center; gap:7px; color:#62756a; font-size:12px; }
+.einvoice-filter-label select { min-width:112px; min-height:42px; padding:7px 26px 7px 10px; border:1px solid #d6e1d6; border-radius:10px; background:#fff; color:#315745; font:inherit; font-size:13px; }
+.einvoice-pagination { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-top:16px; padding:12px 13px; border:1px solid #e1e9de; border-radius:14px; background:#f7faf5; }
+.einvoice-page-info { color:#65776b; font-size:12px; font-variant-numeric:tabular-nums; }
+.einvoice-page-controls { display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
+.einvoice-page-button { min-height:36px; padding:7px 11px; font-size:12px; }
+.einvoice-page-numbers { display:flex; align-items:center; gap:4px; }
+.einvoice-page-number { min-width:34px; min-height:34px; padding:5px; border:1px solid transparent; border-radius:9px; background:#fff; color:#4d6756; font:inherit; font-size:12px; cursor:pointer; }
+.einvoice-page-number:hover,.einvoice-page-number.active { border-color:#c6ddce; background:#e5f1e9; color:#174b3d; font-weight:800; }
+.einvoice-page-number:focus-visible { outline:3px solid #4b8f72; outline-offset:2px; }
+.einvoice-page-ellipsis { padding:0 2px; color:#89968c; font-size:12px; }
+@media(max-width:760px) {
+  .einvoice-workspace-heading { margin:-3px -3px 14px; padding:15px 13px; border-radius:19px; background-size:auto 180%; }
+  .einvoice-workspace-heading h2 { font-size:20px; }
+  .einvoice-workspace-heading .muted { max-width:230px; font-size:11px; }
+  .einvoice-upload-heading { align-items:stretch; flex-direction:column; gap:9px; }
+  .einvoice-clear-button { width:100%; }
+  .einvoice-filter-controls { width:100%; display:grid; grid-template-columns:1fr 1fr; justify-content:stretch; }
+  .einvoice-filter-label { align-items:flex-start; flex-direction:column; gap:5px; }
+  .einvoice-filter-label:last-child { grid-column:1/-1; }
+  .einvoice-filter-label select { width:100%; box-sizing:border-box; }
+  .einvoice-pagination { align-items:stretch; flex-direction:column; gap:8px; }
+  .einvoice-page-controls { justify-content:space-between; }
+  .einvoice-page-numbers { justify-content:center; flex:1 1 auto; }
+  .einvoice-page-button { padding:7px 9px; }
+}
+@media(max-width:380px) {
+  .einvoice-page-number { min-width:29px; }
+  .einvoice-page-controls { gap:3px; }
+}
