@@ -28,6 +28,7 @@ from app.models.export_template import ExportTemplate, ExportTemplateVersion, Ex
 from app.models.bank_import import BankImportBatch, BankImportRow
 from app.models.einvoice import EInvoice, EInvoiceItem, EInvoiceImportBatch
 from app.models.einvoice_category_rule import EInvoiceCategoryRule
+from app.models.einvoice_posting import EInvoicePosting, EInvoicePayment
 from app.models.reconciliation import ReconciliationSession, ReconciliationMatch, ReconciliationExclusion
 from app.models.reconciliation_issue import ReconciliationIssue
 
@@ -39,5 +40,5 @@ __all__ = [
     "OcrTask", "RecurringBill", "Notification", "ExportTemplate",
     "ExportTemplateVersion", "ExportSchedule", "ExportRun", "BankImportBatch", "BankImportRow",
     "ReconciliationSession", "ReconciliationMatch", "ReconciliationExclusion", "ReconciliationIssue",
-    "EInvoice", "EInvoiceItem", "EInvoiceImportBatch", "EInvoiceCategoryRule",
+    "EInvoice", "EInvoiceItem", "EInvoiceImportBatch", "EInvoiceCategoryRule", "EInvoicePosting", "EInvoicePayment",
 ]
