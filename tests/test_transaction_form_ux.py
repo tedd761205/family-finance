@@ -111,7 +111,7 @@ def test_soft_jade_space_theme_stylesheet_cache_is_refreshed():
         page = client.get("/")
 
     assert page.status_code == 200
-    assert '/static/styles.css?v=20261127-5' in page.text
+    assert '/static/styles.css?v=20261127-6' in page.text
 
 
 def test_soft_jade_theme_keeps_champagne_as_a_small_accent_and_semantic_colors():
@@ -159,3 +159,57 @@ def test_primary_action_uses_soft_jade_with_champagne_reserved_for_details():
     assert ".primary {\n  background: #c5a46a" not in active_theme
     assert ".secondary {\n  background: #c5a46a" not in active_theme
 
+
+
+def test_kawaii_workspace_illustrations_cover_function_tiles_and_workspace_headers():
+    with TestClient(app) as client:
+        page = client.get("/")
+        styles = client.get("/static/styles.css").text
+        icons = client.get("/static/images/family-finance-kawaii-icons.svg")
+
+    assert page.status_code == 200
+    assert icons.status_code == 200
+    assert "<svg" in icons.text
+    assert "家庭記帳系統 Q 版功能圖示組" in icons.text
+    assert '/static/images/family-finance-kawaii-icons.svg' in styles
+    for selector in (
+        "#open-accounts .quick-icon",
+        "#open-transactions .quick-icon",
+        "#open-bills .quick-icon",
+        "#open-reports .quick-icon",
+        "#open-bank-reconciliation .quick-icon",
+        "#open-family-members .quick-icon",
+    ):
+        assert selector in styles
+    for workspace in (
+        "accounts-view",
+        "transactions-view",
+        "transfers-view",
+        "credit-card-payments-view",
+        "bills-view",
+        "recurring-bills-view",
+        "reports-view",
+        "bank-imports-view",
+        "bank-reconciliation-view",
+        "attachments-view",
+        "notifications-exports-view",
+        "family-members-view",
+        "family-roles-view",
+        "audit-logs-view",
+    ):
+        assert f"section#{workspace} .accounts-heading" in styles
+
+
+def test_kawaii_workspace_illustrations_keep_controls_and_mobile_layout_readable():
+    with TestClient(app) as client:
+        styles = client.get("/static/styles.css").text
+        page = client.get("/")
+
+    assert page.status_code == 200
+    assert "prefers-reduced-motion: reduce" in styles
+    assert "@media (max-width: 760px)" in styles
+    assert "font-size: 0" in styles
+    assert "min-height: 0" in styles
+    assert 'id="transaction-amount"' in page.text
+    assert 'id="transaction-date"' in page.text
+    assert 'id="transaction-form"' in page.text
