@@ -83,6 +83,10 @@ def upgrade() -> None:
         sa.Column("transaction_id", sa.BigInteger(), nullable=False),
         sa.Column("description", sa.String(200), nullable=True),
         sa.Column("note", sa.Text(), nullable=True),
+        sa.Column("is_voided", sa.Boolean(), server_default=sa.text("false"), nullable=False),
+        sa.Column("voided_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("voided_by", sa.BigInteger(), nullable=True),
+        sa.Column("void_reason", sa.String(500), nullable=True),
         sa.Column("created_by", sa.BigInteger(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.PrimaryKeyConstraint("id"),
@@ -106,6 +110,15 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["created_by"], ["users.id"],
             ondelete="RESTRICT", name="fk_einvoice_payments_created_by",
+        ),
+        sa.ForeignKeyConstraint(
+            ["voided_by"], ["users.id"],
+            ondelete="RESTRICT", name="fk_einvoice_payments_voided_by",
+        ),
+        sa.CheckConstraint(
+            "(is_voided = false AND voided_at IS NULL AND voided_by IS NULL) OR "
+            "(is_voided = true AND voided_at IS NOT NULL AND voided_by IS NOT NULL)",
+            name="ck_einvoice_payments_void_metadata",
         ),
         sa.CheckConstraint("amount > 0", name="ck_einvoice_payments_amount_positive"),
         sa.CheckConstraint("account_amount > 0", name="ck_einvoice_payments_account_amount_positive"),
