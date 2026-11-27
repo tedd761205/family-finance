@@ -90,6 +90,8 @@ def test_einvoice_saved_history_and_save_action_are_wired_to_family_scoped_apis(
     assert 'id="einvoice-history-start"' in invoice_script.text
     assert 'id="einvoice-history-status"' in invoice_script.text
     assert 'id="einvoice-history-pagination"' in invoice_script.text
+    assert 'function loadInvoiceHistoryDetail(invoiceId, detailHost, familyId, includeVoided)' in invoice_script.text
+    assert 'params.set("include_voided", "true")' in invoice_script.text
     assert 'family-finance-family-changed' in invoice_script.text
     assert "previewSaved = true" in invoice_script.text
     assert "不會自動新增收入或支出" in invoice_script.text
