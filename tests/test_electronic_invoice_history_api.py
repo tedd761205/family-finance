@@ -318,6 +318,42 @@ def test_invoice_own_scope_and_soft_void_are_enforced(invoice_api_client):
     assert history.json()["total"] == 1
     assert history.json()["invoices"][0]["is_voided"] is True
 
+    reimported = invoice_api_client.post(
+        f"/electronic-invoices/imports?family_id={family_id}",
+        headers=member_headers,
+        json={
+            "source_filename": "member-corrected.csv",
+            "invoices": [
+                sample_invoice(
+                    number="GH12345678",
+                    date="2026-11-28",
+                    merchant_name="市場修正版",
+                    total_amount="25.00",
+                    items=[{"item_name": "青菜", "amount": "25.00"}],
+                )
+            ],
+        },
+    )
+    assert reimported.status_code == 201, reimported.text
+    assert reimported.json()["saved_count"] == 1
+    assert reimported.json()["duplicate_count"] == 0
+
+    active_after_reimport = invoice_api_client.get(
+        f"/electronic-invoices?family_id={family_id}",
+        headers=member_headers,
+    )
+    assert active_after_reimport.status_code == 200
+    assert active_after_reimport.json()["total"] == 1
+    assert active_after_reimport.json()["invoices"][0]["merchant_name"] == "市場修正版"
+
+    full_history = invoice_api_client.get(
+        f"/electronic-invoices?family_id={family_id}&include_voided=true",
+        headers=member_headers,
+    )
+    assert full_history.status_code == 200
+    assert full_history.json()["total"] == 2
+    assert sum(row["is_voided"] for row in full_history.json()["invoices"]) == 1
+
 
 def test_invoice_family_isolation_and_invalid_payload_rejection(invoice_api_client):
     seed_invoice_permissions()
