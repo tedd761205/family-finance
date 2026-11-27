@@ -101,7 +101,7 @@
         <button class="app-nav-button active hidden" type="button" data-nav-key="overview" data-nav-action="overview" data-permissions="dashboard.view" aria-current="page"><span class="nav-icon" aria-hidden="true">⌂</span><span class="nav-label">總覽</span></button>
         <button class="app-nav-button hidden" type="button" data-nav-key="entry" data-nav-target="open-transactions" data-permissions="transactions.view"><span class="nav-icon" aria-hidden="true">＋</span><span class="nav-label">記帳</span></button>
         <button class="app-nav-button hidden" type="button" data-nav-key="bills" data-nav-target="open-bills" data-permissions="bills.view"><span class="nav-icon" aria-hidden="true">單</span><span class="nav-label">帳單</span></button>
-        <button class="app-nav-button hidden" type="button" data-nav-key="invoice" data-nav-target="open-einvoice-csv" data-permissions="imports.view"><span class="nav-icon" aria-hidden="true">發</span><span class="nav-label">發票</span></button>
+        <button class="app-nav-button hidden" type="button" data-nav-key="invoice" data-nav-target="open-einvoice-csv" data-permissions="invoices.view"><span class="nav-icon" aria-hidden="true">發</span><span class="nav-label">發票</span></button>
         <button class="app-nav-button hidden" type="button" data-nav-key="reconcile" data-nav-target="open-bank-reconciliation" data-permissions="reconciliation.view"><span class="nav-icon" aria-hidden="true">對</span><span class="nav-label">對帳</span></button>
         <button class="app-nav-button hidden" type="button" data-nav-key="more" data-nav-action="more" aria-expanded="false" aria-controls="more-tools-panel"><span class="nav-icon" aria-hidden="true">☷</span><span class="nav-label">更多</span></button>
       </nav>
@@ -112,7 +112,7 @@
         <button type="button" class="workspace-shortcut" data-target="open-transactions" data-permissions="transactions.view">收支</button>
         <button type="button" class="workspace-shortcut" data-target="open-transfers" data-permissions-all="accounts.transfer,transactions.view">轉帳</button>
         <button type="button" class="workspace-shortcut" data-target="open-bills" data-permissions="bills.view">帳單</button>
-        <button type="button" class="workspace-shortcut" data-target="open-einvoice-csv" data-permissions="imports.view">發票</button>
+        <button type="button" class="workspace-shortcut" data-target="open-einvoice-csv" data-permissions="invoices.view">發票</button>
         <button type="button" class="workspace-shortcut" data-target="open-reports" data-permissions="reports.view">報表</button>
         <button type="button" class="workspace-shortcut" data-target="open-bank-reconciliation" data-permissions="reconciliation.view">對帳</button>
       </nav>
@@ -156,7 +156,7 @@
         <section class="quick-tool-group" data-category="bank">
           <h3>銀行與資料工具</h3>
           <div class="quick-grid">
-            <button class="quick-card quick-card-button hidden" id="open-bank-imports" type="button" data-permissions="imports.view"><span class="quick-icon">匯</span><span class="quick-card-title">銀行／信用卡匯入</span><span class="quick-card-description">上傳對帳單 CSV、對應欄位、檢查重複資料並確認入帳。</span><span class="coming">匯入對帳單 →</span></button>
+            <button class="quick-card quick-card-button hidden" id="open-bank-imports" type="button" data-permissions="invoices.view"><span class="quick-icon">匯</span><span class="quick-card-title">銀行／信用卡匯入</span><span class="quick-card-description">上傳對帳單 CSV、對應欄位、檢查重複資料並確認入帳。</span><span class="coming">匯入對帳單 →</span></button>
             <button class="quick-card quick-card-button hidden" id="open-bank-reconciliation" type="button" data-permissions="reconciliation.view"><span class="quick-icon">對</span><span class="quick-card-title">銀行／信用卡對帳</span><span class="quick-card-description">比對銀行明細與家庭帳務、處理差異、排除及完成對帳。</span><span class="coming">開啟對帳工作區 →</span></button>
             <button class="quick-card quick-card-button hidden" id="open-attachments" type="button" data-permissions="attachments.view"><span class="quick-icon">檔</span><span class="quick-card-title">帳單附件與 OCR</span><span class="quick-card-description">上傳帳單或交易圖片、查看附件並核對 OCR 辨識結果。</span><span class="coming">管理附件 →</span></button>
             <button class="quick-card quick-card-button hidden" id="open-notifications-exports" type="button" data-permissions="notifications.view,exports.view"><span class="quick-icon">匯</span><span class="quick-card-title">通知與資料匯出</span><span class="quick-card-description">查看家庭通知、建立 CSV 匯出範本、管理匯出紀錄與排程。</span><span class="coming">管理通知與匯出 →</span></button>
