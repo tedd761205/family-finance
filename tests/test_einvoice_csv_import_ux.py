@@ -22,8 +22,8 @@ def test_einvoice_workspace_is_reachable_from_primary_navigation_and_shortcuts()
     assert 'id="close-einvoice-csv"' in page.text
     assert '"open-einvoice-csv":"einvoice-csv-view"' in script.text
     assert "/static/app.js?v=20261127-2" in page.text
-    assert "/static/invoice-csv-import.js?v=20261127-2" in page.text
-    assert "/static/invoice-csv-import.css?v=20261127-2" in page.text
+    assert "/static/invoice-csv-import.js?v=20261127-3" in page.text
+    assert "/static/invoice-csv-import.css?v=20261127-3" in page.text
 
 
 def test_einvoice_preview_has_clear_action_month_filter_and_pagination():
@@ -35,6 +35,11 @@ def test_einvoice_preview_has_clear_action_month_filter_and_pagination():
     assert styles.status_code == 200
 
     assert 'id="einvoice-csv-clear"' in invoice_script.text
+    assert 'id="einvoice-csv-search"' in invoice_script.text
+    assert 'id="einvoice-csv-search-clear"' in invoice_script.text
+    assert "function invoiceMatchesSearch(invoice, query)" in invoice_script.text
+    assert "invoice.merchantTaxId" in invoice_script.text
+    assert "invoice.items.map(item => item.itemName)" in invoice_script.text
     assert 'id="einvoice-csv-month"' in invoice_script.text
     assert 'id="einvoice-csv-page-size"' in invoice_script.text
     assert 'id="einvoice-csv-pagination"' in invoice_script.text
@@ -48,4 +53,6 @@ def test_einvoice_preview_has_clear_action_month_filter_and_pagination():
 
     assert ".einvoice-pagination" in styles.text
     assert ".einvoice-clear-button" in styles.text
+    assert ".einvoice-search-row" in styles.text
+    assert ".einvoice-search-label input" in styles.text
     assert "@media(max-width:760px)" in styles.text
