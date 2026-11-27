@@ -219,11 +219,26 @@ def _score_reconciliation_candidate(
 
 
 def _invoice_payment_context(
-    db: Session, family_id: int, transaction_ids: list[int] | set[int]
+    db: Session,
+    user: User,
+    family_id: int,
+    transaction_ids: list[int] | set[int],
+    transaction_scope: str,
 ) -> dict[int, dict]:
-    """回傳電子發票付款交易的可辨識來源；不建立或修改任何帳務交易。"""
+    """回傳呼叫者有權查看的發票付款來源；不建立或修改任何帳務交易。"""
     ids = sorted({int(item) for item in transaction_ids if item is not None})
     if not ids:
+        return {}
+
+    # Reconciliation access must not implicitly grant invoice-history access.
+    try:
+        _, invoice_roles = require_permission(
+            db, user.id, family_id, "imports.view"
+        )
+        invoice_scope = require_data_scope(
+            db, invoice_roles, family_id, "imports"
+        )
+    except PermissionError:
         return {}
 
     records = db.query(
@@ -251,7 +266,12 @@ def _invoice_payment_context(
         EInvoicePayment.is_voided.is_(False),
         EInvoicePosting.status.in_(["partially_paid", "paid"]),
         EInvoice.is_voided.is_(False),
-    ).all()
+    )
+    if invoice_scope == "own":
+        records = records.filter(EInvoice.created_by == user.id)
+    if invoice_scope == "own" or transaction_scope == "own":
+        records = records.filter(EInvoicePosting.created_by == user.id)
+    records = records.all()
 
     return {
         item.transaction_id: {
@@ -931,7 +951,9 @@ def suggest_reconciliation_matches(
         for item in suggestion_rows
         for candidate in item["candidates"]
     }
-    invoice_context = _invoice_payment_context(db, family_id, candidate_transaction_ids)
+    invoice_context = _invoice_payment_context(
+        db, current_user, family_id, candidate_transaction_ids, transaction_scope
+    )
     for item in suggestion_rows:
         for candidate in item["candidates"]:
             competing_rows = sorted(occurrences.get(candidate["transaction_id"], set()))
@@ -1318,7 +1340,8 @@ def list_ledger_only_transactions(
         Transaction.id.asc(),
     ).offset(skip).limit(limit).all()
     invoice_context = _invoice_payment_context(
-        db, family_id, [item.id for item in transactions]
+        db, current_user, family_id, [item.id for item in transactions],
+        transaction_scope,
     )
     transaction_items = []
     for item in transactions:
