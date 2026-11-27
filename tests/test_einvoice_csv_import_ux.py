@@ -21,9 +21,9 @@ def test_einvoice_workspace_is_reachable_from_primary_navigation_and_shortcuts()
     assert 'id="einvoice-csv-view"' in page.text
     assert 'id="close-einvoice-csv"' in page.text
     assert '"open-einvoice-csv":"einvoice-csv-view"' in script.text
-    assert "/static/app.js?v=20261127-2" in page.text
-    assert "/static/invoice-csv-import.js?v=20261127-3" in page.text
-    assert "/static/invoice-csv-import.css?v=20261127-3" in page.text
+    assert "/static/app.js?v=20261127-3" in page.text
+    assert "/static/invoice-csv-import.js?v=20261127-4" in page.text
+    assert "/static/invoice-csv-import.css?v=20261127-4" in page.text
 
 
 def test_einvoice_preview_has_clear_action_month_filter_and_pagination():
@@ -59,3 +59,41 @@ def test_einvoice_preview_has_clear_action_month_filter_and_pagination():
     assert ".einvoice-search-row" in styles.text
     assert ".einvoice-search-label input" in styles.text
     assert "@media(max-width:760px)" in styles.text
+
+
+def test_einvoice_saved_history_and_save_action_are_wired_to_family_scoped_apis():
+    with TestClient(app) as client:
+        page = client.get("/")
+        script = client.get("/static/app.js")
+        invoice_script = client.get("/static/invoice-csv-import.js")
+        styles = client.get("/static/invoice-csv-import.css")
+
+    assert page.status_code == 200
+    assert script.status_code == 200
+    assert invoice_script.status_code == 200
+    assert styles.status_code == 200
+
+    assert 'data-nav-key="invoice"' in page.text
+    assert 'data-permissions="invoices.view"' in page.text
+    assert 'id="open-bank-imports"' in page.text
+    assert 'id="open-bank-imports" type="button" data-permissions="imports.view"' in page.text
+    assert "/static/app.js?v=20261127-3" in page.text
+    assert "/static/invoice-csv-import.js?v=20261127-4" in page.text
+    assert "/static/invoice-csv-import.css?v=20261127-4" in page.text
+
+    assert "window.FamilyFinanceInvoiceBridge" in script.text
+    assert "getFamilyId: () => selectedFamilyId" in script.text
+    assert '"/electronic-invoices/imports?family_id="' in invoice_script.text
+    assert '"/electronic-invoices?"' in invoice_script.text
+    assert 'id="einvoice-csv-save"' in invoice_script.text
+    assert 'id="einvoice-history-search"' in invoice_script.text
+    assert 'id="einvoice-history-start"' in invoice_script.text
+    assert 'id="einvoice-history-status"' in invoice_script.text
+    assert 'id="einvoice-history-pagination"' in invoice_script.text
+    assert 'family-finance-family-changed' in invoice_script.text
+    assert "previewSaved = true" in invoice_script.text
+    assert "不會自動新增收入或支出" in invoice_script.text
+
+    assert ".einvoice-history-panel" in styles.text
+    assert ".einvoice-history-filters" in styles.text
+    assert ".einvoice-upload-actions" in styles.text
