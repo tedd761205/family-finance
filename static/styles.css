@@ -1844,3 +1844,196 @@ body::before { background-image:url("/static/images/family-finance-kawaii-journa
 .quick-icon,.empty-icon { border-radius:15px; background:#e8f3ed; color:#326f5a; }
 @media(max-width:760px) { body::before { height:390px; background-size:auto 390px; opacity:.48; } .panel,.quick-card,.account-card,.transaction-card,.bill-card { border-radius:17px; } }
 @media(prefers-reduced-transparency:reduce) { body::before { opacity:.24; } }
+
+
+/* Kawaii operation workspaces: original feature-specific illustration sprite */
+.quick-icon {
+  width: 58px;
+  height: 58px;
+  border: 1px solid rgba(122, 158, 133, .18);
+  border-radius: 18px;
+  background-color: #f4f7ef;
+  background-image: url("/static/images/family-finance-kawaii-icons.svg");
+  background-repeat: no-repeat;
+  background-size: 400% 400%;
+  color: transparent;
+  font-size: 0;
+  overflow: hidden;
+}
+.quick-tool-group .quick-card-button {
+  min-height: 166px;
+  padding: 16px;
+  border-radius: 17px;
+  background: linear-gradient(150deg, #fffefa 0%, #fdfcf6 100%);
+}
+.quick-tool-group .quick-card-button:hover {
+  border-color: #a9cbb4;
+  box-shadow: 0 10px 24px rgba(83, 112, 94, .11);
+}
+.quick-tool-group .quick-card-title { margin: 11px 0 6px; }
+.quick-tool-group .quick-card-description { line-height: 1.75; }
+.quick-tool-group h3 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.quick-tool-group h3::before {
+  content: "";
+  width: 8px;
+  height: 24px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #e7c98d, #9fc6a9);
+}
+
+/* Feature tile illustration positions: 4 columns × 4 rows */
+#open-accounts .quick-icon { background-position: 0 0; }
+#open-transactions .quick-icon { background-position: 33.333% 0; }
+#open-transfers .quick-icon { background-position: 66.667% 0; }
+#open-credit-card-payments .quick-icon { background-position: 100% 0; }
+#open-bills .quick-icon { background-position: 0 33.333%; }
+#open-recurring-bills .quick-icon { background-position: 33.333% 33.333%; }
+#open-reports .quick-icon { background-position: 66.667% 33.333%; }
+#open-bank-imports .quick-icon { background-position: 100% 33.333%; }
+#open-bank-reconciliation .quick-icon { background-position: 0 66.667%; }
+#open-attachments .quick-icon { background-position: 33.333% 66.667%; }
+#open-notifications-exports .quick-icon { background-position: 66.667% 66.667%; }
+#open-family-members .quick-icon { background-position: 100% 66.667%; }
+#open-family-roles .quick-icon { background-position: 0 100%; }
+#open-audit-logs .quick-icon { background-position: 33.333% 100%; }
+#open-categories .quick-icon { background-position: 66.667% 100%; }
+
+/* Q-style identity follows users into each actual workspace */
+section#accounts-view .accounts-heading > div:first-child,
+section#transactions-view .accounts-heading > div:first-child,
+section#transfers-view .accounts-heading > div:first-child,
+section#credit-card-payments-view .accounts-heading > div:first-child,
+section#bills-view .accounts-heading > div:first-child,
+section#bill-payments-view .accounts-heading > div:first-child,
+section#recurring-bills-view .accounts-heading > div:first-child,
+section#reports-view .accounts-heading > div:first-child,
+section#categories-view .accounts-heading > div:first-child,
+section#bank-imports-view .accounts-heading > div:first-child,
+section#bank-reconciliation-view .accounts-heading > div:first-child,
+section#attachments-view .accounts-heading > div:first-child,
+section#notifications-exports-view .accounts-heading > div:first-child,
+section#family-members-view .accounts-heading > div:first-child,
+section#family-roles-view .accounts-heading > div:first-child,
+section#audit-logs-view .accounts-heading > div:first-child {
+  position: relative;
+  min-height: 64px;
+  padding-left: 76px;
+}
+section#accounts-view .accounts-heading > div:first-child::before,
+section#transactions-view .accounts-heading > div:first-child::before,
+section#transfers-view .accounts-heading > div:first-child::before,
+section#credit-card-payments-view .accounts-heading > div:first-child::before,
+section#bills-view .accounts-heading > div:first-child::before,
+section#bill-payments-view .accounts-heading > div:first-child::before,
+section#recurring-bills-view .accounts-heading > div:first-child::before,
+section#reports-view .accounts-heading > div:first-child::before,
+section#categories-view .accounts-heading > div:first-child::before,
+section#bank-imports-view .accounts-heading > div:first-child::before,
+section#bank-reconciliation-view .accounts-heading > div:first-child::before,
+section#attachments-view .accounts-heading > div:first-child::before,
+section#notifications-exports-view .accounts-heading > div:first-child::before,
+section#family-members-view .accounts-heading > div:first-child::before,
+section#family-roles-view .accounts-heading > div:first-child::before,
+section#audit-logs-view .accounts-heading > div:first-child::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 64px;
+  height: 64px;
+  border: 1px solid #e0eadf;
+  border-radius: 19px;
+  background-color: #f5f7ef;
+  background-image: url("/static/images/family-finance-kawaii-icons.svg");
+  background-repeat: no-repeat;
+  background-size: 400% 400%;
+}
+section#accounts-view .accounts-heading > div:first-child::before { background-position: 0 0; }
+section#transactions-view .accounts-heading > div:first-child::before { background-position: 33.333% 0; }
+section#transfers-view .accounts-heading > div:first-child::before { background-position: 66.667% 0; }
+section#credit-card-payments-view .accounts-heading > div:first-child::before { background-position: 100% 0; }
+section#bills-view .accounts-heading > div:first-child::before,
+section#bill-payments-view .accounts-heading > div:first-child::before { background-position: 0 33.333%; }
+section#recurring-bills-view .accounts-heading > div:first-child::before { background-position: 33.333% 33.333%; }
+section#reports-view .accounts-heading > div:first-child::before { background-position: 66.667% 33.333%; }
+section#bank-imports-view .accounts-heading > div:first-child::before { background-position: 100% 33.333%; }
+section#bank-reconciliation-view .accounts-heading > div:first-child::before { background-position: 0 66.667%; }
+section#attachments-view .accounts-heading > div:first-child::before { background-position: 33.333% 66.667%; }
+section#notifications-exports-view .accounts-heading > div:first-child::before { background-position: 66.667% 66.667%; }
+section#family-members-view .accounts-heading > div:first-child::before { background-position: 100% 66.667%; }
+section#family-roles-view .accounts-heading > div:first-child::before { background-position: 0 100%; }
+section#audit-logs-view .accounts-heading > div:first-child::before { background-position: 33.333% 100%; }
+section#categories-view .accounts-heading > div:first-child::before { background-position: 66.667% 100%; }
+
+/* Empty states use the same visual language without hiding their instructions */
+#empty-family .empty-icon,
+#family-members-empty .empty-icon {
+  width: 58px;
+  height: 58px;
+  border: 1px solid #e0eadf;
+  border-radius: 19px;
+  background: #f5f7ef url("/static/images/family-finance-kawaii-icons.svg") no-repeat 100% 66.667% / 400% 400%;
+  font-size: 0;
+}
+#transactions-empty .empty-icon {
+  width: 58px;
+  height: 58px;
+  border: 1px solid #e0eadf;
+  border-radius: 19px;
+  background: #f5f7ef url("/static/images/family-finance-kawaii-icons.svg") no-repeat 33.333% 0 / 400% 400%;
+  font-size: 0;
+}
+#accounts-empty .empty-icon {
+  background: #f5f7ef url("/static/images/family-finance-kawaii-icons.svg") no-repeat 0 0 / 400% 400%;
+  font-size: 0;
+}
+@media (max-width: 760px) {
+  .quick-icon { width: 54px; height: 54px; }
+  .quick-tool-group .quick-card-button { min-height: 0; padding: 15px; }
+  section#accounts-view .accounts-heading > div:first-child,
+  section#transactions-view .accounts-heading > div:first-child,
+  section#transfers-view .accounts-heading > div:first-child,
+  section#credit-card-payments-view .accounts-heading > div:first-child,
+  section#bills-view .accounts-heading > div:first-child,
+  section#bill-payments-view .accounts-heading > div:first-child,
+  section#recurring-bills-view .accounts-heading > div:first-child,
+  section#reports-view .accounts-heading > div:first-child,
+  section#categories-view .accounts-heading > div:first-child,
+  section#bank-imports-view .accounts-heading > div:first-child,
+  section#bank-reconciliation-view .accounts-heading > div:first-child,
+  section#attachments-view .accounts-heading > div:first-child,
+  section#notifications-exports-view .accounts-heading > div:first-child,
+  section#family-members-view .accounts-heading > div:first-child,
+  section#family-roles-view .accounts-heading > div:first-child,
+  section#audit-logs-view .accounts-heading > div:first-child {
+    min-height: 52px;
+    padding-left: 60px;
+  }
+  section#accounts-view .accounts-heading > div:first-child::before,
+  section#transactions-view .accounts-heading > div:first-child::before,
+  section#transfers-view .accounts-heading > div:first-child::before,
+  section#credit-card-payments-view .accounts-heading > div:first-child::before,
+  section#bills-view .accounts-heading > div:first-child::before,
+  section#bill-payments-view .accounts-heading > div:first-child::before,
+  section#recurring-bills-view .accounts-heading > div:first-child::before,
+  section#reports-view .accounts-heading > div:first-child::before,
+  section#categories-view .accounts-heading > div:first-child::before,
+  section#bank-imports-view .accounts-heading > div:first-child::before,
+  section#bank-reconciliation-view .accounts-heading > div:first-child::before,
+  section#attachments-view .accounts-heading > div:first-child::before,
+  section#notifications-exports-view .accounts-heading > div:first-child::before,
+  section#family-members-view .accounts-heading > div:first-child::before,
+  section#family-roles-view .accounts-heading > div:first-child::before,
+  section#audit-logs-view .accounts-heading > div:first-child::before {
+    width: 50px;
+    height: 50px;
+    border-radius: 15px;
+  }
+  .accounts-heading { align-items: flex-start; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .quick-card-button:hover { transform: none; }
+}
