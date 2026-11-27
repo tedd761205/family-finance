@@ -145,6 +145,7 @@ def check_transaction_active(
 
 def check_transaction_not_managed(
     transaction: Transaction,
+    db: Session | None = None,
 ):
     """
     防止透過一般交易 API 修改或作廢由專用 API 管理的交易。
@@ -173,6 +174,22 @@ def check_transaction_not_managed(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="此交易屬於帳單付款／退款紀錄，請透過帳單付款管理 API 操作",
         )
+
+    # E-invoice payment transactions are controlled by the invoice posting workflow.
+    # Check the optional table before querying so deployments awaiting the migration
+    # can continue using the ordinary transaction endpoints.
+    if db is not None and inspect(db.get_bind()).has_table("einvoice_payments"):
+        from app.models.einvoice_posting import EInvoicePayment
+
+        linked_payment = db.query(EInvoicePayment.id).filter(
+            EInvoicePayment.family_id == transaction.family_id,
+            EInvoicePayment.transaction_id == transaction.id,
+        ).first()
+        if linked_payment is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="此交易屬於電子發票付款，請透過發票入帳管理 API 操作",
+            )
 
 
 # ============================================================
@@ -754,7 +771,7 @@ def update_transaction(
 
     check_transaction_active(transaction)
 
-    check_transaction_not_managed(transaction)
+    check_transaction_not_managed(transaction, db=db)
 
     if scope == "own":
         check_transaction_owner(
@@ -913,7 +930,7 @@ def void_transaction(
 
     check_transaction_active(transaction)
 
-    check_transaction_not_managed(transaction)
+    check_transaction_not_managed(transaction, db=db)
 
     if scope == "own":
         check_transaction_owner(

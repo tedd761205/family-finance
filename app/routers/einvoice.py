@@ -2,7 +2,7 @@ import os
 import re
 import unicodedata
 from datetime import date, datetime, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy import String, cast, exists, or_, tuple_
@@ -14,9 +14,13 @@ from app.dependencies.auth import get_current_user
 from app.dependencies.permissions import require_permission, require_data_scope
 from app.models.einvoice import EInvoice, EInvoiceImportBatch, EInvoiceItem
 from app.models.einvoice_category_rule import EInvoiceCategoryRule
+from app.models.einvoice_posting import EInvoicePosting, EInvoicePayment
 from app.models.category import Category
+from app.models.account import Account
+from app.models.transaction import Transaction
 from app.models.user import User
 from app.services.audit_log import add_audit_log
+from app.schemas.einvoice_posting import EInvoicePostingCreate, EInvoicePaymentsAdd
 
 
 router = APIRouter(prefix="/einvoices", tags=["Electronic invoices"])
@@ -152,6 +156,309 @@ def _invoice_item_suggestions(
         (rule.merchant_key, rule.item_name_key): (rule, category)
         for rule, category in query.all()
     }
+
+
+def _authorize_resource(
+    db: Session, user: User, family_id: int, permission: str, resource: str
+) -> str:
+    try:
+        _, roles = require_permission(
+            db=db,
+            user_id=user.id,
+            family_id=family_id,
+            permission_code=permission,
+        )
+        return require_data_scope(
+            db=db,
+            roles=roles,
+            family_id=family_id,
+            resource=resource,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+
+
+def _get_invoice_posting(
+    db: Session, family_id: int, invoice_id: int, *, lock: bool = False
+) -> EInvoicePosting | None:
+    query = db.query(EInvoicePosting).filter(
+        EInvoicePosting.family_id == family_id,
+        EInvoicePosting.invoice_id == invoice_id,
+    )
+    if lock:
+        query = query.with_for_update()
+    return query.first()
+
+
+def _check_posting_scope(
+    posting: EInvoicePosting,
+    user: User,
+    import_scope: str,
+    transaction_scope: str,
+    detail: str = "找不到此發票入帳紀錄",
+) -> None:
+    _check_created_by_scope(posting.created_by, user, import_scope, detail)
+    _check_created_by_scope(posting.created_by, user, transaction_scope, detail)
+
+
+def _resolve_invoice_exchange(
+    invoice_amount: Decimal,
+    invoice_currency: str,
+    account_currency: str,
+    supplied_rate: Decimal | None,
+) -> tuple[Decimal, Decimal]:
+    """Return account-currency units per one invoice-currency unit and account amount."""
+    if invoice_currency == account_currency:
+        if supplied_rate is not None and supplied_rate != Decimal("1"):
+            raise HTTPException(status_code=422, detail="同幣別付款不需要輸入匯率")
+        return Decimal("1"), invoice_amount.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+    if supplied_rate is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"發票幣別 {invoice_currency} 與付款帳戶幣別 {account_currency} 不同，請輸入實際付款匯率",
+        )
+    if supplied_rate <= 0:
+        raise HTTPException(status_code=422, detail="匯率必須大於 0")
+    account_amount = (invoice_amount * supplied_rate).quantize(
+        Decimal("0.0001"), rounding=ROUND_HALF_UP
+    )
+    if account_amount <= 0:
+        raise HTTPException(status_code=422, detail="換算後的帳戶金額必須大於 0")
+    return supplied_rate, account_amount
+
+
+def _validate_invoice_payment_account(
+    db: Session, user: User, family_id: int, account_id: int, account_scope: str
+) -> Account:
+    account = db.query(Account).filter(
+        Account.id == account_id,
+        Account.family_id == family_id,
+        Account.is_active.is_(True),
+    ).first()
+    if account is None:
+        raise HTTPException(status_code=404, detail="找不到啟用中的家庭付款帳戶")
+    _check_created_by_scope(
+        account.created_by, user, account_scope, "找不到此家庭付款帳戶"
+    )
+    return account
+
+
+def _posting_status(invoice_amount: Decimal, paid_amount: Decimal) -> str:
+    if paid_amount <= 0:
+        return "unpaid"
+    if paid_amount >= invoice_amount:
+        return "paid"
+    return "partially_paid"
+
+
+def _invoice_posting_detail(db: Session, posting: EInvoicePosting) -> dict:
+    rows = (
+        db.query(EInvoicePayment, Account)
+        .join(
+            Account,
+            (Account.id == EInvoicePayment.account_id)
+            & (Account.family_id == EInvoicePayment.family_id),
+        )
+        .filter(
+            EInvoicePayment.family_id == posting.family_id,
+            EInvoicePayment.posting_id == posting.id,
+        )
+        .order_by(EInvoicePayment.payment_date.asc(), EInvoicePayment.id.asc())
+        .all()
+    )
+    active_paid_amount = sum(
+        (payment.amount for payment, _account in rows if not payment.is_voided),
+        Decimal("0.00"),
+    )
+    voided_paid_amount = sum(
+        (payment.amount for payment, _account in rows if payment.is_voided),
+        Decimal("0.00"),
+    )
+    return {
+        "id": posting.id,
+        "family_id": posting.family_id,
+        "invoice_id": posting.invoice_id,
+        "invoice_amount": str(posting.invoice_amount),
+        "invoice_currency_code": posting.invoice_currency_code,
+        "paid_amount": str(active_paid_amount),
+        "remaining_amount": str(max(Decimal("0.00"), posting.invoice_amount - active_paid_amount)),
+        "voided_payment_amount": str(voided_paid_amount),
+        "status": posting.status,
+        "created_by": posting.created_by,
+        "created_at": posting.created_at,
+        "voided_at": posting.voided_at,
+        "voided_by": posting.voided_by,
+        "void_reason": posting.void_reason,
+        "payments": [
+            {
+                "id": payment.id,
+                "account_id": payment.account_id,
+                "account_name": account.name,
+                "amount": str(payment.amount),
+                "currency_code": payment.currency_code,
+                "account_amount": str(payment.account_amount),
+                "account_currency_code": payment.account_currency_code,
+                "exchange_rate": str(payment.exchange_rate),
+                "payment_date": payment.payment_date,
+                "transaction_id": payment.transaction_id,
+                "description": payment.description,
+                "note": payment.note,
+                "created_by": payment.created_by,
+                "created_at": payment.created_at,
+                "is_voided": payment.is_voided,
+                "voided_at": payment.voided_at,
+                "voided_by": payment.voided_by,
+                "void_reason": payment.void_reason,
+            }
+            for payment, account in rows
+        ],
+    }
+
+
+def _invoice_expense_category(
+    db: Session, family_id: int, invoice_id: int, current_user: User
+) -> int | None:
+    try:
+        category_scope = _require_category_scope(
+            db, current_user, family_id, "categories.view"
+        )
+    except HTTPException:
+        return None
+
+    positive_items = db.query(EInvoiceItem).filter(
+        EInvoiceItem.family_id == family_id,
+        EInvoiceItem.invoice_id == invoice_id,
+        EInvoiceItem.amount > 0,
+    ).all()
+    if not positive_items or any(item.category_id is None for item in positive_items):
+        return None
+    category_ids = {item.category_id for item in positive_items}
+    if len(category_ids) != 1:
+        return None
+    category_query = db.query(Category).filter(
+        Category.id == next(iter(category_ids)),
+        or_(Category.family_id == family_id, Category.family_id.is_(None)),
+        Category.category_type == "expense",
+        Category.is_active.is_(True),
+    )
+    if category_scope == "own":
+        category_query = category_query.filter(
+            or_(Category.family_id.is_(None), Category.created_by == current_user.id)
+        )
+    category = category_query.first()
+    return category.id if category else None
+
+
+def _append_invoice_payments(
+    db: Session,
+    *,
+    posting: EInvoicePosting,
+    invoice: EInvoice,
+    payments,
+    current_user: User,
+    family_id: int,
+    account_scope: str,
+) -> list[EInvoicePayment]:
+    existing_paid = db.query(EInvoicePayment).filter(
+        EInvoicePayment.family_id == family_id,
+        EInvoicePayment.posting_id == posting.id,
+        EInvoicePayment.is_voided.is_(False),
+    ).with_for_update().all()
+    paid_amount = sum(
+        (payment.amount for payment in existing_paid),
+        Decimal("0.00"),
+    )
+    requested_amount = sum(
+        (payment.amount for payment in payments),
+        Decimal("0.00"),
+    )
+    remaining = posting.invoice_amount - paid_amount
+    if requested_amount > remaining:
+        raise HTTPException(
+            status_code=409,
+            detail=f"付款金額超過發票未付餘額（剩餘 {remaining} {posting.invoice_currency_code}）",
+        )
+    if not payments:
+        return []
+
+    category_id = _invoice_expense_category(db, family_id, invoice.id, current_user)
+    created = []
+    for data in payments:
+        if data.payment_date.tzinfo is None or data.payment_date.utcoffset() is None:
+            raise HTTPException(status_code=422, detail="付款日期必須包含時區，請使用台灣時間")
+        account = _validate_invoice_payment_account(
+            db, current_user, family_id, data.account_id, account_scope
+        )
+        exchange_rate, account_amount = _resolve_invoice_exchange(
+            data.amount,
+            posting.invoice_currency_code,
+            account.currency_code,
+            data.exchange_rate,
+        )
+        description = (data.description or f"電子發票：{invoice.merchant_name}")[:200]
+        note_parts = [f"電子發票 {invoice.invoice_number}"]
+        if data.note:
+            note_parts.append(data.note.strip())
+        transaction = Transaction(
+            family_id=family_id,
+            account_id=account.id,
+            transaction_type="expense",
+            amount=account_amount,
+            currency_code=account.currency_code,
+            transaction_date=data.payment_date,
+            description=description,
+            category_id=category_id,
+            external_reference=invoice.invoice_number,
+            note="；".join(note_parts)[:2000],
+            created_by=current_user.id,
+        )
+        db.add(transaction)
+        db.flush()
+        payment = EInvoicePayment(
+            family_id=family_id,
+            posting_id=posting.id,
+            account_id=account.id,
+            amount=data.amount,
+            currency_code=posting.invoice_currency_code,
+            account_amount=account_amount,
+            account_currency_code=account.currency_code,
+            exchange_rate=exchange_rate,
+            payment_date=data.payment_date,
+            transaction_id=transaction.id,
+            description=description,
+            note=data.note,
+            created_by=current_user.id,
+        )
+        db.add(payment)
+        db.flush()
+        created.append(payment)
+
+        add_audit_log(
+            db,
+            family_id=family_id,
+            actor_user_id=current_user.id,
+            action="create",
+            entity_type="einvoice_payment",
+            entity_id=payment.id,
+            new_values={
+                "posting_id": posting.id,
+                "invoice_id": invoice.id,
+                "invoice_number": invoice.invoice_number,
+                "account_id": account.id,
+                "amount": data.amount,
+                "currency_code": posting.invoice_currency_code,
+                "account_amount": account_amount,
+                "account_currency_code": account.currency_code,
+                "exchange_rate": exchange_rate,
+                "transaction_id": transaction.id,
+            },
+            description="確認電子發票付款並建立一筆對應帳戶支出",
+        )
+
+    total_paid = paid_amount + requested_amount
+    posting.status = _posting_status(posting.invoice_amount, total_paid)
+    posting.updated_by = current_user.id
+    return created
 
 
 def _parse_amount(value: object, label: str, *, allow_negative: bool) -> Decimal:
@@ -804,6 +1111,331 @@ def update_einvoice_item_category(
     }
 
 
+@router.get("/{invoice_id}/posting", summary="查詢發票入帳及多帳戶付款")
+def get_invoice_posting(
+    invoice_id: int,
+    family_id: int = Query(..., gt=0),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _require_persistence_enabled()
+    import_scope = _authorize(db, current_user, family_id, "imports.view")
+    transaction_scope = _authorize_resource(
+        db, current_user, family_id, "transactions.view", "transactions"
+    )
+    invoice = db.query(EInvoice).filter(
+        EInvoice.id == invoice_id,
+        EInvoice.family_id == family_id,
+    ).first()
+    if invoice is None:
+        raise HTTPException(status_code=404, detail="找不到此家庭發票")
+    _check_created_by_scope(invoice.created_by, current_user, import_scope, "找不到此家庭發票")
+
+    posting = _get_invoice_posting(db, family_id, invoice_id)
+    if posting is None:
+        return {"success": True, "posting": None}
+    _check_posting_scope(posting, current_user, import_scope, transaction_scope)
+    return {"success": True, "posting": _invoice_posting_detail(db, posting)}
+
+
+@router.post("/{invoice_id}/posting", status_code=status.HTTP_201_CREATED, summary="建立或重新建立發票支出入帳，可先記錄未付款")
+def create_invoice_posting(
+    invoice_id: int,
+    payload: EInvoicePostingCreate,
+    family_id: int = Query(..., gt=0),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _require_persistence_enabled()
+    import_scope = _authorize(db, current_user, family_id, "imports.confirm")
+    transaction_scope = _authorize_resource(
+        db, current_user, family_id, "transactions.create", "transactions"
+    )
+    account_scope = _authorize_resource(
+        db, current_user, family_id, "accounts.view", "accounts"
+    )
+    try:
+        invoice = db.query(EInvoice).filter(
+            EInvoice.id == invoice_id,
+            EInvoice.family_id == family_id,
+        ).with_for_update().first()
+        if invoice is None:
+            raise HTTPException(status_code=404, detail="找不到此家庭發票")
+        _check_created_by_scope(invoice.created_by, current_user, import_scope, "找不到此家庭發票")
+        _check_created_by_scope(invoice.created_by, current_user, transaction_scope, "找不到此家庭發票")
+        if invoice.is_voided:
+            raise HTTPException(status_code=409, detail="已作廢的發票不可入帳")
+        if invoice.is_duplicate or invoice.verification_status == "duplicate":
+            raise HTTPException(status_code=409, detail="疑似重複發票不可入帳，請先確認是否為同一張發票")
+        if invoice.verification_status != "matched":
+            raise HTTPException(status_code=409, detail="發票表頭與商品明細尚未核對一致，請先處理差異再入帳")
+        if invoice.total_amount <= 0:
+            raise HTTPException(status_code=409, detail="零元發票不需要建立支出入帳")
+
+        posting = _get_invoice_posting(db, family_id, invoice_id, lock=True)
+        reopened = posting is not None
+        old_values = None
+        if posting is not None:
+            if posting.status != "voided":
+                raise HTTPException(status_code=409, detail="此發票已有有效入帳紀錄，請使用新增付款功能")
+            old_values = {
+                "status": posting.status,
+                "voided_at": posting.voided_at,
+                "voided_by": posting.voided_by,
+                "void_reason": posting.void_reason,
+            }
+            posting.status = "unpaid"
+            posting.voided_at = None
+            posting.voided_by = None
+            posting.void_reason = None
+            posting.updated_by = current_user.id
+        else:
+            posting = EInvoicePosting(
+                family_id=family_id,
+                invoice_id=invoice_id,
+                invoice_amount=invoice.total_amount,
+                invoice_currency_code="TWD",
+                status="unpaid",
+                created_by=current_user.id,
+                updated_by=current_user.id,
+            )
+            db.add(posting)
+            db.flush()
+
+        created_payments = _append_invoice_payments(
+            db,
+            posting=posting,
+            invoice=invoice,
+            payments=payload.payments,
+            current_user=current_user,
+            family_id=family_id,
+            account_scope=account_scope,
+        )
+        add_audit_log(
+            db,
+            family_id=family_id,
+            actor_user_id=current_user.id,
+            action="update" if reopened else "create",
+            entity_type="einvoice_posting",
+            entity_id=posting.id,
+            old_values=old_values,
+            new_values={
+                "invoice_id": invoice.id,
+                "invoice_number": invoice.invoice_number,
+                "invoice_amount": posting.invoice_amount,
+                "invoice_currency_code": posting.invoice_currency_code,
+                "status": posting.status,
+                "reopened_after_void": reopened,
+                "payment_ids": [payment.id for payment in created_payments],
+                "transaction_ids": [payment.transaction_id for payment in created_payments],
+            },
+            description=(
+                "重新建立已沖銷的電子發票入帳；舊付款與交易歷史保留"
+                if reopened
+                else "確認電子發票支出入帳；僅實際付款部分建立帳戶交易"
+            ),
+        )
+        db.commit()
+        db.refresh(posting)
+        return {
+            "success": True,
+            "message": (
+                "發票已重新入帳，尚未付款"
+                if reopened and not created_payments
+                else "發票已確認入帳，尚未付款"
+                if not created_payments
+                else f"發票入帳完成，新增 {len(created_payments)} 筆帳戶付款"
+            ),
+            "posting": _invoice_posting_detail(db, posting),
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="發票可能已由其他成員同時入帳，請重新整理後再試") from exc
+    except Exception:
+        db.rollback()
+        raise
+
+
+@router.post("/{invoice_id}/posting/payments", status_code=status.HTTP_201_CREATED, summary="為已入帳發票新增一筆或多筆付款")
+def add_invoice_posting_payments(
+    invoice_id: int,
+    payload: EInvoicePaymentsAdd,
+    family_id: int = Query(..., gt=0),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _require_persistence_enabled()
+    import_scope = _authorize(db, current_user, family_id, "imports.confirm")
+    transaction_scope = _authorize_resource(
+        db, current_user, family_id, "transactions.create", "transactions"
+    )
+    account_scope = _authorize_resource(
+        db, current_user, family_id, "accounts.view", "accounts"
+    )
+    try:
+        invoice = db.query(EInvoice).filter(
+            EInvoice.id == invoice_id,
+            EInvoice.family_id == family_id,
+        ).with_for_update().first()
+        if invoice is None:
+            raise HTTPException(status_code=404, detail="找不到此家庭發票")
+        _check_created_by_scope(invoice.created_by, current_user, import_scope, "找不到此家庭發票")
+        _check_created_by_scope(invoice.created_by, current_user, transaction_scope, "找不到此家庭發票")
+        if invoice.is_voided:
+            raise HTTPException(status_code=409, detail="已作廢的發票不可新增付款")
+        posting = _get_invoice_posting(db, family_id, invoice_id, lock=True)
+        if posting is None:
+            raise HTTPException(status_code=404, detail="此發票尚未建立入帳紀錄")
+        _check_posting_scope(posting, current_user, import_scope, transaction_scope)
+        if posting.status == "voided":
+            raise HTTPException(status_code=409, detail="已作廢的發票入帳不可新增付款")
+        if posting.status == "paid":
+            raise HTTPException(status_code=409, detail="此發票已全額付款，無剩餘應付金額")
+        old_status = posting.status
+        created_payments = _append_invoice_payments(
+            db,
+            posting=posting,
+            invoice=invoice,
+            payments=payload.payments,
+            current_user=current_user,
+            family_id=family_id,
+            account_scope=account_scope,
+        )
+        add_audit_log(
+            db,
+            family_id=family_id,
+            actor_user_id=current_user.id,
+            action="update",
+            entity_type="einvoice_posting",
+            entity_id=posting.id,
+            old_values={"status": old_status},
+            new_values={
+                "status": posting.status,
+                "payment_ids": [payment.id for payment in created_payments],
+                "transaction_ids": [payment.transaction_id for payment in created_payments],
+            },
+            description="為電子發票入帳新增付款；只建立本次實際付款對應交易",
+        )
+        db.commit()
+        db.refresh(posting)
+        return {
+            "success": True,
+            "message": f"已新增 {len(created_payments)} 筆付款",
+            "posting": _invoice_posting_detail(db, posting),
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="付款資料關聯衝突，未建立部分交易，請重新整理後再試") from exc
+    except Exception:
+        db.rollback()
+        raise
+
+
+@router.post("/{invoice_id}/posting/void", summary="整筆沖銷發票入帳及其所有付款交易")
+def void_invoice_posting(
+    invoice_id: int,
+    family_id: int = Query(..., gt=0),
+    reason: str = Query(..., min_length=1, max_length=500),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _require_persistence_enabled()
+    import_scope = _authorize(db, current_user, family_id, "imports.void")
+    transaction_scope = _authorize_resource(
+        db, current_user, family_id, "transactions.void", "transactions"
+    )
+    try:
+        invoice = db.query(EInvoice).filter(
+            EInvoice.id == invoice_id,
+            EInvoice.family_id == family_id,
+        ).with_for_update().first()
+        if invoice is None:
+            raise HTTPException(status_code=404, detail="找不到此家庭發票")
+        posting = _get_invoice_posting(db, family_id, invoice_id, lock=True)
+        if posting is None:
+            raise HTTPException(status_code=404, detail="此發票尚未建立入帳紀錄")
+        _check_created_by_scope(invoice.created_by, current_user, import_scope, "找不到此家庭發票")
+        _check_posting_scope(posting, current_user, import_scope, transaction_scope)
+        if posting.status == "voided":
+            raise HTTPException(status_code=409, detail="此發票入帳紀錄已沖銷")
+        if not reason.strip():
+            raise HTTPException(status_code=422, detail="沖銷原因不可空白")
+
+        payments = db.query(EInvoicePayment).filter(
+            EInvoicePayment.family_id == family_id,
+            EInvoicePayment.posting_id == posting.id,
+            EInvoicePayment.is_voided.is_(False),
+        ).with_for_update().all()
+        transaction_ids = [payment.transaction_id for payment in payments]
+        transactions = db.query(Transaction).filter(
+            Transaction.family_id == family_id,
+            Transaction.id.in_(transaction_ids) if transaction_ids else Transaction.id == -1,
+        ).with_for_update().all()
+        transaction_map = {transaction.id: transaction for transaction in transactions}
+        if len(transaction_map) != len(transaction_ids):
+            raise HTTPException(status_code=409, detail="部分付款對應的帳戶交易不存在，無法安全沖銷")
+        already_voided = [tx for tx in transactions if tx.is_voided]
+        if already_voided:
+            raise HTTPException(status_code=409, detail="部分付款交易已被其他流程作廢，請先檢查帳務")
+        now = datetime.now(timezone.utc)
+        old_status = posting.status
+        for transaction in transactions:
+            transaction.is_voided = True
+            transaction.voided_at = now
+        for payment in payments:
+            payment.is_voided = True
+            payment.voided_at = now
+            payment.voided_by = current_user.id
+            payment.void_reason = reason.strip()
+        posting.status = "voided"
+        posting.voided_at = now
+        posting.voided_by = current_user.id
+        posting.void_reason = reason.strip()
+        posting.updated_by = current_user.id
+        add_audit_log(
+            db,
+            family_id=family_id,
+            actor_user_id=current_user.id,
+            action="void",
+            entity_type="einvoice_posting",
+            entity_id=posting.id,
+            old_values={
+                "status": old_status,
+                "payment_ids": [payment.id for payment in payments],
+                "transaction_ids": transaction_ids,
+            },
+            new_values={
+                "status": posting.status,
+                "void_reason": posting.void_reason,
+                "payment_count": len(payments),
+                "transaction_ids": transaction_ids,
+            },
+            description="沖銷電子發票入帳及所有對應帳戶支出交易",
+        )
+        db.commit()
+        db.refresh(posting)
+        return {
+            "success": True,
+            "message": "發票入帳及其付款交易已整筆沖銷；原始發票與付款明細仍保留",
+            "posting": _invoice_posting_detail(db, posting),
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="發票入帳沖銷失敗，請重新整理後再試") from exc
+    except Exception:
+        db.rollback()
+        raise
+
+
 @router.post("/{invoice_id}/void", summary="作廢家庭發票保存紀錄")
 def void_einvoice(
     invoice_id: int,
@@ -823,6 +1455,12 @@ def void_einvoice(
     _check_created_by_scope(invoice.created_by, current_user, scope, "找不到此家庭發票")
     if invoice.is_voided:
         raise HTTPException(status_code=409, detail="此發票已經作廢")
+    posting = _get_invoice_posting(db, family_id, invoice_id, lock=True)
+    if posting is not None and posting.status != "voided":
+        raise HTTPException(
+            status_code=409,
+            detail="此發票已有有效入帳紀錄；請先沖銷入帳及付款交易，再作廢發票",
+        )
     invoice.is_voided = True
     invoice.voided_at = datetime.now(timezone.utc)
     invoice.voided_by = current_user.id
@@ -837,7 +1475,7 @@ def void_einvoice(
         entity_id=invoice.id,
         old_values={"is_voided": False},
         new_values={"is_voided": True, "reason": invoice.void_reason},
-        description="作廢家庭發票保存紀錄；不影響其他帳務交易",
+        description="作廢家庭發票保存紀錄；僅允許在入帳已沖銷或從未入帳時執行",
     )
     db.commit()
     db.refresh(invoice)
