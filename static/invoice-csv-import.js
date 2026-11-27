@@ -433,7 +433,7 @@
       const savedNote = previewSaved
         ? "此批發票已保存到家庭歷史區；清除只會移除本機預覽，不會刪除已保存紀錄。"
         : "此預覽尚未保存到資料庫。";
-      if (!window.confirm("清除目前選取的檔案與發票預覽？\\n\\n" + savedNote)) return;
+      if (!window.confirm("清除目前選取的檔案與發票預覽？\n\n" + savedNote)) return;
     }
     parsedResult = null;
     currentFilter = "all";
@@ -525,11 +525,13 @@
     host.append(controls);
   }
 
-  async function loadInvoiceHistoryDetail(invoiceId, detailHost, familyId) {
+  async function loadInvoiceHistoryDetail(invoiceId, detailHost, familyId, includeVoided) {
     const bridge = window.FamilyFinanceInvoiceBridge;
     try {
+      const params = new URLSearchParams({ family_id: String(familyId) });
+      if (includeVoided) params.set("include_voided", "true");
       const result = await bridge.request(
-        "/electronic-invoices/" + invoiceId + "?family_id=" + encodeURIComponent(familyId)
+        "/electronic-invoices/" + invoiceId + "?" + params.toString()
       );
       detailHost.replaceChildren();
       const items = result.items || [];
@@ -589,7 +591,7 @@
         make("span", "einvoice-carrier", "匯入批次 #" + invoice.import_batch_id)
       );
       if (invoice.merchant_tax_id) meta.append(make("span", "einvoice-carrier", "統編 " + invoice.merchant_tax_id));
-      if (invoice.linked_transaction_id) meta.append(make("span", "einvoice-status is-good", "已連結支出 #" + invoice.linked_transaction_id));
+      if (invoice.linked_transaction_id) meta.append(make("span", "einvoice-status is-good", "已連結帳務 #" + invoice.linked_transaction_id));
       card.append(meta);
 
       const details = make("details", "einvoice-items");
@@ -600,7 +602,7 @@
         if (details.open && detailHost.dataset.loaded !== "1" && !detailHost.dataset.loading) {
           detailHost.dataset.loading = "1";
           detailHost.append(make("p", "tiny muted", "正在載入明細…"));
-          loadInvoiceHistoryDetail(invoice.id, detailHost, familyId).finally(() => {
+          loadInvoiceHistoryDetail(invoice.id, detailHost, familyId, invoice.is_voided).finally(() => {
             delete detailHost.dataset.loading;
           });
         }
