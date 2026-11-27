@@ -11,6 +11,7 @@
   let currentPage = 1;
   let pageSize = 10;
   let previewSaved = false;
+  let previewFamilyId = null;
   let historyPage = 1;
   let historyPageSize = 20;
   let historyRequestSequence = 0;
@@ -464,6 +465,7 @@
     const save = document.getElementById("einvoice-csv-save");
     if (save) { save.disabled = true; save.textContent = "儲存發票紀錄"; }
     previewSaved = false;
+    previewFamilyId = null;
   }
 
   function fillMonthOptions(invoices) {
@@ -637,18 +639,23 @@
   }
 
   async function loadHistory() {
+    const sequence = ++historyRequestSequence;
     const bridge = window.FamilyFinanceInvoiceBridge;
     const familyId = bridge?.getFamilyId();
+    const list = document.getElementById("einvoice-history-list");
+    const pagination = document.getElementById("einvoice-history-pagination");
     if (!bridge || !familyId) {
       historyStatusMessage("請先登入並選擇家庭，再查詢已保存的發票。", "error");
+      if (list) { list.replaceChildren(); list.removeAttribute("aria-busy"); }
+      if (pagination) { pagination.replaceChildren(); pagination.classList.add("hidden"); }
       return;
     }
     if (!bridge.hasPermission("invoices.view")) {
       historyStatusMessage("目前帳號沒有查看家庭發票的權限。", "error");
+      if (list) { list.replaceChildren(); list.removeAttribute("aria-busy"); }
+      if (pagination) { pagination.replaceChildren(); pagination.classList.add("hidden"); }
       return;
     }
-
-    const sequence = ++historyRequestSequence;
     const query = document.getElementById("einvoice-history-search")?.value.trim() || "";
     const startDate = document.getElementById("einvoice-history-start")?.value || "";
     const endDate = document.getElementById("einvoice-history-end")?.value || "";
@@ -666,7 +673,6 @@
     if (includeVoided) params.set("include_voided", "true");
 
     historyStatusMessage("正在搜尋已保存的家庭發票…");
-    const list = document.getElementById("einvoice-history-list");
     if (list) list.setAttribute("aria-busy", "true");
     try {
       const result = await bridge.request("/electronic-invoices?" + params.toString());
@@ -699,6 +705,14 @@
       const message = document.getElementById("einvoice-csv-message");
       message.className = "einvoice-message is-error";
       message.textContent = "目前帳號沒有保存電子發票的權限。";
+      return;
+    }
+    if (!previewFamilyId || String(familyId) !== String(previewFamilyId)) {
+      const message = document.getElementById("einvoice-csv-message");
+      message.className = "einvoice-message is-error";
+      message.textContent = "家庭已切換，為避免發票存入錯誤家庭，請清除目前預覽並在正確家庭重新選取 CSV。";
+      const saveButton = document.getElementById("einvoice-csv-save");
+      if (saveButton) saveButton.disabled = true;
       return;
     }
     const file = document.getElementById("einvoice-csv-file");
@@ -783,6 +797,11 @@
     const clear = document.getElementById("einvoice-csv-clear");
     if (!file) return;
     parsedResult = null;
+    previewSaved = false;
+    previewFamilyId = window.FamilyFinanceInvoiceBridge?.getFamilyId();
+    previewFamilyId = previewFamilyId ? String(previewFamilyId) : null;
+    const saveButton = document.getElementById("einvoice-csv-save");
+    if (saveButton) { saveButton.disabled = true; saveButton.textContent = "儲存發票紀錄"; }
     results.classList.add("hidden");
     clear.disabled = false;
     message.className = "einvoice-message";
@@ -802,7 +821,9 @@
       currentPage = 1;
       pageSize = 10;
       previewSaved = false;
-      document.getElementById("einvoice-csv-save").disabled = false;
+      const activeFamilyId = window.FamilyFinanceInvoiceBridge?.getFamilyId();
+      const familyMatches = Boolean(previewFamilyId && activeFamilyId && String(activeFamilyId) === previewFamilyId);
+      document.getElementById("einvoice-csv-save").disabled = !familyMatches;
       document.getElementById("einvoice-csv-save").textContent = "儲存發票紀錄";
       document.getElementById("einvoice-csv-filter").value = "all";
       document.getElementById("einvoice-csv-search").value = "";
@@ -810,11 +831,19 @@
       document.getElementById("einvoice-csv-page-size").value = "10";
       fillMonthOptions(parsedResult.invoices);
       document.getElementById("einvoice-csv-filename").textContent = file.name;
-      message.classList.add("is-success");
-      message.textContent = "已在此裝置完成解析。原始 CSV 不會上傳伺服器，也尚未寫入正式帳務。";
+      if (familyMatches) {
+        message.classList.add("is-success");
+        message.textContent = "已在此裝置完成解析。原始 CSV 不會上傳伺服器，也尚未寫入正式帳務。";
+      } else {
+        message.classList.add("is-error");
+        message.textContent = "已完成本機解析，但目前沒有可用的家庭或解析期間已切換家庭。請先確認家庭，再重新選取 CSV 才能保存。";
+      }
       renderInvoices();
     } catch (error) {
       parsedResult = null;
+      previewFamilyId = null;
+      const saveButton = document.getElementById("einvoice-csv-save");
+      if (saveButton) saveButton.disabled = true;
       message.classList.add("is-error");
       message.textContent = error.message || "讀取 CSV 失敗，請確認檔案格式。";
     }
@@ -890,6 +919,27 @@
     document.getElementById("einvoice-history-refresh").addEventListener("click", () => loadHistory());
     document.getElementById("einvoice-history-clear").addEventListener("click", resetHistoryFilters);
     window.addEventListener("family-finance-family-changed", () => {
+      historyRequestSequence += 1;
+      historyPage = 1;
+      if (historySearchTimer) window.clearTimeout(historySearchTimer);
+      historySearchTimer = null;
+
+      const historyList = document.getElementById("einvoice-history-list");
+      const historyPagination = document.getElementById("einvoice-history-pagination");
+      if (historyList) { historyList.replaceChildren(); historyList.removeAttribute("aria-busy"); }
+      if (historyPagination) { historyPagination.replaceChildren(); historyPagination.classList.add("hidden"); }
+
+      const activeFamilyId = window.FamilyFinanceInvoiceBridge?.getFamilyId();
+      const familyMatches = Boolean(previewFamilyId && activeFamilyId && String(activeFamilyId) === String(previewFamilyId));
+      const saveButton = document.getElementById("einvoice-csv-save");
+      if (parsedResult && !previewSaved && saveButton) saveButton.disabled = !familyMatches;
+      if (parsedResult && !previewSaved && !familyMatches) {
+        const message = document.getElementById("einvoice-csv-message");
+        if (message) {
+          message.className = "einvoice-message is-error";
+          message.textContent = "家庭已切換；目前 CSV 預覽仍屬於原家庭。請清除預覽並在目前家庭重新選取 CSV，避免存錯家庭。";
+        }
+      }
       if (!document.getElementById("einvoice-csv-view")?.classList.contains("hidden")) loadHistory();
     });
     const searchInput = document.getElementById("einvoice-csv-search");
