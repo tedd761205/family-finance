@@ -930,7 +930,7 @@ def void_transaction(
 
     check_transaction_active(transaction)
 
-    check_transaction_not_managed(transaction)
+    check_transaction_not_managed(transaction, db=db)
 
     if scope == "own":
         check_transaction_owner(
