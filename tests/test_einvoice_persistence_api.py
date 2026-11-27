@@ -7,23 +7,57 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.database import Base, engine
-from app import models  # noqa: F401
-from app.models.permission import Permission
+from app.models import (
+    AuditLog,
+    EInvoice,
+    EInvoiceImportBatch,
+    EInvoiceItem,
+    Family,
+    FamilyMember,
+    MemberRole,
+    Permission,
+    RevokedToken,
+    Role,
+    RoleDataScope,
+    RolePermission,
+    User,
+)
 from app.permission_catalog import PERMISSION_CATALOG
 from main import app
 
 
-@pytest.fixture(scope="session", autouse=True)
+PERSISTENT_INVOICE_TEST_TABLES = [
+    User.__table__,
+    Family.__table__,
+    Permission.__table__,
+    FamilyMember.__table__,
+    Role.__table__,
+    RolePermission.__table__,
+    RoleDataScope.__table__,
+    MemberRole.__table__,
+    RevokedToken.__table__,
+    AuditLog.__table__,
+    EInvoiceImportBatch.__table__,
+    EInvoice.__table__,
+    EInvoiceItem.__table__,
+]
+
+
+@pytest.fixture(autouse=True)
 def ensure_persistent_einvoice_schema():
     if engine is None:
         pytest.skip("A disposable PostgreSQL DATABASE_URL is required for persistent invoice API tests")
-    Base.metadata.create_all(bind=engine)
+    # Create only the tables this feature needs. Some existing integration
+    # tests deliberately create/drop a smaller subset of the schema.
+    Base.metadata.create_all(bind=engine, tables=PERSISTENT_INVOICE_TEST_TABLES)
     with Session(engine) as db:
         existing = {permission.code for permission in db.query(Permission).all()}
         for permission in PERMISSION_CATALOG:
             if permission["code"] not in existing:
                 db.add(Permission(**permission))
         db.commit()
+    yield
+    Base.metadata.drop_all(bind=engine, tables=PERSISTENT_INVOICE_TEST_TABLES)
 
 
 @pytest.fixture
@@ -123,9 +157,17 @@ def test_persist_einvoice_detail_search_deduplication_and_void(family_context):
     assert batches.json()["total"] == 2
 
     # Electronic invoices are evidence records, not posted income/expense transactions.
-    from app.models.transaction import Transaction
+    from sqlalchemy import text
     with Session(engine) as db:
-        assert db.query(Transaction).filter(Transaction.family_id == family_id).count() == 0
+        transaction_table_exists = db.execute(
+            text("SELECT to_regclass('public.transactions') IS NOT NULL")
+        ).scalar_one()
+        if transaction_table_exists:
+            transaction_count = db.execute(
+                text("SELECT count(*) FROM transactions WHERE family_id = :family_id"),
+                {"family_id": family_id},
+            ).scalar_one()
+            assert transaction_count == 0
 
     voided = client.post(
         f"/einvoices/{invoice['id']}/void?family_id={family_id}&reason=測試作廢",
