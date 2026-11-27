@@ -377,7 +377,7 @@
     if (notice && notice.parentNode) notice.parentNode.insertBefore(section, notice.nextSibling);
     else bankView.insertBefore(section, bankView.firstChild);
 
-    document.getElementById("einvoice-csv-file").addEventListener("change", event => handleFile(event.target.files && event.target.files[0]));
+    document.getElementById("einvoice-csv-file").addEventListener("change", event => { const file = event.target.files && event.target.files[0]; event.target.value = ""; handleFile(file); });
     document.getElementById("einvoice-csv-filter").addEventListener("change", event => {
       currentFilter = event.target.value;
       renderInvoices();
