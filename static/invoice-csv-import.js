@@ -1039,6 +1039,7 @@
       }
 
       const canCreate = bridge.hasPermission?.("imports.confirm") &&
+        bridge.hasPermission?.("transactions.view") &&
         bridge.hasPermission?.("transactions.create") &&
         bridge.hasPermission?.("accounts.view");
       const canVoid = posting &&
