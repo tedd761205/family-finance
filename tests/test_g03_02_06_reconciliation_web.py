@@ -53,6 +53,8 @@ def test_reconciliation_workspace_discloses_that_suggestions_do_not_auto_match()
     assert "候選建議只供參考，必須由使用者確認配對" in home
     assert "配對不會建立、修改或作廢帳務交易" in home
     assert "automatic" not in javascript.lower() or "automatic_matches_created" not in javascript
+    assert "appendInvoicePaymentContext" in javascript
+    assert "電子發票付款" in javascript
 
 
 def test_reconciliation_workspace_has_mobile_first_layout():
