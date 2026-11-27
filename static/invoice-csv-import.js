@@ -874,7 +874,7 @@
       const detailButton = make("button", "secondary small", "查看商品明細");
       detailButton.type = "button";
       detailButton.addEventListener("click", () => toggleHistoryDetails(card, invoice, detailButton));
-      const postingButton = make("secondary small", "secondary small", "確認入帳／付款");
+      const postingButton = make("button", "secondary small", "確認入帳／付款");
       postingButton.type = "button";
       postingButton.addEventListener("click", () => toggleInvoicePosting(card, invoice, postingButton));
       actions.append(detailButton, postingButton);
@@ -993,12 +993,19 @@
     button.disabled = true;
     button.textContent = "載入中…";
     try {
-      const [postingResult, accountResult] = await Promise.all([
-        bridge.api("/einvoices/" + invoice.id + "/posting?family_id=" + familyId),
-        bridge.api("/accounts?family_id=" + familyId)
-      ]);
+      const postingResult = await bridge.api(
+        "/einvoices/" + invoice.id + "/posting?family_id=" + familyId
+      );
       const posting = postingResult.posting;
-      const accounts = (accountResult.accounts || []).filter(account => account.is_active !== false);
+      let accounts = [];
+      if (bridge.hasPermission?.("accounts.view") && bridge.hasPermission?.("transactions.create")) {
+        try {
+          const accountResult = await bridge.api("/accounts?family_id=" + familyId);
+          accounts = (accountResult.accounts || []).filter(account => account.is_active !== false);
+        } catch (_) {
+          accounts = [];
+        }
+      }
       const panel = make("section", "einvoice-posting-panel");
       const heading = make("div", "einvoice-posting-heading");
       heading.append(
@@ -1045,7 +1052,8 @@
         panel.append(make("p", "einvoice-posting-warning", "此入帳已沖銷，原付款交易已一併作廢；原始明細仍保留。"));
       }
 
-      const allowMorePayment = canCreate &&
+      const invoiceEligible = invoice.verification_status === "matched" && !invoice.is_duplicate;
+      const allowMorePayment = canCreate && (posting || invoiceEligible) &&
         (!posting || posting.status === "unpaid" || posting.status === "partially_paid") &&
         (!posting || Number(posting.remaining_amount) > 0);
       if (allowMorePayment && accounts.length) {
