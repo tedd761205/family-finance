@@ -1445,8 +1445,8 @@ textarea:focus-visible,
 
 /* --------------------------------------------------
    Soft scenic family theme
-   A calm mountain-and-lake panorama fades behind the workspace.
-   Muted coastal blue actions, jade support and champagne details.
+   An original pastel galaxy, planets and starlight fade behind the workspace.
+   Soft-jade primary actions with restrained champagne details.
 -------------------------------------------------- */
 :root {
   color-scheme: light;
@@ -1460,9 +1460,9 @@ textarea:focus-visible,
   --border: #dce4e6;
   --line: #e6ebea;
 
-  --accent: #58788b;
-  --accent-strong: #49697c;
-  --accent-soft: #eaf1f4;
+  --accent: #3f826a;
+  --accent-strong: #326f5a;
+  --accent-soft: #e8f3ed;
   --accent-warm: #c5a46a;
 
   --jade: #73ad99;
@@ -1478,8 +1478,8 @@ textarea:focus-visible,
 
   --nav-ink: #36434a;
   --nav-muted: #64737a;
-  --nav-accent: #58788b;
-  --nav-accent-soft: #eaf1f4;
+  --nav-accent: #3f826a;
+  --nav-accent-soft: #e8f3ed;
   --nav-border: #dce4e6;
 }
 
@@ -1491,7 +1491,7 @@ body {
   position: relative;
   isolation: isolate;
   color: var(--text);
-  background: linear-gradient(180deg, #edf3f5 0%, #f5f5f0 440px, var(--page-bg) 100%);
+  background: linear-gradient(180deg, #f0f1f8 0%, #f5f1f4 440px, var(--page-bg) 100%);
 }
 
 body::before {
@@ -1503,11 +1503,11 @@ body::before {
   right: 0;
   height: min(620px, 76vh);
   pointer-events: none;
-  background-image: url("/static/images/family-finance-scenery.svg");
+  background-image: url("/static/images/family-finance-space.svg");
   background-position: center top;
   background-repeat: no-repeat;
   background-size: cover;
-  opacity: .84;
+  opacity: .74;
   mask-image: linear-gradient(to bottom, #000 0%, #000 58%, transparent 100%);
 }
 
@@ -1521,8 +1521,8 @@ h4 {
 }
 
 .brand-mark {
-  background: linear-gradient(145deg, #698a9c, var(--accent-strong));
-  box-shadow: 0 5px 14px rgba(73, 105, 124, .16);
+  background: linear-gradient(145deg, #73ad99, var(--accent-strong));
+  box-shadow: 0 5px 14px rgba(50, 111, 90, .16);
   border: 1px solid rgba(197, 164, 106, .48);
 }
 
@@ -1606,8 +1606,8 @@ footer {
 .quick-card-button:hover,
 .family-card:hover,
 .family-card.selected {
-  background: #edf3f5;
-  border-color: #a9bdc7;
+  background: #eff6f1;
+  border-color: #b8d7c7;
 }
 
 .quick-icon,
@@ -1635,28 +1635,28 @@ footer {
 .field select:focus,
 .field textarea:focus,
 .purchase-item-field input:focus {
-  border-color: #7896a5;
-  box-shadow: 0 0 0 3px rgba(88, 120, 139, .17);
+  border-color: #79a995;
+  box-shadow: 0 0 0 3px rgba(63, 130, 106, .18);
 }
 
 .primary {
-  background: #58788b;
+  background: #3f826a;
   color: #fff;
-  box-shadow: 0 3px 9px rgba(73, 105, 124, .13);
+  box-shadow: 0 3px 9px rgba(50, 111, 90, .16);
 }
 
 .primary:hover:not(:disabled) {
-  background: #49697c;
+  background: #326f5a;
 }
 
 .secondary {
-  background: #eaf1f4;
-  color: #49697c;
-  border: 1px solid #d4e0e4;
+  background: #edf5ef;
+  color: #356b55;
+  border: 1px solid #d5e6dc;
 }
 
 .secondary:hover:not(:disabled) {
-  background: #e0eaee;
+  background: #e2efe7;
 }
 
 .danger {
@@ -1733,7 +1733,7 @@ footer {
 }
 
 .yearly-bar-fill {
-  background: #7896a5;
+  background: #73ad99;
 }
 
 .yearly-bar-fill.expense {
@@ -1757,14 +1757,14 @@ footer {
 }
 
 .workspace-shortcut {
-  background: #eff3f4;
-  color: #4a606b;
+  background: #eef4f0;
+  color: #456456;
 }
 
 .workspace-shortcut:hover,
 .workspace-shortcut.active {
   background: var(--accent-soft);
-  border-color: #c5d5dc;
+  border-color: #c8ded2;
   color: var(--accent-strong);
 }
 
@@ -1775,7 +1775,7 @@ select:focus-visible,
 textarea:focus-visible,
 .quick-card-button:focus-visible,
 .app-nav-button:focus-visible {
-  outline-color: #7896a5;
+  outline-color: #67977e;
 }
 
 .local-receipt-field-source {
@@ -1801,13 +1801,13 @@ textarea:focus-visible,
   body::before {
     height: 430px;
     background-size: auto 430px;
-    opacity: .62;
+    opacity: .56;
   }
 }
 
 @media (prefers-reduced-transparency: reduce) {
   body::before {
-    opacity: .34;
+    opacity: .30;
   }
   .workspace-shortcuts,
   .auth-panel,

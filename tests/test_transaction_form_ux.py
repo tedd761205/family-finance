@@ -89,71 +89,73 @@ def test_clear_filter_remains_available_when_date_range_validation_fails():
 
 
 
-def test_warm_family_theme_uses_cream_sage_palette_with_readable_semantic_states():
+
+def test_family_theme_uses_soft_jade_primary_and_readable_semantic_states():
     with TestClient(app) as client:
         styles = client.get("/static/styles.css").text
 
-    assert "--page-bg: #f3f5f2" in styles
-    assert "--surface: #fffefa" in styles
-    assert "--accent: #58788b" in styles
-    assert "--accent-warm: #c5a46a" in styles
-    assert "background:" in styles
-    assert "var(--danger-bg)" in styles
-    assert "var(--success-bg)" in styles
+    active_theme = styles.rsplit("Soft scenic family theme", 1)[-1]
+    assert "--page-bg: #f3f5f2" in active_theme
+    assert "--surface: #fffefa" in active_theme
+    assert "--accent: #3f826a" in active_theme
+    assert "--accent-strong: #326f5a" in active_theme
+    assert "--accent-warm: #c5a46a" in active_theme
+    assert "var(--danger-bg)" in active_theme
+    assert "var(--success-bg)" in active_theme
     assert ".local-receipt-invoice-camera{display:grid" in styles
-    assert "prefers-reduced-transparency: reduce" in styles
+    assert "prefers-reduced-transparency: reduce" in active_theme
 
 
-def test_warm_visual_theme_stylesheet_cache_is_refreshed():
+def test_soft_jade_space_theme_stylesheet_cache_is_refreshed():
     with TestClient(app) as client:
         page = client.get("/")
 
     assert page.status_code == 200
-    assert '/static/styles.css?v=20261127-3' in page.text
+    assert '/static/styles.css?v=20261127-4' in page.text
 
 
-def test_blue_jade_champagne_theme_keeps_warm_surfaces_and_distinct_semantic_colors():
+def test_soft_jade_theme_keeps_champagne_as_a_small_accent_and_semantic_colors():
     with TestClient(app) as client:
         styles = client.get("/static/styles.css").text
 
-    assert "--accent-strong: #49697c" in styles
-    assert "--accent-soft: #eaf1f4" in styles
-    assert "--success-bg: #e5f2eb" in styles
-    assert "--warning-bg: #fbf3e2" in styles
-    assert "--danger-bg: #fce9e5" in styles
-    assert "rgba(179, 204, 235, .30)" in styles
-    assert "rgba(198, 165, 106, .20)" in styles
-    assert "background: #7896a5" in styles
-    assert "background: #c5a46a" in styles
-    assert "--jade: #73ad99" in styles
-    assert "--jade-strong: #2d7662" in styles
-    assert "--jade-soft: #e8f3ed" in styles
-    assert "--surface-muted: #edf3f8" in styles
-    assert "--surface-soft: #e8f2ed" in styles
+    active_theme = styles.rsplit("Soft scenic family theme", 1)[-1]
+    assert "--accent: #3f826a" in active_theme
+    assert "--accent-strong: #326f5a" in active_theme
+    assert "--accent-soft: #e8f3ed" in active_theme
+    assert "--accent-warm: #c5a46a" in active_theme
+    assert "--success-bg: #e5f2eb" in active_theme
+    assert "--warning-bg: #fbf3e2" in active_theme
+    assert "--danger-bg: #fce9e5" in active_theme
+    assert "--jade: #73ad99" in active_theme
+    assert "--jade-strong: #2d7662" in active_theme
+    assert "--jade-soft: #e8f3ed" in active_theme
 
 
-def test_scenic_background_is_available_and_accessibly_faded_behind_content():
+def test_original_space_background_is_available_and_accessibly_faded_behind_content():
     with TestClient(app) as client:
-        scenery = client.get("/static/images/family-finance-scenery.svg")
+        space = client.get("/static/images/family-finance-space.svg")
         styles = client.get("/static/styles.css").text
 
-    assert scenery.status_code == 200
-    assert "<svg" in scenery.text
-    assert "linearGradient id=\"sky\"" in scenery.text
-    assert "linearGradient id=\"lake\"" in scenery.text
-    assert "path d=" in scenery.text
-    assert 'background-image: url("/static/images/family-finance-scenery.svg")' in styles
-    assert "mask-image: linear-gradient" in styles
-    assert "height: 430px" in styles
-    assert "opacity: .62" in styles
+    active_theme = styles.rsplit("Soft scenic family theme", 1)[-1]
+    assert space.status_code == 200
+    assert "<svg" in space.text
+    assert '<radialGradient id="nebula"' in space.text
+    assert "spiral galaxy" in space.text
+    assert 'background-image: url("/static/images/family-finance-space.svg")' in active_theme
+    assert "mask-image: linear-gradient" in active_theme
+    assert "height: 430px" in active_theme
+    assert "opacity: .56" in active_theme
 
 
-def test_primary_action_uses_muted_blue_not_high_saturation_royal_blue():
+def test_primary_action_uses_soft_jade_with_champagne_reserved_for_details():
     with TestClient(app) as client:
         styles = client.get("/static/styles.css").text
 
-    assert "--accent: #58788b" in styles
-    assert "--accent-strong: #49697c" in styles
-    assert "background: #58788b" in styles
-    assert "background: #49697c" in styles
-    assert "background: #2456a6" not in styles
+    active_theme = styles.rsplit("Soft scenic family theme", 1)[-1]
+    assert "--accent: #3f826a" in active_theme
+    assert "--accent-strong: #326f5a" in active_theme
+    assert "background: #3f826a" in active_theme
+    assert "background: #326f5a" in active_theme
+    assert ".primary {\n  background: #c5a46a" not in active_theme
+    assert ".secondary {\n  background: #c5a46a" not in active_theme
+

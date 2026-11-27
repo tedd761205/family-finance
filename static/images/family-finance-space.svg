@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" role="img" aria-labelledby="space-title space-desc">
+  <title id="space-title">家庭記帳系統原創柔和彩色太空背景</title>
+  <desc id="space-desc">由淡紫藍星空、柔和星雲、螺旋銀河、行星與微亮星光組成的原創向量插畫。</desc>
+  <defs>
+    <linearGradient id="space-sky" x1="0" y1="0" x2="0.12" y2="1">
+      <stop offset="0" stop-color="#a7b9d8"/>
+      <stop offset=".36" stop-color="#c1bfdb"/>
+      <stop offset=".72" stop-color="#e4c8d9"/>
+      <stop offset="1" stop-color="#f4ded6"/>
+    </linearGradient>
+    <radialGradient id="nebula" cx=".5" cy=".5" r=".5">
+      <stop offset="0" stop-color="#fff0dc" stop-opacity=".9"/>
+      <stop offset=".28" stop-color="#f2c6df" stop-opacity=".75"/>
+      <stop offset=".62" stop-color="#b8c7e6" stop-opacity=".52"/>
+      <stop offset="1" stop-color="#b8c7e6" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="nebula-blue" cx=".5" cy=".5" r=".5">
+      <stop offset="0" stop-color="#d9edee" stop-opacity=".85"/>
+      <stop offset=".45" stop-color="#9fb9dd" stop-opacity=".58"/>
+      <stop offset="1" stop-color="#9fb9dd" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="nebula-rose" cx=".5" cy=".5" r=".5">
+      <stop offset="0" stop-color="#ffe6d7" stop-opacity=".88"/>
+      <stop offset=".48" stop-color="#e9b9d1" stop-opacity=".5"/>
+      <stop offset="1" stop-color="#e9b9d1" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="planet" x1=".18" y1=".08" x2=".86" y2=".92">
+      <stop offset="0" stop-color="#fff3df"/>
+      <stop offset=".32" stop-color="#e9d5e7"/>
+      <stop offset=".7" stop-color="#aab8d8"/>
+      <stop offset="1" stop-color="#7387b5"/>
+    </linearGradient>
+    <linearGradient id="planet-shadow" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".56"/>
+      <stop offset=".48" stop-color="#ffffff" stop-opacity=".04"/>
+      <stop offset="1" stop-color="#52678f" stop-opacity=".42"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#fff0d0" stop-opacity=".1"/>
+      <stop offset=".32" stop-color="#fff5e5" stop-opacity=".85"/>
+      <stop offset=".7" stop-color="#e8d5ef" stop-opacity=".72"/>
+      <stop offset="1" stop-color="#fff0d0" stop-opacity=".12"/>
+    </linearGradient>
+    <linearGradient id="horizon" x1="0" y1="0" x2="1" y2=".2">
+      <stop offset="0" stop-color="#9bc8cc" stop-opacity=".7"/>
+      <stop offset=".5" stop-color="#d4c9df" stop-opacity=".7"/>
+      <stop offset="1" stop-color="#f1cdbb" stop-opacity=".78"/>
+    </linearGradient>
+    <linearGradient id="horizon-glow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff7e9" stop-opacity=".8"/>
+      <stop offset="1" stop-color="#fff7e9" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="soft-blur" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="42"/>
+    </filter>
+    <filter id="star-glow" x="-200%" y="-200%" width="400%" height="400%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="planet-shadow-filter" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="24"/>
+    </filter>
+    <clipPath id="sky-clip"><rect width="1920" height="1080"/></clipPath>
+  </defs>
+
+  <g clip-path="url(#sky-clip)">
+    <rect width="1920" height="1080" fill="url(#space-sky)"/>
+
+    <g filter="url(#soft-blur)" opacity=".72">
+      <ellipse cx="420" cy="260" rx="420" ry="220" fill="url(#nebula-blue)"/>
+      <ellipse cx="1080" cy="230" rx="500" ry="250" fill="url(#nebula)"/>
+      <ellipse cx="1510" cy="520" rx="430" ry="230" fill="url(#nebula-rose)"/>
+      <ellipse cx="710" cy="590" rx="470" ry="210" fill="url(#nebula-blue)"/>
+    </g>
+
+    <g fill="none" stroke-linecap="round" opacity=".32">
+      <path d="M-80 420 C190 220 330 210 570 330 S920 520 1190 300 S1650 90 2040 250" stroke="#fff5e9" stroke-width="76" filter="url(#soft-blur)"/>
+      <path d="M-40 540 C210 360 440 360 660 465 S1050 640 1310 455 S1700 280 2000 410" stroke="#a5badc" stroke-width="55" filter="url(#soft-blur)"/>
+      <path d="M250 120 C500 30 690 80 850 190 S1180 320 1440 150" stroke="#f3d8e6" stroke-width="35"/>
+    </g>
+
+    <!-- Distant spiral galaxy -->
+    <g transform="translate(1025 325) rotate(-17)" opacity=".72">
+      <ellipse rx="220" ry="78" fill="url(#nebula)" filter="url(#soft-blur)"/>
+      <g fill="none" stroke-linecap="round">
+        <path d="M-196 12 C-118 -114 72 -137 176 -42 C260 35 175 119 72 103 C-24 88 -46 14 18 -28 C78 -66 139 -26 127 13" stroke="#fff4e7" stroke-width="7" opacity=".82"/>
+        <path d="M-158 52 C-80 -40 46 -82 132 -26 C193 14 144 77 79 74 C18 72 0 28 35 2" stroke="#e8e1f3" stroke-width="5" opacity=".72"/>
+        <path d="M-118 -62 C-25 -119 93 -103 154 -28" stroke="#f5d3df" stroke-width="4" opacity=".78"/>
+      </g>
+      <ellipse rx="22" ry="22" fill="#fff9ea" filter="url(#star-glow)"/>
+      <ellipse rx="9" ry="9" fill="#ffffff"/>
+    </g>
+
+    <!-- Soft pastel planets -->
+    <ellipse cx="1608" cy="462" rx="280" ry="265" fill="#677ba8" opacity=".17" filter="url(#planet-shadow-filter)"/>
+    <g transform="translate(1604 420)">
+      <ellipse cx="0" cy="0" rx="310" ry="104" fill="none" stroke="url(#ring)" stroke-width="20" transform="rotate(-18)" opacity=".82"/>
+      <circle r="205" fill="url(#planet)"/>
+      <circle r="205" fill="url(#planet-shadow)"/>
+      <path d="M-192 -55 C-112 -92 -64 -49 8 -62 S118 -124 184 -75" fill="none" stroke="#fff8ed" stroke-width="12" opacity=".35"/>
+      <path d="M-185 42 C-95 5 -28 34 54 0 S142 -21 195 15" fill="none" stroke="#8d9fc6" stroke-width="16" opacity=".2"/>
+      <path d="M-152 120 C-75 80 28 105 95 66 S167 48 196 76" fill="none" stroke="#fff7ec" stroke-width="9" opacity=".3"/>
+      <ellipse cx="-42" cy="-118" rx="85" ry="34" fill="#ffffff" opacity=".22" filter="url(#soft-blur)"/>
+    </g>
+    <path d="M1300 455 C1435 345 1770 330 1920 405" fill="none" stroke="#fff4e2" stroke-width="8" opacity=".65" filter="url(#star-glow)"/>
+
+    <!-- Small moon -->
+    <g transform="translate(345 520)">
+      <circle r="88" fill="#d8ddef" opacity=".8"/>
+      <circle r="88" fill="url(#planet-shadow)"/>
+      <circle cx="-28" cy="-24" r="14" fill="#aebbd7" opacity=".3"/>
+      <circle cx="29" cy="22" r="22" fill="#9eafd2" opacity=".22"/>
+      <circle cx="-48" cy="36" r="8" fill="#9eafd2" opacity=".22"/>
+    </g>
+
+    <!-- Star field -->
+    <g fill="#fffaf0">
+      <circle cx="92" cy="95" r="3"/><circle cx="188" cy="210" r="2"/><circle cx="278" cy="92" r="2.5"/>
+      <circle cx="435" cy="170" r="2"/><circle cx="545" cy="68" r="3"/><circle cx="632" cy="280" r="2"/>
+      <circle cx="755" cy="105" r="2.5"/><circle cx="848" cy="230" r="2"/><circle cx="945" cy="80" r="2"/>
+      <circle cx="1135" cy="115" r="2.5"/><circle cx="1238" cy="205" r="2"/><circle cx="1374" cy="80" r="2"/>
+      <circle cx="1480" cy="180" r="2.5"/><circle cx="1740" cy="110" r="3"/><circle cx="1840" cy="260" r="2"/>
+      <circle cx="105" cy="350" r="2"/><circle cx="235" cy="405" r="2.5"/><circle cx="485" cy="390" r="2"/>
+      <circle cx="690" cy="440" r="2.5"/><circle cx="820" cy="390" r="2"/><circle cx="1190" cy="385" r="2"/>
+      <circle cx="1340" cy="330" r="2.5"/><circle cx="1830" cy="480" r="2.5"/><circle cx="1720" cy="585" r="2"/>
+      <circle cx="120" cy="610" r="2.5"/><circle cx="520" cy="650" r="2"/><circle cx="760" cy="570" r="2"/>
+      <circle cx="1000" cy="650" r="2.5"/><circle cx="1195" cy="555" r="2"/><circle cx="1450" cy="675" r="2"/>
+      <circle cx="1790" cy="690" r="2.5"/><circle cx="1885" cy="770" r="2"/>
+    </g>
+    <g stroke="#fff8e9" stroke-linecap="round" opacity=".75" filter="url(#star-glow)">
+      <path d="M545 43 V93 M520 68 H570" stroke-width="2"/>
+      <path d="M1238 180 V230 M1213 205 H1263" stroke-width="2"/>
+      <path d="M1740 84 V136 M1714 110 H1766" stroke-width="2"/>
+      <path d="M820 368 V412 M798 390 H842" stroke-width="1.5"/>
+      <path d="M1830 458 V502 M1808 480 H1852" stroke-width="1.5"/>
+    </g>
+
+    <!-- Gentle luminous planetary horizon -->
+    <ellipse cx="960" cy="940" rx="1180" ry="190" fill="#fff4e8" opacity=".5" filter="url(#soft-blur)"/>
+    <path d="M-80 865 C220 790 455 820 690 862 C960 910 1190 905 1420 842 C1650 780 1810 798 2000 850 L2000 1120 L-80 1120 Z" fill="url(#horizon)"/>
+    <path d="M-40 888 C280 820 480 852 720 892 C1010 938 1210 918 1450 862 C1655 814 1810 834 1980 880" fill="none" stroke="#fff8ed" stroke-width="12" opacity=".72"/>
+    <path d="M0 900 C360 845 580 900 820 930 S1320 950 1580 902 S1810 875 1920 906 L1920 1080 L0 1080 Z" fill="url(#horizon-glow)" opacity=".72"/>
+  </g>
+</svg>
