@@ -127,7 +127,7 @@ def test_invoice_posting_workspace_supports_split_payments_and_deferred_payment(
 
     assert "toggleInvoicePosting" in invoice_script.text
     assert '"/accounts?family_id="' in invoice_script.text
-    assert '"/posting/payments"' in invoice_script.text
+    assert 'posting ? "/payments" : ""' in invoice_script.text
     assert "＋新增另一個付款帳戶" in invoice_script.text
     assert "先確認發票，稍後付款" in invoice_script.text
     assert "外幣帳戶請輸入實際成交匯率" in invoice_script.text
