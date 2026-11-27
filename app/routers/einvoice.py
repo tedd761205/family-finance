@@ -729,6 +729,7 @@ def update_einvoice_item_category(
         raise HTTPException(status_code=422, detail="請先選擇分類，再記住此商品的分類規則")
 
     old_category_id = item.category_id
+    old_category_source = item.category_source
     item.category_id = category.id if category else None
     item.category_source = "manual" if category else None
 
@@ -774,7 +775,7 @@ def update_einvoice_item_category(
         entity_id=item.id,
         old_values={
             "category_id": old_category_id,
-            "category_source": item.category_source if old_category_id is not None else None,
+            "category_source": old_category_source,
         },
         new_values={
             "category_id": item.category_id,
