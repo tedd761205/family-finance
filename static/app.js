@@ -3587,7 +3587,7 @@ async function refreshFamilyNavigationPermissions(){
     "open-bills":"bills-view","open-bill-payments":"bill-payments-view",
     "open-recurring-bills":"recurring-bills-view","open-reports":"reports-view",
     "open-categories":"categories-view","open-attachments":"attachments-view",
-    "open-notifications-exports":"notifications-exports-view","open-bank-imports":"bank-imports-view",
+    "open-notifications-exports":"notifications-exports-view","open-einvoice-csv":"einvoice-csv-view","open-bank-imports":"bank-imports-view",
     "open-bank-reconciliation":"bank-reconciliation-view","open-family-members":"family-members-view",
     "open-family-roles":"family-roles-view","open-audit-logs":"audit-logs-view"
   };
