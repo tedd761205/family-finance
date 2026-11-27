@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
@@ -114,7 +114,7 @@ class EInvoice(Base):
     family_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     import_batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     invoice_number: Mapped[str] = mapped_column(String(10), nullable=False)
-    invoice_date: Mapped[object] = mapped_column(Date, nullable=False)
+    invoice_date: Mapped[date] = mapped_column(Date, nullable=False)
     merchant_tax_id: Mapped[str | None] = mapped_column(String(8), nullable=True)
     merchant_name: Mapped[str] = mapped_column(String(200), nullable=False)
     total_amount: Mapped[Decimal] = mapped_column(Numeric(20, 2), nullable=False)
