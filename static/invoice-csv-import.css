@@ -211,3 +211,7 @@
   .einvoice-payment-history-row { grid-template-columns:1fr; }
   .einvoice-payment-history-row strong { text-align:left; }
 }
+
+
+.einvoice-payment-history-row.is-voided { opacity:.68; border:1px dashed #d8cec4; background:#faf8f5; }
+.einvoice-payment-voided-label { color:#a16d58 !important; font-weight:750; }
