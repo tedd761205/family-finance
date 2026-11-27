@@ -1,4 +1,5 @@
 from datetime import date, datetime, time, timedelta, timezone
+import os
 from decimal import Decimal
 import re
 from zoneinfo import ZoneInfo
@@ -226,6 +227,14 @@ def _invoice_payment_context(
     transaction_scope: str,
 ) -> dict[int, dict]:
     """回傳呼叫者有權查看的發票付款來源；不建立或修改任何帳務交易。"""
+    # Keep bank reconciliation available before the optional invoice tables
+    # have been migrated. This uses the same explicit gate as the e-invoice API.
+    persistence_enabled = os.getenv(
+        "EINVOICE_PERSISTENCE_ENABLED", "false"
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    if not persistence_enabled:
+        return {}
+
     ids = sorted({int(item) for item in transaction_ids if item is not None})
     if not ids:
         return {}
