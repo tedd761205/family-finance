@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKeyConstraint,
@@ -109,6 +110,16 @@ class EInvoicePayment(Base):
             ondelete="RESTRICT",
             name="fk_einvoice_payments_created_by",
         ),
+        ForeignKeyConstraint(
+            ["voided_by"], ["users.id"],
+            ondelete="RESTRICT",
+            name="fk_einvoice_payments_voided_by",
+        ),
+        CheckConstraint(
+            "(is_voided = false AND voided_at IS NULL AND voided_by IS NULL) OR "
+            "(is_voided = true AND voided_at IS NOT NULL AND voided_by IS NOT NULL)",
+            name="ck_einvoice_payments_void_metadata",
+        ),
         CheckConstraint("amount > 0", name="ck_einvoice_payments_amount_positive"),
         CheckConstraint("account_amount > 0", name="ck_einvoice_payments_account_amount_positive"),
         CheckConstraint("exchange_rate > 0", name="ck_einvoice_payments_exchange_rate_positive"),
@@ -141,5 +152,9 @@ class EInvoicePayment(Base):
     transaction_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     description: Mapped[str | None] = mapped_column(String(200), nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_voided: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    voided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    voided_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    void_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_by: Mapped[int] = mapped_column(BigInteger, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
