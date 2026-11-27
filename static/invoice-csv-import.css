@@ -84,6 +84,13 @@
 .einvoice-upload-heading .field { flex:1 1 420px; min-width:0; margin:0; }
 .einvoice-clear-button { flex:0 0 auto; min-height:44px; padding:10px 18px; }
 .einvoice-clear-button:disabled { opacity:.48; cursor:not-allowed; }
+.einvoice-list-toolbar { display:flex; align-items:flex-end; justify-content:flex-end; flex-wrap:wrap; gap:10px; flex:1 1 560px; min-width:0; }
+.einvoice-search-row { display:flex; align-items:flex-end; gap:8px; flex:1 1 280px; min-width:220px; }
+.einvoice-search-label { display:grid; flex:1 1 200px; min-width:0; gap:5px; color:#62756a; font-size:12px; }
+.einvoice-search-label input { width:100%; box-sizing:border-box; min-height:42px; padding:8px 12px; border:1px solid #d6e1d6; border-radius:10px; background:#fff; color:#315745; font:inherit; font-size:13px; }
+.einvoice-search-label input:focus { outline:3px solid rgba(75,143,114,.2); border-color:#6b9d7c; }
+.einvoice-search-clear { flex:0 0 auto; min-height:42px; padding:8px 12px; white-space:nowrap; }
+.einvoice-search-clear:disabled { opacity:.45; cursor:not-allowed; }
 .einvoice-filter-controls { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:9px; }
 .einvoice-filter-label { display:flex; align-items:center; gap:7px; color:#62756a; font-size:12px; }
 .einvoice-filter-label select { min-width:112px; min-height:42px; padding:7px 26px 7px 10px; border:1px solid #d6e1d6; border-radius:10px; background:#fff; color:#315745; font:inherit; font-size:13px; }
@@ -102,6 +109,8 @@
   .einvoice-workspace-heading .muted { max-width:230px; font-size:11px; }
   .einvoice-upload-heading { align-items:stretch; flex-direction:column; gap:9px; }
   .einvoice-clear-button { width:100%; }
+  .einvoice-list-toolbar { width:100%; align-items:stretch; flex-direction:column; gap:9px; }
+  .einvoice-search-row { width:100%; min-width:0; }
   .einvoice-filter-controls { width:100%; display:grid; grid-template-columns:1fr 1fr; justify-content:stretch; }
   .einvoice-filter-label { align-items:flex-start; flex-direction:column; gap:5px; }
   .einvoice-filter-label:last-child { grid-column:1/-1; }
