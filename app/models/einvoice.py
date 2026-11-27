@@ -7,6 +7,7 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     DateTime,
+    ForeignKey,
     ForeignKeyConstraint,
     Index,
     Numeric,
@@ -150,7 +151,12 @@ class EInvoiceItem(Base):
         ),
         CheckConstraint("length(btrim(item_name)) > 0", name="ck_einvoice_items_item_name_not_blank"),
         CheckConstraint("line_number > 0", name="ck_einvoice_items_line_number_positive"),
+        CheckConstraint(
+            "category_source IS NULL OR category_source = 'manual'",
+            name="ck_einvoice_items_category_source",
+        ),
         Index("ix_einvoice_items_family_invoice", "family_id", "invoice_id", "line_number"),
+        Index("ix_einvoice_items_family_category", "family_id", "category_id"),
         Index("ix_einvoice_items_family_name", "family_id", "item_name"),
     )
 
@@ -161,4 +167,10 @@ class EInvoiceItem(Base):
     item_name: Mapped[str] = mapped_column(String(200), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(20, 2), nullable=False)
     source_line_number: Mapped[int | None] = mapped_column(nullable=True)
+    category_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("categories.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    category_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
