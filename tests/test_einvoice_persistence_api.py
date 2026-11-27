@@ -63,6 +63,7 @@ def ensure_persistent_einvoice_schema():
 @pytest.fixture
 def family_context(monkeypatch):
     monkeypatch.setenv("JWT_SECRET_KEY", "persistent-einvoice-api-test-secret-at-least-32-bytes")
+    monkeypatch.setenv("EINVOICE_PERSISTENCE_ENABLED", "true")
     suffix = uuid4().hex
     email = f"einvoice-{suffix}@example.com"
     password = "EInvoice-test-password-2026!"
@@ -237,6 +238,7 @@ def test_invoice_import_rejects_invalid_header_total_and_malformed_tax_id(family
 def test_persistent_invoice_routes_require_authentication():
     schema = app.openapi()
     for path, method in (
+        ("/einvoices/availability", "get"),
         ("/einvoices/imports", "post"),
         ("/einvoices", "get"),
         ("/einvoices/batches", "get"),
@@ -245,3 +247,21 @@ def test_persistent_invoice_routes_require_authentication():
     ):
         operation = schema["paths"][path][method]
         assert "HTTPBearer" in str(operation.get("security", []))
+
+
+
+def test_invoice_persistence_feature_flag_blocks_history_until_enabled(family_context, monkeypatch):
+    client, headers, family_id = family_context
+    monkeypatch.setenv("EINVOICE_PERSISTENCE_ENABLED", "false")
+
+    availability = client.get("/einvoices/availability", headers=headers)
+    assert availability.status_code == 200
+    assert availability.json()["enabled"] is False
+
+    response = client.get(f"/einvoices?family_id={family_id}", headers=headers)
+    assert response.status_code == 503
+    assert "資料庫尚未啟用" in response.json()["detail"]
+
+    monkeypatch.setenv("EINVOICE_PERSISTENCE_ENABLED", "true")
+    availability = client.get("/einvoices/availability", headers=headers)
+    assert availability.json()["enabled"] is True
