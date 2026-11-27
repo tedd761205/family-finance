@@ -6,6 +6,9 @@
   const money = new Intl.NumberFormat("zh-TW", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
   let parsedResult = null;
   let currentFilter = "all";
+  let currentMonth = "all";
+  let currentPage = 1;
+  let pageSize = 10;
 
   function make(tag, className, text) {
     const node = document.createElement(tag);
@@ -205,8 +208,7 @@
   }
 
   function formatMoney(cents) {
-    const value = cents / 100;
-    return "NT$ " + money.format(value);
+    return "NT$ " + money.format(cents / 100);
   }
 
   function makeKpi(label, value, modifier) {
@@ -220,6 +222,70 @@
     if (invoice.ok) return "明細核對一致";
     if (!invoice.items.length) return "缺少明細";
     return "金額／資料待檢查";
+  }
+
+  function getVisibleInvoices() {
+    if (!parsedResult) return [];
+    let visible = parsedResult.invoices;
+    if (currentFilter === "issues") visible = visible.filter(invoice => !invoice.ok);
+    if (currentFilter === "duplicates") visible = visible.filter(invoice => invoice.duplicate);
+    if (currentMonth !== "all") visible = visible.filter(invoice => invoice.date.slice(0, 7) === currentMonth);
+    return visible;
+  }
+
+  function renderPagination(total) {
+    const host = document.getElementById("einvoice-csv-pagination");
+    if (!host) return;
+    host.replaceChildren();
+    if (!total) {
+      host.classList.add("hidden");
+      return;
+    }
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    currentPage = Math.min(Math.max(1, currentPage), totalPages);
+    const start = (currentPage - 1) * pageSize + 1;
+    const end = Math.min(total, currentPage * pageSize);
+    host.classList.remove("hidden");
+
+    const info = make("span", "einvoice-page-info", "顯示第 " + start + "–" + end + " 張，共 " + total + " 張 · 第 " + currentPage + "／" + totalPages + " 頁");
+    const controls = make("div", "einvoice-page-controls");
+    const previous = make("button", "secondary small einvoice-page-button", "上一頁");
+    previous.type = "button";
+    previous.disabled = currentPage <= 1;
+    previous.addEventListener("click", () => { currentPage -= 1; renderInvoices(); });
+    const next = make("button", "secondary small einvoice-page-button", "下一頁");
+    next.type = "button";
+    next.disabled = currentPage >= totalPages;
+    next.addEventListener("click", () => { currentPage += 1; renderInvoices(); });
+
+    const pageNumbers = make("div", "einvoice-page-numbers");
+    let first = Math.max(1, currentPage - 2);
+    let last = Math.min(totalPages, first + 4);
+    first = Math.max(1, last - 4);
+    if (first > 1) {
+      const startButton = make("button", "einvoice-page-number", "1");
+      startButton.type = "button";
+      startButton.addEventListener("click", () => { currentPage = 1; renderInvoices(); });
+      pageNumbers.append(startButton);
+      if (first > 2) pageNumbers.append(make("span", "einvoice-page-ellipsis", "…"));
+    }
+    for (let page = first; page <= last; page += 1) {
+      const button = make("button", "einvoice-page-number" + (page === currentPage ? " active" : ""), page);
+      button.type = "button";
+      button.setAttribute("aria-label", "第 " + page + " 頁");
+      if (page === currentPage) button.setAttribute("aria-current", "page");
+      button.addEventListener("click", () => { currentPage = page; renderInvoices(); });
+      pageNumbers.append(button);
+    }
+    if (last < totalPages) {
+      if (last < totalPages - 1) pageNumbers.append(make("span", "einvoice-page-ellipsis", "…"));
+      const endButton = make("button", "einvoice-page-number", totalPages);
+      endButton.type = "button";
+      endButton.addEventListener("click", () => { currentPage = totalPages; renderInvoices(); });
+      pageNumbers.append(endButton);
+    }
+    controls.append(previous, pageNumbers, next);
+    host.append(info, controls);
   }
 
   function renderInvoices() {
@@ -238,16 +304,17 @@
       makeKpi("待檢查", parsedResult.issueCount + " 張", parsedResult.issueCount ? "is-warn" : "is-good")
     );
 
+    const visible = getVisibleInvoices();
+    const totalPages = Math.max(1, Math.ceil(visible.length / pageSize));
+    currentPage = Math.min(Math.max(1, currentPage), totalPages);
+    const pageInvoices = visible.slice((currentPage - 1) * pageSize, currentPage * pageSize);
     list.replaceChildren();
-    let visible = parsedResult.invoices;
-    if (currentFilter === "issues") visible = visible.filter(invoice => !invoice.ok);
-    if (currentFilter === "duplicates") visible = visible.filter(invoice => invoice.duplicate);
 
-    if (!visible.length) {
-      list.append(make("p", "einvoice-empty", "此篩選條件沒有發票。"));
+    if (!pageInvoices.length) {
+      list.append(make("p", "einvoice-empty", "目前篩選條件沒有發票。"));
     }
 
-    visible.forEach(invoice => {
+    pageInvoices.forEach(invoice => {
       const card = make("article", "einvoice-card");
       const top = make("div", "einvoice-card-top");
       const main = make("div", "einvoice-card-main");
@@ -274,10 +341,7 @@
       );
       card.append(numbers);
 
-      if (invoice.errors.length) {
-        const error = make("p", "einvoice-card-warning", invoice.errors.join("；"));
-        card.append(error);
-      }
+      if (invoice.errors.length) card.append(make("p", "einvoice-card-warning", invoice.errors.join("；")));
 
       if (invoice.items.length) {
         const details = make("details", "einvoice-items");
@@ -317,16 +381,54 @@
     } else {
       diagnostics.classList.add("hidden");
     }
+    renderPagination(visible.length);
     host.classList.remove("hidden");
+  }
+
+  function resetPreview(ask) {
+    if (ask && parsedResult && !window.confirm("清除目前選取的檔案與發票預覽？此預覽尚未存入資料庫。")) return;
+    parsedResult = null;
+    currentFilter = "all";
+    currentMonth = "all";
+    currentPage = 1;
+    pageSize = 10;
+    const file = document.getElementById("einvoice-csv-file");
+    const message = document.getElementById("einvoice-csv-message");
+    const results = document.getElementById("einvoice-csv-results");
+    const filename = document.getElementById("einvoice-csv-filename");
+    const filter = document.getElementById("einvoice-csv-filter");
+    const month = document.getElementById("einvoice-csv-month");
+    const size = document.getElementById("einvoice-csv-page-size");
+    if (file) file.value = "";
+    if (message) { message.className = "einvoice-message"; message.textContent = ""; }
+    if (filename) filename.textContent = "尚未選擇檔案";
+    if (filter) filter.value = "all";
+    if (month) month.replaceChildren(new Option("全部月份", "all"));
+    if (size) size.value = "10";
+    if (results) results.classList.add("hidden");
+    const clear = document.getElementById("einvoice-csv-clear");
+    if (clear) clear.disabled = true;
+  }
+
+  function fillMonthOptions(invoices) {
+    const select = document.getElementById("einvoice-csv-month");
+    if (!select) return;
+    const months = [...new Set(invoices.map(invoice => invoice.date.slice(0, 7)))].sort().reverse();
+    select.replaceChildren(new Option("全部月份", "all"));
+    months.forEach(month => select.add(new Option(month.replace("-", " 年 ") + " 月", month)));
   }
 
   async function handleFile(file) {
     const message = document.getElementById("einvoice-csv-message");
     const results = document.getElementById("einvoice-csv-results");
+    const clear = document.getElementById("einvoice-csv-clear");
     if (!file) return;
+    parsedResult = null;
     results.classList.add("hidden");
+    clear.disabled = false;
     message.className = "einvoice-message";
     message.textContent = "";
+    document.getElementById("einvoice-csv-filename").textContent = file.name;
     if (file.size > MAX_BYTES) {
       message.classList.add("is-error");
       message.textContent = "檔案不可超過 10 MB，請分月份匯入。";
@@ -336,7 +438,12 @@
       const text = decodeBytes(await file.arrayBuffer());
       parsedResult = parseText(text);
       currentFilter = "all";
+      currentMonth = "all";
+      currentPage = 1;
+      pageSize = 10;
       document.getElementById("einvoice-csv-filter").value = "all";
+      document.getElementById("einvoice-csv-page-size").value = "10";
+      fillMonthOptions(parsedResult.invoices);
       document.getElementById("einvoice-csv-filename").textContent = file.name;
       message.classList.add("is-success");
       message.textContent = "已在此裝置完成解析。原始 CSV 不會上傳伺服器，也尚未寫入正式帳務。";
@@ -349,38 +456,61 @@
   }
 
   function mount() {
-    const bankView = document.getElementById("bank-imports-view");
-    if (!bankView || document.getElementById("einvoice-csv-import")) return;
-    const notice = document.getElementById("bank-imports-notice");
+    const workspace = document.getElementById("einvoice-csv-workspace-content");
+    if (!workspace || document.getElementById("einvoice-csv-import")) return;
     const section = make("section", "subpanel einvoice-csv-import");
     section.id = "einvoice-csv-import";
     section.innerHTML =
-      '<div class="einvoice-heading">' +
-        '<div><p class="eyebrow">E-INVOICE CSV IMPORT</p><h3>電子發票 CSV 匯入預覽</h3>' +
-        '<p class="muted">讀取財政部／發票 App 匯出的 M 表頭與 D 明細格式。可先檢查品項、折扣與發票金額，不會直接建立支出。</p></div>' +
-        '<span class="einvoice-local-tag">僅本機解析</span>' +
-      '</div>' +
-      '<div class="einvoice-upload-box"><label class="field">選擇電子發票 CSV 檔案' +
-        '<input id="einvoice-csv-file" type="file" accept=".csv,.txt,text/csv,text/plain"></label>' +
+      '<div class="einvoice-upload-box">' +
+        '<div class="einvoice-upload-heading"><label class="field">選擇電子發票 CSV 檔案' +
+          '<input id="einvoice-csv-file" type="file" accept=".csv,.txt,text/csv,text/plain"></label>' +
+          '<button id="einvoice-csv-clear" class="secondary einvoice-clear-button" type="button" disabled>清除預覽</button></div>' +
         '<p class="tiny muted">支援 UTF-8、Big5／CP950；以 | 分隔欄位，單檔上限 10 MB。建議一次匯入一個月份。</p>' +
         '<p id="einvoice-csv-filename" class="einvoice-filename">尚未選擇檔案</p></div>' +
       '<p id="einvoice-csv-message" class="einvoice-message" role="status" aria-live="polite"></p>' +
       '<div id="einvoice-csv-results" class="hidden">' +
         '<div id="einvoice-csv-summary" class="einvoice-kpi-grid"></div>' +
-        '<div class="einvoice-list-heading"><div><h4>發票檢查結果</h4><p class="tiny muted">表頭總額與商品／折扣明細逐張核對；負數折扣會保留。</p></div>' +
-          '<label class="einvoice-filter-label">顯示<select id="einvoice-csv-filter"><option value="all">全部發票</option><option value="issues">待檢查</option><option value="duplicates">疑似重複</option></select></label></div>' +
+        '<div class="einvoice-list-heading"><div><h3>發票檢查結果</h3><p class="tiny muted">表頭總額與商品／折扣明細逐張核對；負數折扣會保留。</p></div>' +
+          '<div class="einvoice-filter-controls">' +
+            '<label class="einvoice-filter-label">月份<select id="einvoice-csv-month"><option value="all">全部月份</option></select></label>' +
+            '<label class="einvoice-filter-label">狀態<select id="einvoice-csv-filter"><option value="all">全部發票</option><option value="issues">待檢查</option><option value="duplicates">疑似重複</option></select></label>' +
+            '<label class="einvoice-filter-label">每頁<select id="einvoice-csv-page-size"><option value="10">10 張</option><option value="20">20 張</option><option value="50">50 張</option></select></label>' +
+          '</div></div>' +
         '<div id="einvoice-csv-diagnostics" class="einvoice-diagnostics hidden"></div>' +
         '<div id="einvoice-csv-list" class="einvoice-card-list"></div>' +
-        '<p class="einvoice-local-footnote">目前為第一階段檢查預覽：不會寫入資料庫、不會新增正式交易，也不會與銀行／信用卡 CSV 匯入混用。離開頁面或重新整理後，請重新選取檔案。</p>' +
+        '<nav id="einvoice-csv-pagination" class="einvoice-pagination hidden" aria-label="電子發票分頁"></nav>' +
+        '<p class="einvoice-local-footnote">目前為本機檢查預覽：不會寫入資料庫、不會新增正式交易，也不會與銀行／信用卡 CSV 匯入混用。清除預覽或重新整理頁面後，請重新選取檔案。</p>' +
       '</div>';
+    workspace.append(section);
 
-    if (notice && notice.parentNode) notice.parentNode.insertBefore(section, notice.nextSibling);
-    else bankView.insertBefore(section, bankView.firstChild);
-
-    document.getElementById("einvoice-csv-file").addEventListener("change", event => { const file = event.target.files && event.target.files[0]; event.target.value = ""; handleFile(file); });
+    const fileInput = document.getElementById("einvoice-csv-file");
+    fileInput.addEventListener("change", event => {
+      const file = event.target.files && event.target.files[0];
+      event.target.value = "";
+      handleFile(file);
+    });
+    document.getElementById("einvoice-csv-clear").addEventListener("click", () => resetPreview(true));
     document.getElementById("einvoice-csv-filter").addEventListener("change", event => {
       currentFilter = event.target.value;
+      currentPage = 1;
       renderInvoices();
+    });
+    document.getElementById("einvoice-csv-month").addEventListener("change", event => {
+      currentMonth = event.target.value;
+      currentPage = 1;
+      renderInvoices();
+    });
+    document.getElementById("einvoice-csv-page-size").addEventListener("change", event => {
+      pageSize = Number(event.target.value) || 10;
+      currentPage = 1;
+      renderInvoices();
+    });
+    document.getElementById("open-einvoice-csv")?.addEventListener("click", () => {
+      document.getElementById("einvoice-csv-view")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    document.getElementById("close-einvoice-csv")?.addEventListener("click", () => {
+      document.getElementById("einvoice-csv-view")?.classList.add("hidden");
+      document.querySelector('[data-nav-key="overview"]')?.click();
     });
   }
 

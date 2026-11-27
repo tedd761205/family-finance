@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#173b35">
   <title>家庭記帳系統</title>
   <link rel="stylesheet" href="/static/styles.css?v=20261127-7">
-  <link rel="stylesheet" href="/static/invoice-csv-import.css?v=20261127-1">
+  <link rel="stylesheet" href="/static/invoice-csv-import.css?v=20261127-2">
   <style>
     .browser-help{margin-top:26px;padding:20px;border:1px solid #dce8e0;border-radius:14px;background:#fff}
     .browser-help-title{margin:0 0 8px;color:#1b5142;font-size:17px;font-weight:750}
@@ -101,15 +101,18 @@
         <button class="app-nav-button active hidden" type="button" data-nav-key="overview" data-nav-action="overview" data-permissions="dashboard.view" aria-current="page"><span class="nav-icon" aria-hidden="true">⌂</span><span class="nav-label">總覽</span></button>
         <button class="app-nav-button hidden" type="button" data-nav-key="entry" data-nav-target="open-transactions" data-permissions="transactions.view"><span class="nav-icon" aria-hidden="true">＋</span><span class="nav-label">記帳</span></button>
         <button class="app-nav-button hidden" type="button" data-nav-key="bills" data-nav-target="open-bills" data-permissions="bills.view"><span class="nav-icon" aria-hidden="true">單</span><span class="nav-label">帳單</span></button>
+        <button class="app-nav-button hidden" type="button" data-nav-key="invoice" data-nav-target="open-einvoice-csv" data-permissions="imports.view"><span class="nav-icon" aria-hidden="true">發</span><span class="nav-label">發票</span></button>
         <button class="app-nav-button hidden" type="button" data-nav-key="reconcile" data-nav-target="open-bank-reconciliation" data-permissions="reconciliation.view"><span class="nav-icon" aria-hidden="true">對</span><span class="nav-label">對帳</span></button>
         <button class="app-nav-button hidden" type="button" data-nav-key="more" data-nav-action="more" aria-expanded="false" aria-controls="more-tools-panel"><span class="nav-icon" aria-hidden="true">☷</span><span class="nav-label">更多</span></button>
       </nav>
+      <button id="open-einvoice-csv" type="button" class="hidden" aria-hidden="true" tabindex="-1"></button>
       <nav id="workspace-shortcuts" class="workspace-shortcuts hidden" aria-label="工作區快速切換">
         <span class="workspace-shortcuts-label">快速切換</span>
         <button type="button" class="workspace-shortcut" data-target="open-accounts" data-permissions="accounts.view">帳戶</button>
         <button type="button" class="workspace-shortcut" data-target="open-transactions" data-permissions="transactions.view">收支</button>
         <button type="button" class="workspace-shortcut" data-target="open-transfers" data-permissions-all="accounts.transfer,transactions.view">轉帳</button>
         <button type="button" class="workspace-shortcut" data-target="open-bills" data-permissions="bills.view">帳單</button>
+        <button type="button" class="workspace-shortcut" data-target="open-einvoice-csv" data-permissions="imports.view">發票</button>
         <button type="button" class="workspace-shortcut" data-target="open-reports" data-permissions="reports.view">報表</button>
         <button type="button" class="workspace-shortcut" data-target="open-bank-reconciliation" data-permissions="reconciliation.view">對帳</button>
       </nav>
@@ -644,6 +647,14 @@
 <div class="subpanel"><div class="section-heading"><h3>定期匯出排程</h3></div><form id="export-schedule-form"><div class="account-form-grid"><label class="field">已發布範本<select id="export-schedule-template" required><option value="">請先發布範本</option></select></label><label class="field">排程名稱<input id="export-schedule-name" maxlength="120" required></label><label class="field">頻率<select id="export-schedule-frequency"><option value="daily">每日</option><option value="weekly">每週</option><option value="monthly">每月</option></select></label><label class="field" id="export-schedule-weekday-wrap">星期<select id="export-schedule-weekday"><option value="0">星期一</option><option value="1">星期二</option><option value="2">星期三</option><option value="3">星期四</option><option value="4">星期五</option><option value="5">星期六</option><option value="6">星期日</option></select></label><label class="field hidden" id="export-schedule-monthday-wrap">每月日期<input id="export-schedule-monthday" type="number" min="1" max="28" value="1"></label><label class="field">台灣時間（小時）<input id="export-schedule-hour" type="number" min="0" max="23" value="8" required></label><label class="field">分鐘<input id="export-schedule-minute" type="number" min="0" max="59" value="0" required></label></div><div class="form-actions"><button class="primary" type="submit">建立排程</button></div></form><p class="tiny muted">排程設定使用 Asia/Taipei。定時自動執行仍需啟用排程 Worker；目前不會因建立排程而自動啟用任何付費服務。</p><div id="export-schedules-list" class="export-schedules-list"></div><p id="export-schedules-empty" class="empty-state hidden">尚無排程。</p></div>
 <div class="subpanel"><div class="section-heading"><h3>匯出執行紀錄</h3><span id="export-runs-summary" class="tiny muted"></span></div><div id="export-runs-list" class="export-runs-list"></div><p id="export-runs-empty" class="empty-state hidden">尚無匯出紀錄。</p></div>
 </section>
+      <section id="einvoice-csv-view" class="panel einvoice-csv-view hidden">
+        <div class="einvoice-workspace-heading">
+          <div><p class="eyebrow">FAMILY E-INVOICES</p><h2>電子發票</h2><p class="muted">快速匯入發票 CSV，查看每張發票、商品與折扣，逐筆核對後再進入正式記帳。</p></div>
+          <div class="heading-actions"><button class="secondary small" id="close-einvoice-csv" type="button">收起</button></div>
+        </div>
+        <div id="einvoice-csv-workspace-content"></div>
+      </section>
+
       <section id="bank-imports-view" class="panel bank-imports-panel hidden">
 <div class="accounts-heading"><div><p class="eyebrow">BANK STATEMENT IMPORT</p><h2>銀行／信用卡對帳單匯入</h2><p class="muted">支援 UTF-8 與 Big5/CP950 CSV。上傳後先建立暫存預覽；確認後預設只保存銀行明細供對帳，不會自動新增正式交易。</p></div><div class="heading-actions"><button class="secondary small" id="close-bank-imports" type="button">收起</button><button class="secondary small" id="refresh-bank-imports" type="button">重新整理</button></div></div>
 <div id="bank-imports-notice" class="notice" role="status" aria-live="polite"></div>
@@ -773,10 +784,10 @@
       window.setTimeout(() => panel.classList.remove("hidden"), 1800);
     })();
   </script>
-  <script src="/static/app.js?v=20261126-3" defer></script>
+  <script src="/static/app.js?v=20261127-2" defer></script>
   <script src="/static/reconciliation.js" defer></script>
   <script src="/static/local-receipt-parser.js?v=20261126-3" defer></script>
   <script src="/static/local-receipt-ocr.js?v=20261126-15" defer></script>
-  <script src="/static/invoice-csv-import.js?v=20261127-1" defer></script>
+  <script src="/static/invoice-csv-import.js?v=20261127-2" defer></script>
 </body>
 </html>
