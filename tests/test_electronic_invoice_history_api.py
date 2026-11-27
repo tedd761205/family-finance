@@ -183,7 +183,7 @@ def test_invoice_import_is_persistent_idempotent_searchable_and_audited(invoice_
         json={
             "source_filename": "2026-11 再次匯入.csv",
             "invoices": [
-                sample_invoice(),
+                sample_invoice(date="2026-11-28"),
                 sample_invoice(
                     number="EF12345678",
                     merchant_name="便利商店",
