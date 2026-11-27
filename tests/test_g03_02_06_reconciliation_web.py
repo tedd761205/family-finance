@@ -64,3 +64,5 @@ def test_reconciliation_workspace_has_mobile_first_layout():
     assert ".reconciliation-candidate-card" in css
     assert "@media(max-width:760px)" in css
     assert ".reconciliation-manual-select" in css
+    assert "appendInvoicePaymentContext" in javascript
+    assert "電子發票付款" in javascript
