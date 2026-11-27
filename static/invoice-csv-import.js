@@ -429,7 +429,12 @@
   }
 
   function resetPreview(ask) {
-    if (ask && parsedResult && !window.confirm("清除目前選取的檔案與發票預覽？此預覽尚未存入資料庫。")) return;
+    if (ask && parsedResult) {
+      const savedNote = previewSaved
+        ? "此批發票已保存到家庭歷史區；清除只會移除本機預覽，不會刪除已保存紀錄。"
+        : "此預覽尚未保存到資料庫。";
+      if (!window.confirm("清除目前選取的檔案與發票預覽？\\n\\n" + savedNote)) return;
+    }
     parsedResult = null;
     currentFilter = "all";
     currentMonth = "all";
@@ -885,7 +890,6 @@
     window.addEventListener("family-finance-family-changed", () => {
       if (!document.getElementById("einvoice-csv-view")?.classList.contains("hidden")) loadHistory();
     });
-    const historySearchClear = document.getElementById("einvoice-history-search");
     const searchInput = document.getElementById("einvoice-csv-search");
     const searchClear = document.getElementById("einvoice-csv-search-clear");
     searchInput.addEventListener("input", event => {
