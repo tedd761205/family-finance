@@ -1035,6 +1035,11 @@
               formatAccountMoney(payment.account_amount, payment.account_currency_code));
             item.append(left, right);
             item.append(make("small", "", "對應帳戶交易 #" + payment.transaction_id));
+            if (payment.is_voided) {
+              item.classList.add("is-voided");
+              item.append(make("small", "einvoice-payment-voided-label", "已沖銷" +
+                (payment.void_reason ? " · " + payment.void_reason : "")));
+            }
             paymentList.append(item);
           });
           panel.append(paymentList);
@@ -1057,12 +1062,13 @@
       }
 
       const invoiceEligible = invoice.verification_status === "matched" && !invoice.is_duplicate;
+      const isReopen = posting?.status === "voided";
       const allowMorePayment = canCreate && (posting || invoiceEligible) &&
-        (!posting || posting.status === "unpaid" || posting.status === "partially_paid") &&
-        (!posting || Number(posting.remaining_amount) > 0);
+        (!posting || isReopen || posting.status === "unpaid" || posting.status === "partially_paid") &&
+        (!posting || isReopen || Number(posting.remaining_amount) > 0);
       if (allowMorePayment && accounts.length) {
         const form = make("div", "einvoice-posting-form");
-        form.append(make("strong", "", posting ? "新增一筆或多筆付款" : "選擇付款方式"));
+        form.append(make("strong", "", isReopen ? "重新入帳：新增一筆或多筆付款" : posting ? "新增一筆或多筆付款" : "選擇付款方式"));
         const rows = make("div", "einvoice-payment-entries");
         rows.append(makeInvoicePaymentRow(accounts, invoice.invoice_date));
         const addRow = make("button", "secondary small", "＋新增另一個付款帳戶");
@@ -1078,7 +1084,8 @@
         };
         rows.addEventListener("input", updatePreview);
         const actions = make("div", "einvoice-posting-actions");
-        const save = make("button", "primary small", posting ? "保存付款並建立支出" : "確認入帳並保存付款");
+        const save = make("button", "primary small",
+          isReopen ? "重新入帳並保存付款" : posting ? "保存付款並建立支出" : "確認入帳並保存付款");
         save.type = "button";
         save.addEventListener("click", async () => {
           const paymentRows = [...rows.querySelectorAll(".einvoice-payment-entry")];
@@ -1120,18 +1127,20 @@
             setHistoryMessage("本次付款超過發票尚未支付金額，請調整付款明細。", true);
             return;
           }
-          if (!payments.length && posting) {
+          if (!payments.length && posting && !isReopen) {
             setHistoryMessage("請至少新增一筆付款。", true);
             return;
           }
           const message = payments.length
             ? "將新增 " + payments.length + " 筆帳戶支出，付款合計 " + formatHistoryMoney(total) + "。"
-            : "只確認發票及建立待付款紀錄，不會變動任何帳戶餘額。";
+            : isReopen
+              ? "只重新建立發票待付款紀錄，不會新增交易或改變帳戶餘額。"
+              : "只確認發票及建立待付款紀錄，不會變動任何帳戶餘額。";
           if (!window.confirm(message + "\n\n是否繼續？")) return;
           save.disabled = true;
           try {
             const endpoint = "/einvoices/" + invoice.id + "/posting" +
-              (posting ? "/payments" : "") + "?family_id=" + familyId;
+              (posting && !isReopen ? "/payments" : "") + "?family_id=" + familyId;
             const result = await bridge.api(endpoint, {
               method: "POST",
               body: JSON.stringify({payments})
@@ -1146,8 +1155,9 @@
             save.disabled = false;
           }
         });
-        if (!posting) {
-          const defer = make("button", "secondary small", "先確認發票，稍後付款");
+        if (!posting || isReopen) {
+          const defer = make("button", "secondary small",
+            isReopen ? "重新建立未付款入帳" : "先確認發票，稍後付款");
           defer.type = "button";
           defer.addEventListener("click", async () => {
             if (!window.confirm("只建立發票待付款紀錄，不會新增交易或改變帳戶餘額。是否繼續？")) return;
