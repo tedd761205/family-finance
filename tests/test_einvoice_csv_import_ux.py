@@ -22,7 +22,7 @@ def test_einvoice_workspace_is_reachable_from_primary_navigation_and_shortcuts()
     assert 'id="close-einvoice-csv"' in page.text
     assert '"open-einvoice-csv":"einvoice-csv-view"' in script.text
     assert "/static/app.js?v=20261127-3" in page.text
-    assert "/static/invoice-csv-import.js?v=20261127-4" in page.text
+    assert "/static/invoice-csv-import.js?v=20261127-5" in page.text
     assert "/static/invoice-csv-import.css?v=20261127-4" in page.text
 
 
@@ -78,7 +78,7 @@ def test_einvoice_saved_history_and_save_action_are_wired_to_family_scoped_apis(
     assert 'id="open-bank-imports"' in page.text
     assert 'id="open-bank-imports" type="button" data-permissions="imports.view"' in page.text
     assert "/static/app.js?v=20261127-3" in page.text
-    assert "/static/invoice-csv-import.js?v=20261127-4" in page.text
+    assert "/static/invoice-csv-import.js?v=20261127-5" in page.text
     assert "/static/invoice-csv-import.css?v=20261127-4" in page.text
 
     assert "window.FamilyFinanceInvoiceBridge" in script.text
@@ -94,6 +94,10 @@ def test_einvoice_saved_history_and_save_action_are_wired_to_family_scoped_apis(
     assert 'params.set("include_voided", "true")' in invoice_script.text
     assert 'family-finance-family-changed' in invoice_script.text
     assert "previewSaved = true" in invoice_script.text
+    assert "previewFamilyId = String(previewFamilyId)" in invoice_script.text
+    assert "家庭已切換，為避免發票存入錯誤家庭" in invoice_script.text
+    assert "historyRequestSequence += 1" in invoice_script.text
+    assert invoice_script.text.index("const sequence = ++historyRequestSequence;") < invoice_script.text.index("if (!bridge || !familyId)")
     assert "不會自動新增收入或支出" in invoice_script.text
 
     assert ".einvoice-history-panel" in styles.text
