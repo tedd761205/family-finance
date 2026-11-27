@@ -1,3 +1,4 @@
+import os
 import re
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -24,6 +25,18 @@ CENT = Decimal("0.01")
 MAX_AMOUNT = Decimal("1000000000000000000")
 INVOICE_NUMBER_PATTERN = re.compile(r"^[A-Z]{2}[0-9]{8}$")
 TAX_ID_PATTERN = re.compile(r"^[0-9]{8}$")
+
+
+def _persistence_enabled() -> bool:
+    return os.getenv("EINVOICE_PERSISTENCE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _require_persistence_enabled() -> None:
+    if not _persistence_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="家庭歷史發票資料庫尚未啟用；完成正式資料庫遷移與核准後才會開放。",
+        )
 
 
 def _authorize(db: Session, user: User, family_id: int, permission: str) -> str:
@@ -216,6 +229,7 @@ def save_invoice_import(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    _require_persistence_enabled()
     scope = _authorize(db, current_user, family_id, "imports.create")
     _authorize(db, current_user, family_id, "imports.confirm")
 
@@ -342,6 +356,13 @@ def save_invoice_import(
     }
 
 
+@router.get("/availability", summary="查詢家庭發票保存功能是否已啟用")
+def einvoice_availability(
+    current_user: User = Depends(get_current_user),
+):
+    return {"success": True, "enabled": _persistence_enabled()}
+
+
 @router.get("/batches", summary="查詢家庭發票匯入批次")
 def list_einvoice_import_batches(
     family_id: int = Query(..., gt=0),
@@ -350,6 +371,7 @@ def list_einvoice_import_batches(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    _require_persistence_enabled()
     scope = _authorize(db, current_user, family_id, "imports.view")
     query = db.query(EInvoiceImportBatch).filter(EInvoiceImportBatch.family_id == family_id)
     if scope == "own":
@@ -377,6 +399,7 @@ def list_einvoices(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    _require_persistence_enabled()
     scope = _authorize(db, current_user, family_id, "imports.view")
     query = db.query(EInvoice).filter(EInvoice.family_id == family_id)
     if scope == "own":
@@ -465,6 +488,7 @@ def get_einvoice(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    _require_persistence_enabled()
     scope = _authorize(db, current_user, family_id, "imports.view")
     invoice = db.query(EInvoice).filter(
         EInvoice.id == invoice_id,
@@ -489,6 +513,7 @@ def void_einvoice(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    _require_persistence_enabled()
     scope = _authorize(db, current_user, family_id, "imports.void")
     invoice = db.query(EInvoice).filter(
         EInvoice.id == invoice_id,
