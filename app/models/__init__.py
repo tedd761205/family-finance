@@ -28,6 +28,7 @@ from app.models.export_template import ExportTemplate, ExportTemplateVersion, Ex
 from app.models.bank_import import BankImportBatch, BankImportRow
 from app.models.reconciliation import ReconciliationSession, ReconciliationMatch, ReconciliationExclusion
 from app.models.reconciliation_issue import ReconciliationIssue
+from app.models.electronic_invoice import ElectronicInvoiceImportBatch, ElectronicInvoice, ElectronicInvoiceItem
 
 __all__ = [
     "User", "Family", "FamilyMember", "Role", "Permission", "RolePermission",
@@ -37,4 +38,5 @@ __all__ = [
     "OcrTask", "RecurringBill", "Notification", "ExportTemplate",
     "ExportTemplateVersion", "ExportSchedule", "ExportRun", "BankImportBatch", "BankImportRow",
     "ReconciliationSession", "ReconciliationMatch", "ReconciliationExclusion", "ReconciliationIssue",
+    "ElectronicInvoiceImportBatch", "ElectronicInvoice", "ElectronicInvoiceItem",
 ]
