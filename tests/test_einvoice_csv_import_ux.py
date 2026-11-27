@@ -132,6 +132,9 @@ def test_invoice_posting_workspace_supports_split_payments_and_deferred_payment(
     assert "先確認發票，稍後付款" in invoice_script.text
     assert "外幣帳戶請輸入實際成交匯率" in invoice_script.text
     assert "沖銷整筆入帳及付款" in invoice_script.text
+    assert "重新入帳並保存付款" in invoice_script.text
+    assert "已沖銷" in invoice_script.text
+    assert "posting.status === \"voided\"" in invoice_script.text
     assert ".einvoice-payment-entry" in styles.text
     assert ".einvoice-posting-panel" in styles.text
     assert "/static/invoice-csv-import.js?v=20261127-7" in page.text
