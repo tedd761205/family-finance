@@ -73,6 +73,7 @@ def upgrade() -> None:
         sa.Column("family_id", sa.BigInteger(), nullable=False),
         sa.Column("import_batch_id", sa.BigInteger(), nullable=False),
         sa.Column("invoice_date", sa.Date(), nullable=False),
+        sa.Column("invoice_period", sa.String(length=6), nullable=False),
         sa.Column("invoice_number", sa.String(length=10), nullable=False),
         sa.Column("merchant_tax_id", sa.String(length=8), nullable=True),
         sa.Column("merchant_name", sa.String(length=200), nullable=False),
@@ -109,7 +110,288 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["voided_by"], ["users.id"], ondelete="RESTRICT", name="fk_einvoices_voided_by"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("family_id", "id", name="uq_einvoices_family_id_id"),
-        sa.CheckConstraint("invoice_number ~ '^[A-Z]{2}[0-9]{8}$'", name="ck_einvoices_number_format"),
+        sa.CheckConstraint("invoice_number ~ '^[A-Z]{2}[0-9]{8}
+        sa.CheckConstraint("merchant_tax_id IS NULL OR merchant_tax_id ~ '^[0-9]{8}$'", name="ck_einvoices_tax_id_format"),
+        sa.CheckConstraint("total_amount >= 0", name="ck_einvoices_total_nonnegative"),
+        sa.CheckConstraint("currency_code ~ '^[A-Z]{3}$'", name="ck_einvoices_currency_format"),
+        sa.CheckConstraint(
+            "validation_status IN ('matched', 'mismatch', 'missing_details', 'duplicate_in_file')",
+            name="ck_einvoices_validation_status",
+        ),
+    )
+    op.create_index("ix_einvoices_family_date", "electronic_invoices", ["family_id", "invoice_date", "id"])
+    op.create_index("ix_einvoices_family_number", "electronic_invoices", ["family_id", "invoice_number"])
+    op.create_index(
+        "ix_einvoices_family_period_number",
+        "electronic_invoices",
+        ["family_id", "invoice_period", "invoice_number"],
+    )
+    op.create_index(
+        "uq_einvoices_family_period_number_active",
+        "electronic_invoices",
+        ["family_id", "invoice_period", "invoice_number"],
+        unique=True,
+        postgresql_where=sa.text("is_voided IS FALSE"),
+    )
+    op.create_index("ix_einvoices_family_merchant_date", "electronic_invoices", ["family_id", "merchant_name", "invoice_date"])
+    op.create_index("ix_einvoices_family_batch", "electronic_invoices", ["family_id", "import_batch_id"])
+    op.create_index("ix_einvoices_family_transaction", "electronic_invoices", ["family_id", "linked_transaction_id"])
+
+    op.create_table(
+        "electronic_invoice_items",
+        sa.Column("id", sa.BigInteger(), autoincrement=True, nullable=False),
+        sa.Column("family_id", sa.BigInteger(), nullable=False),
+        sa.Column("invoice_id", sa.BigInteger(), nullable=False),
+        sa.Column("item_name", sa.String(length=200), nullable=False),
+        sa.Column("amount", sa.Numeric(20, 2), nullable=False),
+        sa.Column("sort_order", sa.BigInteger(), server_default="0", nullable=False),
+        sa.Column("created_by", sa.BigInteger(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["family_id", "invoice_id"],
+            ["electronic_invoices.family_id", "electronic_invoices.id"],
+            ondelete="RESTRICT", name="fk_einvoice_items_family_invoice",
+        ),
+        sa.ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="RESTRICT", name="fk_einvoice_items_created_by"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("family_id", "id", name="uq_einvoice_items_family_id_id"),
+        sa.CheckConstraint("length(btrim(item_name)) > 0", name="ck_einvoice_items_name_not_blank"),
+        sa.CheckConstraint("sort_order >= 0", name="ck_einvoice_items_sort_order_nonnegative"),
+    )
+    op.create_index(
+        "ix_einvoice_items_family_invoice",
+        "electronic_invoice_items",
+        ["family_id", "invoice_id", "sort_order"],
+    )
+    op.create_index(
+        "ix_einvoice_items_family_name",
+        "electronic_invoice_items",
+        ["family_id", "item_name"],
+    )
+
+    bind = op.get_bind()
+    for code, name, description, category in PERMISSIONS:
+        bind.execute(
+            sa.text("""
+                INSERT INTO permissions (code, name, description, category, is_active)
+                VALUES (:code, :name, :description, :category, true)
+                ON CONFLICT (code) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    description = EXCLUDED.description,
+                    category = EXCLUDED.category,
+                    is_active = true
+            """),
+            {"code": code, "name": name, "description": description, "category": category},
+        )
+
+    for role_name, codes in ROLE_CODES.items():
+        for code in codes:
+            bind.execute(
+                sa.text("""
+                    INSERT INTO role_permissions (role_id, permission_id)
+                    SELECT r.id, p.id
+                    FROM roles r
+                    JOIN permissions p ON p.code = :code
+                    WHERE r.name = :role_name AND r.is_system = true
+                    ON CONFLICT DO NOTHING
+                """),
+                {"role_name": role_name, "code": code},
+            )
+
+        bind.execute(
+            sa.text("""
+                INSERT INTO role_data_scopes (role_id, family_id, resource, scope)
+                SELECT id, family_id, 'invoices', :scope
+                FROM roles
+                WHERE name = :role_name AND is_system = true
+                ON CONFLICT (role_id, resource) DO NOTHING
+            """),
+            {"role_name": role_name, "scope": ROLE_SCOPES[role_name]},
+        )
+
+
+def downgrade() -> None:
+    bind = op.get_bind()
+    has_invoice_records = bind.execute(sa.text("""
+        SELECT
+            EXISTS (SELECT 1 FROM electronic_invoice_items)
+            OR EXISTS (SELECT 1 FROM electronic_invoices)
+            OR EXISTS (SELECT 1 FROM electronic_invoice_import_batches)
+    """)).scalar_one()
+    if has_invoice_records:
+        raise RuntimeError(
+            "Cannot downgrade while saved electronic invoice records exist; "
+            "export or back up these records before removing the invoice tables."
+        )
+
+    bind.execute(sa.text("DELETE FROM role_data_scopes WHERE resource = 'invoices'"))
+    bind.execute(sa.text("""
+        DELETE FROM role_permissions
+        WHERE permission_id IN (
+            SELECT id FROM permissions
+            WHERE code IN ('invoices.view', 'invoices.import', 'invoices.void')
+        )
+    """))
+    bind.execute(sa.text("""
+        DELETE FROM permissions
+        WHERE code IN ('invoices.view', 'invoices.import', 'invoices.void')
+    """))
+
+    op.drop_index("ix_einvoice_items_family_name", table_name="electronic_invoice_items")
+    op.drop_index("ix_einvoice_items_family_invoice", table_name="electronic_invoice_items")
+    op.drop_table("electronic_invoice_items")
+    op.drop_index("ix_einvoices_family_transaction", table_name="electronic_invoices")
+    op.drop_index("ix_einvoices_family_batch", table_name="electronic_invoices")
+    op.drop_index("ix_einvoices_family_merchant_date", table_name="electronic_invoices")
+    op.drop_index("uq_einvoices_family_period_number_active", table_name="electronic_invoices")
+    op.drop_index("ix_einvoices_family_period_number", table_name="electronic_invoices")
+    op.drop_index("ix_einvoices_family_number", table_name="electronic_invoices")
+    op.drop_index("ix_einvoices_family_date", table_name="electronic_invoices")
+    op.drop_table("electronic_invoices")
+    op.drop_index("ix_einvoice_batches_family_created", table_name="electronic_invoice_import_batches")
+    op.drop_table("electronic_invoice_import_batches")
+", name="ck_einvoices_number_format"),
+        sa.CheckConstraint("invoice_period ~ '^[0-9]{4}(02|04|06|08|10|12)
+        sa.CheckConstraint("merchant_tax_id IS NULL OR merchant_tax_id ~ '^[0-9]{8}$'", name="ck_einvoices_tax_id_format"),
+        sa.CheckConstraint("total_amount >= 0", name="ck_einvoices_total_nonnegative"),
+        sa.CheckConstraint("currency_code ~ '^[A-Z]{3}$'", name="ck_einvoices_currency_format"),
+        sa.CheckConstraint(
+            "validation_status IN ('matched', 'mismatch', 'missing_details', 'duplicate_in_file')",
+            name="ck_einvoices_validation_status",
+        ),
+    )
+    op.create_index("ix_einvoices_family_date", "electronic_invoices", ["family_id", "invoice_date", "id"])
+    op.create_index("ix_einvoices_family_number", "electronic_invoices", ["family_id", "invoice_number"])
+    op.create_index(
+        "ix_einvoices_family_period_number",
+        "electronic_invoices",
+        ["family_id", "invoice_period", "invoice_number"],
+    )
+    op.create_index(
+        "uq_einvoices_family_period_number_active",
+        "electronic_invoices",
+        ["family_id", "invoice_period", "invoice_number"],
+        unique=True,
+        postgresql_where=sa.text("is_voided IS FALSE"),
+    )
+    op.create_index("ix_einvoices_family_merchant_date", "electronic_invoices", ["family_id", "merchant_name", "invoice_date"])
+    op.create_index("ix_einvoices_family_batch", "electronic_invoices", ["family_id", "import_batch_id"])
+    op.create_index("ix_einvoices_family_transaction", "electronic_invoices", ["family_id", "linked_transaction_id"])
+
+    op.create_table(
+        "electronic_invoice_items",
+        sa.Column("id", sa.BigInteger(), autoincrement=True, nullable=False),
+        sa.Column("family_id", sa.BigInteger(), nullable=False),
+        sa.Column("invoice_id", sa.BigInteger(), nullable=False),
+        sa.Column("item_name", sa.String(length=200), nullable=False),
+        sa.Column("amount", sa.Numeric(20, 2), nullable=False),
+        sa.Column("sort_order", sa.BigInteger(), server_default="0", nullable=False),
+        sa.Column("created_by", sa.BigInteger(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["family_id", "invoice_id"],
+            ["electronic_invoices.family_id", "electronic_invoices.id"],
+            ondelete="RESTRICT", name="fk_einvoice_items_family_invoice",
+        ),
+        sa.ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="RESTRICT", name="fk_einvoice_items_created_by"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("family_id", "id", name="uq_einvoice_items_family_id_id"),
+        sa.CheckConstraint("length(btrim(item_name)) > 0", name="ck_einvoice_items_name_not_blank"),
+        sa.CheckConstraint("sort_order >= 0", name="ck_einvoice_items_sort_order_nonnegative"),
+    )
+    op.create_index(
+        "ix_einvoice_items_family_invoice",
+        "electronic_invoice_items",
+        ["family_id", "invoice_id", "sort_order"],
+    )
+    op.create_index(
+        "ix_einvoice_items_family_name",
+        "electronic_invoice_items",
+        ["family_id", "item_name"],
+    )
+
+    bind = op.get_bind()
+    for code, name, description, category in PERMISSIONS:
+        bind.execute(
+            sa.text("""
+                INSERT INTO permissions (code, name, description, category, is_active)
+                VALUES (:code, :name, :description, :category, true)
+                ON CONFLICT (code) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    description = EXCLUDED.description,
+                    category = EXCLUDED.category,
+                    is_active = true
+            """),
+            {"code": code, "name": name, "description": description, "category": category},
+        )
+
+    for role_name, codes in ROLE_CODES.items():
+        for code in codes:
+            bind.execute(
+                sa.text("""
+                    INSERT INTO role_permissions (role_id, permission_id)
+                    SELECT r.id, p.id
+                    FROM roles r
+                    JOIN permissions p ON p.code = :code
+                    WHERE r.name = :role_name AND r.is_system = true
+                    ON CONFLICT DO NOTHING
+                """),
+                {"role_name": role_name, "code": code},
+            )
+
+        bind.execute(
+            sa.text("""
+                INSERT INTO role_data_scopes (role_id, family_id, resource, scope)
+                SELECT id, family_id, 'invoices', :scope
+                FROM roles
+                WHERE name = :role_name AND is_system = true
+                ON CONFLICT (role_id, resource) DO NOTHING
+            """),
+            {"role_name": role_name, "scope": ROLE_SCOPES[role_name]},
+        )
+
+
+def downgrade() -> None:
+    bind = op.get_bind()
+    has_invoice_records = bind.execute(sa.text("""
+        SELECT
+            EXISTS (SELECT 1 FROM electronic_invoice_items)
+            OR EXISTS (SELECT 1 FROM electronic_invoices)
+            OR EXISTS (SELECT 1 FROM electronic_invoice_import_batches)
+    """)).scalar_one()
+    if has_invoice_records:
+        raise RuntimeError(
+            "Cannot downgrade while saved electronic invoice records exist; "
+            "export or back up these records before removing the invoice tables."
+        )
+
+    bind.execute(sa.text("DELETE FROM role_data_scopes WHERE resource = 'invoices'"))
+    bind.execute(sa.text("""
+        DELETE FROM role_permissions
+        WHERE permission_id IN (
+            SELECT id FROM permissions
+            WHERE code IN ('invoices.view', 'invoices.import', 'invoices.void')
+        )
+    """))
+    bind.execute(sa.text("""
+        DELETE FROM permissions
+        WHERE code IN ('invoices.view', 'invoices.import', 'invoices.void')
+    """))
+
+    op.drop_index("ix_einvoice_items_family_name", table_name="electronic_invoice_items")
+    op.drop_index("ix_einvoice_items_family_invoice", table_name="electronic_invoice_items")
+    op.drop_table("electronic_invoice_items")
+    op.drop_index("ix_einvoices_family_transaction", table_name="electronic_invoices")
+    op.drop_index("ix_einvoices_family_batch", table_name="electronic_invoices")
+    op.drop_index("ix_einvoices_family_merchant_date", table_name="electronic_invoices")
+    op.drop_index("uq_einvoices_family_period_number_active", table_name="electronic_invoices")
+    op.drop_index("ix_einvoices_family_period_number", table_name="electronic_invoices")
+    op.drop_index("ix_einvoices_family_number", table_name="electronic_invoices")
+    op.drop_index("ix_einvoices_family_date", table_name="electronic_invoices")
+    op.drop_table("electronic_invoices")
+    op.drop_index("ix_einvoice_batches_family_created", table_name="electronic_invoice_import_batches")
+    op.drop_table("electronic_invoice_import_batches")
+", name="ck_einvoices_period_format"),
         sa.CheckConstraint("merchant_tax_id IS NULL OR merchant_tax_id ~ '^[0-9]{8}$'", name="ck_einvoices_tax_id_format"),
         sa.CheckConstraint("total_amount >= 0", name="ck_einvoices_total_nonnegative"),
         sa.CheckConstraint("currency_code ~ '^[A-Z]{3}$'", name="ck_einvoices_currency_format"),
