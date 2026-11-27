@@ -13,6 +13,8 @@ from app.dependencies.auth import get_current_user
 from app.dependencies.permissions import require_permission, require_data_scope
 from app.models.account import Account
 from app.models.bank_import import BankImportBatch, BankImportRow
+from app.models.einvoice import EInvoice
+from app.models.einvoice_posting import EInvoicePayment, EInvoicePosting
 from app.models.reconciliation import ReconciliationExclusion, ReconciliationMatch, ReconciliationSession
 from app.models.reconciliation_issue import ReconciliationIssue
 from app.models.transaction import Transaction
@@ -213,6 +215,59 @@ def _score_reconciliation_candidate(
         "score": score,
         "confidence": confidence,
         "reasons": reasons,
+    }
+
+
+def _invoice_payment_context(
+    db: Session, family_id: int, transaction_ids: list[int] | set[int]
+) -> dict[int, dict]:
+    """回傳電子發票付款交易的可辨識來源；不建立或修改任何帳務交易。"""
+    ids = sorted({int(item) for item in transaction_ids if item is not None})
+    if not ids:
+        return {}
+
+    records = db.query(
+        EInvoicePayment.transaction_id.label("transaction_id"),
+        EInvoicePayment.id.label("payment_id"),
+        EInvoicePosting.id.label("posting_id"),
+        EInvoice.invoice_number.label("invoice_number"),
+        EInvoice.invoice_date.label("invoice_date"),
+        EInvoice.merchant_name.label("merchant_name"),
+        EInvoice.total_amount.label("invoice_total_amount"),
+        EInvoicePayment.amount.label("invoice_payment_amount"),
+        EInvoicePayment.currency_code.label("invoice_currency_code"),
+        EInvoicePayment.payment_date.label("payment_date"),
+    ).join(
+        EInvoicePosting,
+        (EInvoicePosting.family_id == EInvoicePayment.family_id)
+        & (EInvoicePosting.id == EInvoicePayment.posting_id),
+    ).join(
+        EInvoice,
+        (EInvoice.family_id == EInvoicePosting.family_id)
+        & (EInvoice.id == EInvoicePosting.invoice_id),
+    ).filter(
+        EInvoicePayment.family_id == family_id,
+        EInvoicePayment.transaction_id.in_(ids),
+        EInvoicePayment.is_voided.is_(False),
+        EInvoicePosting.status.in_(["partially_paid", "paid"]),
+        EInvoice.is_voided.is_(False),
+    ).all()
+
+    return {
+        item.transaction_id: {
+            "source_type": "einvoice_payment",
+            "source_label": "電子發票付款",
+            "payment_id": item.payment_id,
+            "posting_id": item.posting_id,
+            "invoice_number": item.invoice_number,
+            "invoice_date": item.invoice_date,
+            "merchant_name": item.merchant_name,
+            "invoice_total_amount": str(item.invoice_total_amount),
+            "invoice_payment_amount": str(item.invoice_payment_amount),
+            "invoice_currency_code": item.invoice_currency_code,
+            "payment_date": item.payment_date,
+        }
+        for item in records
     }
 
 
@@ -871,11 +926,18 @@ def suggest_reconciliation_matches(
             "candidates": candidates[:5],
         })
 
+    candidate_transaction_ids = {
+        candidate["transaction_id"]
+        for item in suggestion_rows
+        for candidate in item["candidates"]
+    }
+    invoice_context = _invoice_payment_context(db, family_id, candidate_transaction_ids)
     for item in suggestion_rows:
         for candidate in item["candidates"]:
             competing_rows = sorted(occurrences.get(candidate["transaction_id"], set()))
             candidate["ambiguous_across_rows"] = len(competing_rows) > 1
             candidate["competing_bank_row_ids"] = competing_rows if len(competing_rows) > 1 else []
+            candidate.update(invoice_context.get(candidate["transaction_id"], {}))
 
     return {
         "success": True,
@@ -1255,6 +1317,25 @@ def list_ledger_only_transactions(
         Transaction.transaction_date.asc(),
         Transaction.id.asc(),
     ).offset(skip).limit(limit).all()
+    invoice_context = _invoice_payment_context(
+        db, family_id, [item.id for item in transactions]
+    )
+    transaction_items = []
+    for item in transactions:
+        transaction_data = {
+            "id": item.id,
+            "transaction_date": item.transaction_date,
+            "transaction_type": item.transaction_type,
+            "amount": str(item.amount),
+            "currency_code": item.currency_code,
+            "description": item.description,
+            "external_reference": item.external_reference,
+            "created_by": item.created_by,
+            "import_row_id": item.import_row_id,
+            "status": "ledger_only",
+        }
+        transaction_data.update(invoice_context.get(item.id, {}))
+        transaction_items.append(transaction_data)
 
     return {
         "success": True,
@@ -1264,21 +1345,7 @@ def list_ledger_only_transactions(
         "period_end": session.period_end,
         "currency_code": session.currency_code,
         "total": total,
-        "transactions": [
-            {
-                "id": item.id,
-                "transaction_date": item.transaction_date,
-                "transaction_type": item.transaction_type,
-                "amount": str(item.amount),
-                "currency_code": item.currency_code,
-                "description": item.description,
-                "external_reference": item.external_reference,
-                "created_by": item.created_by,
-                "import_row_id": item.import_row_id,
-                "status": "ledger_only",
-            }
-            for item in transactions
-        ],
+        "transactions": transaction_items,
         "pagination": {"skip": skip, "limit": limit},
         "notice": "未配對不代表錯帳；請確認是否為入帳時間差、未兌現或尚未匯入的銀行明細。",
     }
