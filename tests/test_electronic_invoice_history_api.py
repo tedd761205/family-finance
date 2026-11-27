@@ -155,7 +155,7 @@ def test_invoice_import_is_persistent_idempotent_searchable_and_audited(invoice_
     assert by_item.json()["total"] == 1
     invoice_id = by_item.json()["invoices"][0]["id"]
     assert by_item.json()["invoices"][0]["validation_status"] == "matched"
-    assert by_item.json()["invoices"][0]["invoice_period"] == "202610"
+    assert by_item.json()["invoices"][0]["invoice_period"] == "202612"
 
     by_tax_id = invoice_api_client.get(
         f"/electronic-invoices?family_id={family_id}&q=12345678",
@@ -234,7 +234,7 @@ def test_invoice_import_is_persistent_idempotent_searchable_and_audited(invoice_
     )
     assert next_period_rows.status_code == 200
     assert next_period_rows.json()["total"] == 2
-    assert {row["invoice_period"] for row in next_period_rows.json()["invoices"]} == {"202610", "202702"}
+    assert {row["invoice_period"] for row in next_period_rows.json()["invoices"]} == {"202612", "202702"}
 
     with Session(engine) as db:
         assert db.scalar(
