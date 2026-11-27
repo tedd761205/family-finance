@@ -2037,3 +2037,374 @@ section#categories-view .accounts-heading > div:first-child::before { background
 @media (prefers-reduced-motion: reduce) {
   .quick-card-button:hover { transform: none; }
 }
+
+
+/* Expressive kawaii family finance visual refresh */
+.kawaii-intro-art {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: min(100%, 440px);
+  min-height: 184px;
+  margin: 18px 0 0;
+  padding: 8px 16px 28px;
+  border: 1px solid #e8e4d6;
+  border-radius: 25px;
+  background:
+    radial-gradient(circle at 16% 22%, rgba(255,255,255,.95) 0 12px, transparent 13px),
+    linear-gradient(135deg, #edf6ef 0%, #fff4df 56%, #fbecef 100%);
+  box-shadow: 0 12px 26px rgba(90, 119, 99, .10);
+  overflow: hidden;
+}
+.kawaii-intro-art::before,
+.kawaii-intro-art::after {
+  content: "∑";
+  position: absolute;
+  color: #81a991;
+  font-family: Georgia, serif;
+  font-size: 28px;
+  font-weight: 700;
+  opacity: .48;
+}
+.kawaii-intro-art::before { top: 10px; left: 18px; transform: rotate(-12deg); }
+.kawaii-intro-art::after { top: 24px; right: 20px; content: "π"; transform: rotate(12deg); }
+.kawaii-intro-art img {
+  display: block;
+  width: 100%;
+  max-width: 390px;
+  height: 166px;
+  object-fit: contain;
+  object-position: center;
+  filter: drop-shadow(0 8px 7px rgba(83, 112, 94, .10));
+}
+.kawaii-intro-caption {
+  position: absolute;
+  right: 14px;
+  bottom: 10px;
+  padding: 5px 12px;
+  border: 1px solid #e7d7b6;
+  border-radius: 999px;
+  background: rgba(255, 253, 245, .94);
+  color: #8c7041;
+  font-size: 12px;
+  font-weight: 750;
+  box-shadow: 0 3px 10px rgba(129, 105, 61, .08);
+}
+
+/* A prominent welcoming scene on the signed-in family dashboard */
+.kawaii-dashboard-banner {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 43%);
+  align-items: center;
+  gap: 12px;
+  min-height: 214px;
+  margin: 4px 0 22px;
+  padding: 22px 28px;
+  border: 1px solid #e2e7d8;
+  border-radius: 27px;
+  background:
+    radial-gradient(circle at 8% 20%, rgba(255,255,255,.95) 0 8px, transparent 9px),
+    radial-gradient(circle at 47% 86%, rgba(255,255,255,.65) 0 20px, transparent 21px),
+    linear-gradient(112deg, #eaf5ec 0%, #fff5e3 53%, #f8e9ed 100%);
+  box-shadow: 0 14px 32px rgba(83, 112, 94, .10);
+  overflow: hidden;
+}
+.kawaii-dashboard-banner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: .27;
+  background-image: repeating-linear-gradient(0deg, transparent 0 25px, rgba(112,151,124,.11) 26px 27px), repeating-linear-gradient(90deg, transparent 0 25px, rgba(112,151,124,.11) 26px 27px);
+  mask-image: linear-gradient(90deg, #000, transparent 75%);
+}
+.kawaii-dashboard-copy { position: relative; z-index: 2; min-width: 0; }
+.kawaii-banner-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 8px;
+  padding: 5px 11px;
+  border: 1px solid #cfe1d2;
+  border-radius: 999px;
+  background: rgba(255,255,255,.72);
+  color: #4f8164;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: .13em;
+}
+.kawaii-banner-kicker::before { content: "✿"; color: #c79a58; font-size: 14px; }
+.kawaii-dashboard-copy h2 {
+  margin: 0 0 7px;
+  color: #315b49;
+  font-size: clamp(21px, 2.5vw, 29px);
+  line-height: 1.35;
+  letter-spacing: -.5px;
+}
+.kawaii-dashboard-copy p { max-width: 470px; margin: 0; color: #687d70; font-size: 13px; line-height: 1.8; }
+.kawaii-formula-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 13px; }
+.kawaii-formula-chips span {
+  padding: 5px 10px;
+  border: 1px solid rgba(151, 177, 151, .48);
+  border-radius: 999px;
+  background: rgba(255,255,255,.76);
+  color: #66846d;
+  font-size: 11px;
+  font-weight: 750;
+}
+.kawaii-dashboard-art {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  max-height: 190px;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 8px rgba(79, 104, 85, .12));
+}
+.kawaii-sparkle { position: absolute; color: #c39a58; opacity: .8; pointer-events: none; }
+.sparkle-one { top: 22px; right: 23px; font-size: 29px; }
+.sparkle-two { bottom: 17px; left: 48%; font-size: 22px; }
+
+/* The workspace titles now sit in a decorated visual header, not on a blank panel */
+#accounts-view > .accounts-heading,
+#transactions-view > .accounts-heading,
+#transfers-view > .accounts-heading,
+#credit-card-payments-view > .accounts-heading,
+#bills-view > .accounts-heading,
+#bill-payments-view > .accounts-heading,
+#recurring-bills-view > .accounts-heading,
+#reports-view > .accounts-heading,
+#categories-view > .accounts-heading,
+#bank-imports-view > .accounts-heading,
+#bank-reconciliation-view > .accounts-heading,
+#attachments-view > .accounts-heading,
+#notifications-exports-view > .accounts-heading,
+#family-members-view > .accounts-heading,
+#family-roles-view > .accounts-heading,
+#audit-logs-view > .accounts-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  position: relative;
+  gap: 12px 18px;
+  margin: -5px -5px 24px;
+  padding: 18px 20px 14px;
+  border: 1px solid #e2e8dc;
+  border-radius: 24px;
+  background: linear-gradient(120deg, #f0f7ef 0%, #fff5e7 60%, #f9edf0 100%);
+  box-shadow: 0 8px 22px rgba(88, 117, 96, .08);
+  overflow: hidden;
+}
+#accounts-view > .accounts-heading::after,
+#transactions-view > .accounts-heading::after,
+#transfers-view > .accounts-heading::after,
+#credit-card-payments-view > .accounts-heading::after,
+#bills-view > .accounts-heading::after,
+#bill-payments-view > .accounts-heading::after,
+#recurring-bills-view > .accounts-heading::after,
+#reports-view > .accounts-heading::after,
+#categories-view > .accounts-heading::after,
+#bank-imports-view > .accounts-heading::after,
+#bank-reconciliation-view > .accounts-heading::after,
+#attachments-view > .accounts-heading::after,
+#notifications-exports-view > .accounts-heading::after,
+#family-members-view > .accounts-heading::after,
+#family-roles-view > .accounts-heading::after,
+#audit-logs-view > .accounts-heading::after {
+  content: "";
+  display: block;
+  flex: 0 0 100%;
+  height: 102px;
+  border-radius: 17px;
+  background:
+    linear-gradient(90deg, rgba(240,247,239,.22), rgba(255,255,255,.06)),
+    url("/static/images/family-finance-kawaii-mascots.svg") no-repeat right 49% / auto 270%;
+  pointer-events: none;
+}
+#accounts-view > .accounts-heading > div:first-child,
+#transactions-view > .accounts-heading > div:first-child,
+#transfers-view > .accounts-heading > div:first-child,
+#credit-card-payments-view > .accounts-heading > div:first-child,
+#bills-view > .accounts-heading > div:first-child,
+#bill-payments-view > .accounts-heading > div:first-child,
+#recurring-bills-view > .accounts-heading > div:first-child,
+#reports-view > .accounts-heading > div:first-child,
+#categories-view > .accounts-heading > div:first-child,
+#bank-imports-view > .accounts-heading > div:first-child,
+#bank-reconciliation-view > .accounts-heading > div:first-child,
+#attachments-view > .accounts-heading > div:first-child,
+#notifications-exports-view > .accounts-heading > div:first-child,
+#family-members-view > .accounts-heading > div:first-child,
+#family-roles-view > .accounts-heading > div:first-child,
+#audit-logs-view > .accounts-heading > div:first-child {
+  min-height: 88px;
+  padding-left: 104px;
+}
+#accounts-view > .accounts-heading > div:first-child::before,
+#transactions-view > .accounts-heading > div:first-child::before,
+#transfers-view > .accounts-heading > div:first-child::before,
+#credit-card-payments-view > .accounts-heading > div:first-child::before,
+#bills-view > .accounts-heading > div:first-child::before,
+#bill-payments-view > .accounts-heading > div:first-child::before,
+#recurring-bills-view > .accounts-heading > div:first-child::before,
+#reports-view > .accounts-heading > div:first-child::before,
+#categories-view > .accounts-heading > div:first-child::before,
+#bank-imports-view > .accounts-heading > div:first-child::before,
+#bank-reconciliation-view > .accounts-heading > div:first-child::before,
+#attachments-view > .accounts-heading > div:first-child::before,
+#notifications-exports-view > .accounts-heading > div:first-child::before,
+#family-members-view > .accounts-heading > div:first-child::before,
+#family-roles-view > .accounts-heading > div:first-child::before,
+#audit-logs-view > .accounts-heading > div:first-child::before {
+  width: 88px;
+  height: 88px;
+  border-radius: 25px;
+  box-shadow: 0 7px 17px rgba(83, 112, 94, .12);
+}
+.quick-icon {
+  width: 82px;
+  height: 82px;
+  border-radius: 25px;
+  border: 1px solid #dce8dc;
+  box-shadow: 0 7px 15px rgba(89, 118, 96, .11);
+}
+.quick-tool-group .quick-card-button {
+  min-height: 188px;
+  padding: 19px;
+  border: 1px solid #e6e8db;
+  border-radius: 22px;
+  background: linear-gradient(145deg, #fffefa 0%, #f1f7ef 100%);
+  box-shadow: 0 6px 15px rgba(83, 112, 94, .055);
+}
+.quick-tool-group .quick-card-button:hover {
+  transform: translateY(-3px);
+  border-color: #b8d2bd;
+  box-shadow: 0 13px 24px rgba(83, 112, 94, .13);
+}
+.quick-tool-group .quick-card-title { font-size: 16px; }
+.quick-tool-group .quick-card-description { font-size: 13px; }
+.quick-tool-group .coming { display: inline-block; padding-top: 5px; color: #568269; font-size: 12px; font-weight: 750; }
+.empty-state {
+  border: 1px dashed #c8ddcb;
+  border-radius: 22px;
+  background: linear-gradient(140deg, #f4f9f1, #fff8ed);
+}
+.empty-state h3 { color: #466e55; }
+.app-navigation {
+  border: 1px solid #dce7d9;
+  border-radius: 20px;
+  background: linear-gradient(100deg, #f0f7ef, #fff6e9);
+  box-shadow: 0 8px 19px rgba(83, 112, 94, .08);
+}
+.app-nav-button .nav-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 13px;
+  background: #e2f0e5;
+  color: #47795b;
+}
+@media (max-width: 760px) {
+  .kawaii-intro-art { min-height: 138px; margin-top: 13px; padding: 4px 9px 25px; border-radius: 20px; }
+  .kawaii-intro-art img { height: 124px; }
+  .kawaii-intro-caption { right: 8px; bottom: 7px; font-size: 10px; }
+  .kawaii-dashboard-banner {
+    grid-template-columns: minmax(0, 1fr) 118px;
+    min-height: 150px;
+    gap: 4px;
+    padding: 15px 12px;
+    border-radius: 21px;
+    margin-bottom: 16px;
+  }
+  .kawaii-dashboard-copy h2 { font-size: 18px; }
+  .kawaii-dashboard-copy p { font-size: 11px; line-height: 1.55; }
+  .kawaii-dashboard-art { max-height: 118px; }
+  .kawaii-formula-chips { gap: 4px; margin-top: 8px; }
+  .kawaii-formula-chips span { padding: 4px 6px; font-size: 9px; }
+  .sparkle-one { top: 9px; right: 7px; font-size: 19px; }
+  .sparkle-two { bottom: 8px; left: 54%; font-size: 15px; }
+  #accounts-view > .accounts-heading,
+  #transactions-view > .accounts-heading,
+  #transfers-view > .accounts-heading,
+  #credit-card-payments-view > .accounts-heading,
+  #bills-view > .accounts-heading,
+  #bill-payments-view > .accounts-heading,
+  #recurring-bills-view > .accounts-heading,
+  #reports-view > .accounts-heading,
+  #categories-view > .accounts-heading,
+  #bank-imports-view > .accounts-heading,
+  #bank-reconciliation-view > .accounts-heading,
+  #attachments-view > .accounts-heading,
+  #notifications-exports-view > .accounts-heading,
+  #family-members-view > .accounts-heading,
+  #family-roles-view > .accounts-heading,
+  #audit-logs-view > .accounts-heading {
+    margin: -3px -3px 18px;
+    padding: 13px 12px 10px;
+    border-radius: 19px;
+    gap: 9px;
+  }
+  #accounts-view > .accounts-heading::after,
+  #transactions-view > .accounts-heading::after,
+  #transfers-view > .accounts-heading::after,
+  #credit-card-payments-view > .accounts-heading::after,
+  #bills-view > .accounts-heading::after,
+  #bill-payments-view > .accounts-heading::after,
+  #recurring-bills-view > .accounts-heading::after,
+  #reports-view > .accounts-heading::after,
+  #categories-view > .accounts-heading::after,
+  #bank-imports-view > .accounts-heading::after,
+  #bank-reconciliation-view > .accounts-heading::after,
+  #attachments-view > .accounts-heading::after,
+  #notifications-exports-view > .accounts-heading::after,
+  #family-members-view > .accounts-heading::after,
+  #family-roles-view > .accounts-heading::after,
+  #audit-logs-view > .accounts-heading::after {
+    height: 64px;
+    background-size: auto 250%;
+  }
+  #accounts-view > .accounts-heading > div:first-child,
+  #transactions-view > .accounts-heading > div:first-child,
+  #transfers-view > .accounts-heading > div:first-child,
+  #credit-card-payments-view > .accounts-heading > div:first-child,
+  #bills-view > .accounts-heading > div:first-child,
+  #bill-payments-view > .accounts-heading > div:first-child,
+  #recurring-bills-view > .accounts-heading > div:first-child,
+  #reports-view > .accounts-heading > div:first-child,
+  #categories-view > .accounts-heading > div:first-child,
+  #bank-imports-view > .accounts-heading > div:first-child,
+  #bank-reconciliation-view > .accounts-heading > div:first-child,
+  #attachments-view > .accounts-heading > div:first-child,
+  #notifications-exports-view > .accounts-heading > div:first-child,
+  #family-members-view > .accounts-heading > div:first-child,
+  #family-roles-view > .accounts-heading > div:first-child,
+  #audit-logs-view > .accounts-heading > div:first-child {
+    min-height: 57px;
+    padding-left: 69px;
+  }
+  #accounts-view > .accounts-heading > div:first-child::before,
+  #transactions-view > .accounts-heading > div:first-child::before,
+  #transfers-view > .accounts-heading > div:first-child::before,
+  #credit-card-payments-view > .accounts-heading > div:first-child::before,
+  #bills-view > .accounts-heading > div:first-child::before,
+  #bill-payments-view > .accounts-heading > div:first-child::before,
+  #recurring-bills-view > .accounts-heading > div:first-child::before,
+  #reports-view > .accounts-heading > div:first-child::before,
+  #categories-view > .accounts-heading > div:first-child::before,
+  #bank-imports-view > .accounts-heading > div:first-child::before,
+  #bank-reconciliation-view > .accounts-heading > div:first-child::before,
+  #attachments-view > .accounts-heading > div:first-child::before,
+  #notifications-exports-view > .accounts-heading > div:first-child::before,
+  #family-members-view > .accounts-heading > div:first-child::before,
+  #family-roles-view > .accounts-heading > div:first-child::before,
+  #audit-logs-view > .accounts-heading > div:first-child::before {
+    width: 58px;
+    height: 58px;
+    border-radius: 17px;
+  }
+  .quick-icon { width: 70px; height: 70px; border-radius: 22px; }
+  .quick-tool-group .quick-card-button { min-height: 0; padding: 16px; }
+}
