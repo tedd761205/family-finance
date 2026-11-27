@@ -876,6 +876,9 @@
       detailButton.addEventListener("click", () => toggleHistoryDetails(card, invoice, detailButton));
       const postingButton = make("button", "secondary small", "確認入帳／付款");
       postingButton.type = "button";
+      const canViewPosting = getBridge()?.hasPermission?.("transactions.view") === true;
+      postingButton.disabled = !canViewPosting;
+      postingButton.title = canViewPosting ? "查看入帳狀態或確認付款" : "需要交易查看權限才能查看入帳資料";
       postingButton.addEventListener("click", () => toggleInvoicePosting(card, invoice, postingButton));
       actions.append(detailButton, postingButton);
       card.append(actions);
