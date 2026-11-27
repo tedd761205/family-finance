@@ -117,6 +117,7 @@ class ElectronicInvoiceListItem(BaseModel):
     family_id: int
     import_batch_id: int
     invoice_date: date
+    invoice_period: str
     invoice_number: str
     merchant_tax_id: str | None
     merchant_name: str
