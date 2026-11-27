@@ -31,6 +31,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/electronic-invoices", tags=["Electronic Invoices"])
 
 
+def _invoice_period(invoice_date: date) -> str:
+    """Return the period end month for Taiwan's two-month uniform-invoice periods."""
+    period_end_month = ((invoice_date.month + 1) // 2) * 2
+    return f"{invoice_date.year}{period_end_month:02d}"
+
+
 def _authorize(db: Session, user_id: int, family_id: int, action: str) -> str:
     try:
         _, roles = require_permission(
@@ -73,6 +79,7 @@ def _invoice_list_item(invoice: ElectronicInvoice, item_count: int) -> Electroni
         family_id=invoice.family_id,
         import_batch_id=invoice.import_batch_id,
         invoice_date=invoice.invoice_date,
+        invoice_period=invoice.invoice_period,
         invoice_number=invoice.invoice_number,
         merchant_tax_id=invoice.merchant_tax_id,
         merchant_name=invoice.merchant_name,
@@ -109,24 +116,27 @@ def save_invoice_import(
     invoice_numbers = list({item.invoice_number for item in payload.invoices})
     existing_rows = db.query(
         ElectronicInvoice.invoice_number,
+        ElectronicInvoice.invoice_period,
     ).filter(
         ElectronicInvoice.family_id == family_id,
         ElectronicInvoice.is_voided.is_(False),
         ElectronicInvoice.invoice_number.in_(invoice_numbers),
     ).all()
-    existing_numbers = {row.invoice_number for row in existing_rows}
+    existing_keys = {(row.invoice_number, row.invoice_period) for row in existing_rows}
 
-    seen_numbers: set[str] = set()
-    prepared: list[tuple[Any, Decimal | None, Decimal | None, str]] = []
+    seen_keys: set[tuple[str, str]] = set()
+    prepared: list[tuple[Any, str, Decimal | None, Decimal | None, str]] = []
     duplicate_count = 0
     detail_count = 0
 
     for incoming in payload.invoices:
         invoice_number = incoming.invoice_number
-        if invoice_number in existing_numbers or invoice_number in seen_numbers:
+        invoice_period = _invoice_period(incoming.invoice_date)
+        duplicate_key = (invoice_number, invoice_period)
+        if duplicate_key in existing_keys or duplicate_key in seen_keys:
             duplicate_count += 1
             continue
-        seen_numbers.add(invoice_number)
+        seen_keys.add(duplicate_key)
 
         item_total = sum((row.amount for row in incoming.items), Decimal("0"))
         detail_total = item_total if incoming.items else None
@@ -141,7 +151,7 @@ def save_invoice_import(
         else:
             validation_status = "matched"
 
-        prepared.append((incoming, detail_total, difference, validation_status))
+        prepared.append((incoming, invoice_period, detail_total, difference, validation_status))
         detail_count += len(incoming.items)
 
     batch = ElectronicInvoiceImportBatch(
@@ -157,11 +167,12 @@ def save_invoice_import(
         db.add(batch)
         db.flush()
 
-        for incoming, detail_total, difference, validation_status in prepared:
+        for incoming, invoice_period, detail_total, difference, validation_status in prepared:
             invoice = ElectronicInvoice(
                 family_id=family_id,
                 import_batch_id=batch.id,
                 invoice_date=incoming.invoice_date,
+                invoice_period=invoice_period,
                 invoice_number=incoming.invoice_number,
                 merchant_tax_id=incoming.merchant_tax_id,
                 merchant_name=incoming.merchant_name,
