@@ -7,6 +7,7 @@
   let parsedResult = null;
   let currentFilter = "all";
   let currentMonth = "all";
+  let currentSearch = "";
   let currentPage = 1;
   let pageSize = 10;
 
@@ -224,9 +225,41 @@
     return "金額／資料待檢查";
   }
 
+  function normalizeSearchTerm(value) {
+    return String(value || "").normalize("NFKC").toLocaleLowerCase("zh-TW").replace(/\\s+/g, "");
+  }
+
+  function invoiceMatchesSearch(invoice, query) {
+    const term = normalizeSearchTerm(query);
+    if (!term) return true;
+
+    const textValues = [
+      invoice.invoiceNumber,
+      invoice.merchantName,
+      invoice.merchantTaxId,
+      invoice.date,
+      invoice.invoiceStatus,
+      invoice.carrierType,
+      statusText(invoice),
+      ...invoice.items.map(item => item.itemName)
+    ];
+    if (textValues.some(value => normalizeSearchTerm(value).includes(term))) return true;
+
+    const numericTerm = term.replace(/[^\\d.-]/g, "");
+    if (!numericTerm) return false;
+    const amounts = [
+      formatMoney(invoice.totalCents),
+      String(invoice.totalCents / 100),
+      ...invoice.items.map(item => formatMoney(item.amountCents)),
+      ...invoice.items.map(item => String(item.amountCents / 100))
+    ];
+    return amounts.some(value => normalizeSearchTerm(value).replace(/[^\\d.-]/g, "").includes(numericTerm));
+  }
+
   function getVisibleInvoices() {
     if (!parsedResult) return [];
     let visible = parsedResult.invoices;
+    if (currentSearch) visible = visible.filter(invoice => invoiceMatchesSearch(invoice, currentSearch));
     if (currentFilter === "issues") visible = visible.filter(invoice => !invoice.ok);
     if (currentFilter === "duplicates") visible = visible.filter(invoice => invoice.duplicate);
     if (currentMonth !== "all") visible = visible.filter(invoice => invoice.date.slice(0, 7) === currentMonth);
@@ -311,7 +344,10 @@
     list.replaceChildren();
 
     if (!pageInvoices.length) {
-      list.append(make("p", "einvoice-empty", "目前篩選條件沒有發票。"));
+      const emptyMessage = currentSearch
+        ? "找不到符合「" + currentSearch + "」的發票，請試試發票號碼、店家、商品、統編或金額。"
+        : "目前篩選條件沒有發票。";
+      list.append(make("p", "einvoice-empty", emptyMessage));
     }
 
     pageInvoices.forEach(invoice => {
@@ -390,6 +426,7 @@
     parsedResult = null;
     currentFilter = "all";
     currentMonth = "all";
+    currentSearch = "";
     currentPage = 1;
     pageSize = 10;
     const file = document.getElementById("einvoice-csv-file");
@@ -398,12 +435,16 @@
     const filename = document.getElementById("einvoice-csv-filename");
     const filter = document.getElementById("einvoice-csv-filter");
     const month = document.getElementById("einvoice-csv-month");
+    const search = document.getElementById("einvoice-csv-search");
+    const searchClear = document.getElementById("einvoice-csv-search-clear");
     const size = document.getElementById("einvoice-csv-page-size");
     if (file) file.value = "";
     if (message) { message.className = "einvoice-message"; message.textContent = ""; }
     if (filename) filename.textContent = "尚未選擇檔案";
     if (filter) filter.value = "all";
     if (month) month.replaceChildren(new Option("全部月份", "all"));
+    if (search) search.value = "";
+    if (searchClear) searchClear.disabled = true;
     if (size) size.value = "10";
     if (results) results.classList.add("hidden");
     const clear = document.getElementById("einvoice-csv-clear");
@@ -439,9 +480,12 @@
       parsedResult = parseText(text);
       currentFilter = "all";
       currentMonth = "all";
+      currentSearch = "";
       currentPage = 1;
       pageSize = 10;
       document.getElementById("einvoice-csv-filter").value = "all";
+      document.getElementById("einvoice-csv-search").value = "";
+      document.getElementById("einvoice-csv-search-clear").disabled = true;
       document.getElementById("einvoice-csv-page-size").value = "10";
       fillMonthOptions(parsedResult.invoices);
       document.getElementById("einvoice-csv-filename").textContent = file.name;
@@ -471,11 +515,16 @@
       '<div id="einvoice-csv-results" class="hidden">' +
         '<div id="einvoice-csv-summary" class="einvoice-kpi-grid"></div>' +
         '<div class="einvoice-list-heading"><div><h3>發票檢查結果</h3><p class="tiny muted">表頭總額與商品／折扣明細逐張核對；負數折扣會保留。</p></div>' +
-          '<div class="einvoice-filter-controls">' +
-            '<label class="einvoice-filter-label">月份<select id="einvoice-csv-month"><option value="all">全部月份</option></select></label>' +
-            '<label class="einvoice-filter-label">狀態<select id="einvoice-csv-filter"><option value="all">全部發票</option><option value="issues">待檢查</option><option value="duplicates">疑似重複</option></select></label>' +
-            '<label class="einvoice-filter-label">每頁<select id="einvoice-csv-page-size"><option value="10">10 張</option><option value="20">20 張</option><option value="50">50 張</option></select></label>' +
-          '</div></div>' +
+          '<div class="einvoice-list-toolbar">' +
+            '<div class="einvoice-search-row">' +
+              '<label class="einvoice-search-label">快速搜尋<input id="einvoice-csv-search" type="search" placeholder="發票號碼、店家、商品、統編或金額" aria-label="搜尋目前匯入的發票" autocomplete="off"></label>' +
+              '<button id="einvoice-csv-search-clear" class="secondary small einvoice-search-clear" type="button" disabled>清除搜尋</button>' +
+            '</div>' +
+            '<div class="einvoice-filter-controls">' +
+              '<label class="einvoice-filter-label">月份<select id="einvoice-csv-month"><option value="all">全部月份</option></select></label>' +
+              '<label class="einvoice-filter-label">狀態<select id="einvoice-csv-filter"><option value="all">全部發票</option><option value="issues">待檢查</option><option value="duplicates">疑似重複</option></select></label>' +
+              '<label class="einvoice-filter-label">每頁<select id="einvoice-csv-page-size"><option value="10">10 張</option><option value="20">20 張</option><option value="50">50 張</option></select></label>' +
+            '</div></div></div>' +
         '<div id="einvoice-csv-diagnostics" class="einvoice-diagnostics hidden"></div>' +
         '<div id="einvoice-csv-list" class="einvoice-card-list"></div>' +
         '<nav id="einvoice-csv-pagination" class="einvoice-pagination hidden" aria-label="電子發票分頁"></nav>' +
@@ -490,6 +539,22 @@
       handleFile(file);
     });
     document.getElementById("einvoice-csv-clear").addEventListener("click", () => resetPreview(true));
+    const searchInput = document.getElementById("einvoice-csv-search");
+    const searchClear = document.getElementById("einvoice-csv-search-clear");
+    searchInput.addEventListener("input", event => {
+      currentSearch = event.target.value.trim();
+      searchClear.disabled = !currentSearch;
+      currentPage = 1;
+      renderInvoices();
+    });
+    searchClear.addEventListener("click", () => {
+      searchInput.value = "";
+      currentSearch = "";
+      searchClear.disabled = true;
+      currentPage = 1;
+      renderInvoices();
+      searchInput.focus();
+    });
     document.getElementById("einvoice-csv-filter").addEventListener("change", event => {
       currentFilter = event.target.value;
       currentPage = 1;
