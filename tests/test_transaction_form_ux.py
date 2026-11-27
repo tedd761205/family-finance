@@ -111,7 +111,7 @@ def test_soft_jade_space_theme_stylesheet_cache_is_refreshed():
         page = client.get("/")
 
     assert page.status_code == 200
-    assert '/static/styles.css?v=20261127-4' in page.text
+    assert '/static/styles.css?v=20261127-5' in page.text
 
 
 def test_soft_jade_theme_keeps_champagne_as_a_small_accent_and_semantic_colors():

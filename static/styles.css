@@ -1825,3 +1825,22 @@ textarea:focus-visible,
     background: var(--surface);
   }
 }
+
+
+/* Kawaii family accounting & mathematics journal theme */
+:root { --page-bg:#f7f4eb; --surface:#fffefa; --surface-muted:#f0f5f0; --border:#e4e5d9; --accent:#3f826a; --accent-strong:#326f5a; --accent-soft:#e8f3ed; }
+body { background:linear-gradient(180deg,#f7f4eb 0%,#f5f4ed 58%,#f2f5ef 100%); }
+body::before { background-image:url("/static/images/family-finance-kawaii-journal.svg"); background-position:center top; background-size:cover; height:min(650px,78vh); opacity:.72; mask-image:linear-gradient(to bottom,#000 0%,#000 48%,transparent 100%); }
+.panel,.quick-card,.account-card,.transaction-card,.bill-card,.bill-payment-card,.recurring-bill-card,.family-role-card,.reconciliation-session-card,.reconciliation-row-card,.reconciliation-kpi,.reconciliation-ledger-card,.reconciliation-issue-card { border-radius:20px; box-shadow:0 10px 28px rgba(83,112,94,.07); }
+.primary,.secondary,.danger,.tab,.workspace-shortcut { border-radius:14px; transition:background-color .18s ease,box-shadow .18s ease,transform .18s ease; }
+.primary { background:linear-gradient(135deg,#4d9275,#397b62); box-shadow:0 4px 11px rgba(63,130,106,.17); }
+.primary:hover:not(:disabled) { background:linear-gradient(135deg,#43866c,#326f5a); transform:translateY(-1px); }
+.secondary { background:#edf5ef; color:#356b55; border:1px solid #d5e6dc; }
+.brand-mark { border-radius:15px 15px 15px 5px; background:linear-gradient(145deg,#78aa8b,#3f826a); }
+.eyebrow { letter-spacing:.11em; }
+.panel,.auth-panel,.family-panel,.accounts-panel,.transactions-panel,.bills-panel,.reports-panel,.family-roles-panel { background:rgba(255,254,250,.97); }
+.tabs,.transaction-filters,.accounts-summary,.more-tools-panel,.local-receipt-review-hint { background-color:rgba(239,245,239,.96); }
+.subpanel { background-image:repeating-linear-gradient(to bottom,transparent 0,transparent 35px,rgba(123,157,133,.055) 36px,transparent 37px); }
+.quick-icon,.empty-icon { border-radius:15px; background:#e8f3ed; color:#326f5a; }
+@media(max-width:760px) { body::before { height:390px; background-size:auto 390px; opacity:.48; } .panel,.quick-card,.account-card,.transaction-card,.bill-card { border-radius:17px; } }
+@media(prefers-reduced-transparency:reduce) { body::before { opacity:.24; } }
