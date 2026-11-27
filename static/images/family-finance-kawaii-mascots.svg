@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="520" viewBox="0 0 1000 520" role="img" aria-labelledby="title desc">
+<title id="title">家庭理財 Q 版小夥伴</title>
+<desc id="desc">一隻戴眼鏡拿帳本的小貓、一隻粉紅存錢豬和一台薄荷綠計算機機器人，搭配金幣、尺規、帳本與數學塗鴉。</desc>
+<defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f2f7ef"/><stop offset=".55" stop-color="#f9f0df"/><stop offset="1" stop-color="#f8e9ec"/></linearGradient>
+  <linearGradient id="cat" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#fffdf2"/><stop offset="1" stop-color="#e9ddc9"/></linearGradient>
+  <linearGradient id="pink" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffd9d0"/><stop offset="1" stop-color="#e9a99e"/></linearGradient>
+  <linearGradient id="mint" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#bce1cc"/><stop offset="1" stop-color="#6eaa91"/></linearGradient>
+  <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ffe7a8"/><stop offset="1" stop-color="#cda45d"/></linearGradient>
+  <filter id="shadow" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="12" stdDeviation="11" flood-color="#61796b" flood-opacity=".17"/></filter>
+  <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse"><path d="M28 0H0V28" fill="none" stroke="#8db79e" stroke-width="1" opacity=".14"/></pattern>
+</defs>
+<ellipse cx="510" cy="465" rx="420" ry="28" fill="#9bb6a0" opacity=".14"/>
+<circle cx="510" cy="270" r="226" fill="url(#bg)" opacity=".86"/>
+<circle cx="510" cy="270" r="210" fill="url(#grid)" opacity=".7"/>
+<!-- floating math notes -->
+<g fill="#719781" font-family="Georgia,serif" font-style="italic" opacity=".82">
+ <text x="70" y="105" font-size="42">∫ f(x) dx</text>
+ <text x="760" y="90" font-size="42">Σ 收支</text>
+ <text x="840" y="210" font-size="25">sin θ</text>
+ <text x="90" y="400" font-size="30">log₂ x</text>
+ <text x="760" y="450" font-size="39">π  √  Δ</text>
+</g>
+<g fill="none" stroke="#c5a46a" stroke-width="4" stroke-linecap="round" opacity=".68">
+ <path d="M160 145q22-24 44 0t44 0" stroke-dasharray="4 8"/>
+ <path d="M810 300h90m-78-9v18m18-18v10m18-10v18m18-18v10m18-10v18"/>
+</g>
+<!-- cute accountant cat -->
+<g transform="translate(135 96)" filter="url(#shadow)">
+ <ellipse cx="145" cy="300" rx="112" ry="116" fill="url(#cat)" stroke="#b39d7d" stroke-width="8"/>
+ <path d="M63 132 51 41q4-22 26-7l74 65z" fill="#fff8e8" stroke="#b39d7d" stroke-width="8" stroke-linejoin="round"/>
+ <path d="m205 100 73-66q23-12 27 10l-13 93z" fill="#fff8e8" stroke="#b39d7d" stroke-width="8" stroke-linejoin="round"/>
+ <path d="M75 95q-4-29 18-12l42 39-42 3zM219 119l48-44q19-13 14 14l-40 35z" fill="#e8b9ae"/>
+ <ellipse cx="146" cy="179" rx="112" ry="96" fill="url(#cat)" stroke="#b39d7d" stroke-width="8"/>
+ <path d="M98 178q15-22 30 0m40 0q15-22 30 0" fill="none" stroke="#554c43" stroke-width="8" stroke-linecap="round"/>
+ <ellipse cx="86" cy="205" rx="17" ry="10" fill="#efb8ad" opacity=".8"/><ellipse cx="205" cy="205" rx="17" ry="10" fill="#efb8ad" opacity=".8"/>
+ <path d="M137 201q9 10 18 0m-9 2v11" fill="none" stroke="#9b6e63" stroke-width="5" stroke-linecap="round"/>
+ <path d="M74 253q-44 30-56 80m198-80q47 24 57 73" fill="none" stroke="#b39d7d" stroke-width="17" stroke-linecap="round"/>
+ <path d="M92 274q53 35 106 0l15 66q-65 31-136 0z" fill="#78aa8b" stroke="#58846c" stroke-width="7" stroke-linejoin="round"/>
+ <path d="M111 309q36-18 72 0v83H111z" fill="#fffaf0" stroke="#b39d7d" stroke-width="6"/>
+ <path d="M147 311v79m-22-58h12m15 0h15m-42 20h12m15 0h15" stroke="#d6c6a7" stroke-width="3" stroke-linecap="round"/>
+ <path d="M105 148q-18-18-35 0m116 0q18-18 35 0" fill="none" stroke="#8e7a60" stroke-width="5" stroke-linecap="round"/>
+ <path d="M72 160q32-48 64-5m31-2q34-45 62 2" fill="none" stroke="#8e7a60" stroke-width="4" opacity=".45"/>
+ <path d="M107 100q36-36 76 0" fill="none" stroke="#c5a46a" stroke-width="7" stroke-linecap="round"/>
+ <circle cx="147" cy="79" r="14" fill="url(#gold)" stroke="#a78349" stroke-width="4"/>
+</g>
+<!-- piggy bank -->
+<g transform="translate(492 220)" filter="url(#shadow)">
+ <ellipse cx="132" cy="132" rx="118" ry="91" fill="url(#pink)" stroke="#ba827a" stroke-width="8"/>
+ <path d="M54 71 27 19q-4-18 17-13l55 42M191 62l36-48q15-14 20 7l-15 60" fill="#f4c1b7" stroke="#ba827a" stroke-width="8" stroke-linejoin="round"/>
+ <ellipse cx="238" cy="131" rx="42" ry="32" fill="#f4c1b7" stroke="#ba827a" stroke-width="7"/>
+ <ellipse cx="247" cy="132" rx="6" ry="9" fill="#9d6861"/><ellipse cx="228" cy="132" rx="6" ry="9" fill="#9d6861"/>
+ <circle cx="97" cy="119" r="9" fill="#5a4b49"/><circle cx="164" cy="119" r="9" fill="#5a4b49"/>
+ <ellipse cx="72" cy="143" rx="14" ry="8" fill="#eea39c"/><ellipse cx="184" cy="143" rx="14" ry="8" fill="#eea39c"/>
+ <path d="M119 147q13 16 26 0" fill="none" stroke="#9d6861" stroke-width="6" stroke-linecap="round"/>
+ <path d="M107 37h54" stroke="#a97b4b" stroke-width="11" stroke-linecap="round"/>
+ <path d="M78 211v24m112-24v24" stroke="#ba827a" stroke-width="16" stroke-linecap="round"/>
+ <circle cx="139" cy="5" r="35" fill="url(#gold)" stroke="#b48a49" stroke-width="6"/>
+ <text x="139" y="19" text-anchor="middle" font-family="Arial,sans-serif" font-size="41" font-weight="800" fill="#fffaf0">$</text>
+ <path d="M118 4h42" stroke="#986d3a" stroke-width="7" stroke-linecap="round"/>
+</g>
+<!-- calculator robot -->
+<g transform="translate(785 195)" filter="url(#shadow)">
+ <rect x="18" y="32" width="150" height="194" rx="35" fill="url(#mint)" stroke="#578a72" stroke-width="8"/>
+ <path d="M93 31V9" stroke="#578a72" stroke-width="8" stroke-linecap="round"/>
+ <circle cx="93" cy="5" r="12" fill="#e6c98e" stroke="#ad8648" stroke-width="4"/>
+ <rect x="42" y="60" width="104" height="61" rx="15" fill="#f7fff7" stroke="#6c9c7d" stroke-width="6"/>
+ <circle cx="71" cy="88" r="8" fill="#4d6b5c"/><circle cx="116" cy="88" r="8" fill="#4d6b5c"/>
+ <path d="M80 103q13 11 27 0" fill="none" stroke="#5d9075" stroke-width="4" stroke-linecap="round"/>
+ <ellipse cx="53" cy="100" rx="10" ry="6" fill="#efa9a0"/><ellipse cx="135" cy="100" rx="10" ry="6" fill="#efa9a0"/>
+ <g fill="#fff7e7" stroke="#66977d" stroke-width="4">
+  <rect x="42" y="139" width="26" height="24" rx="8"/><rect x="80" y="139" width="26" height="24" rx="8"/><rect x="118" y="139" width="26" height="24" rx="8"/>
+  <rect x="42" y="174" width="26" height="24" rx="8"/><rect x="80" y="174" width="26" height="24" rx="8"/><rect x="118" y="174" width="26" height="24" rx="8"/>
+ </g>
+ <path d="M18 116 0 139m168-23 22 23" stroke="#578a72" stroke-width="12" stroke-linecap="round"/>
+ <path d="M58 226v25m72-25v25" stroke="#578a72" stroke-width="16" stroke-linecap="round"/>
+</g>
+<!-- stationery and sparkles -->
+<g filter="url(#shadow)">
+ <g transform="translate(350 385) rotate(-10)"><rect width="145" height="28" rx="8" fill="#f2dfb5" stroke="#c3a16a" stroke-width="4"/><path d="M22 0v14m22-14v9m22-9v14m22-14v9m22-9v14" stroke="#997d4f" stroke-width="3"/></g>
+ <g transform="translate(800 112) rotate(15)"><rect width="26" height="145" rx="12" fill="#e7b8aa" stroke="#b77e73" stroke-width="4"/><path d="M0 20h26" stroke="#fff4e8" stroke-width="7"/><path d="M0 145l13 25 13-25" fill="#d7b78a" stroke="#b77e73" stroke-width="3"/></g>
+</g>
+<g fill="#e5c27a">
+ <path d="M418 74l10 23 24 10-24 10-10 24-10-24-24-10 24-10z"/>
+ <path d="M920 352l8 18 19 8-19 8-8 19-8-19-19-8 19-8z"/>
+ <circle cx="385" cy="245" r="9"/><circle cx="730" cy="105" r="8"/><circle cx="96" cy="300" r="7"/>
+</g>
+<g fill="none" stroke="#85a991" stroke-width="4" stroke-linecap="round">
+ <path d="M395 150q18-18 36 0m-18-18v36"/>
+ <path d="M710 420q30-23 60 0t60 0" stroke-dasharray="6 9"/>
+</g>
+</svg>
