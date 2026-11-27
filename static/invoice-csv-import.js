@@ -491,6 +491,13 @@
     return "NT$ " + money.format(Number(value || 0));
   }
 
+  function invoicePeriodLabel(period) {
+    const match = String(period || "").match(/^(\\d{4})(02|04|06|08|10|12)$/);
+    if (!match) return "期別未提供";
+    const startMonth = Number(match[2]) - 1;
+    return match[1] + " 年 " + String(startMonth).padStart(2, "0") + "–" + match[2] + " 月期";
+  }
+
   function historyStatusMessage(message, type) {
     const node = document.getElementById("einvoice-history-message");
     if (!node) return;
@@ -589,6 +596,7 @@
       meta.append(
         make("span", "einvoice-status" + (invoice.validation_status === "matched" && !invoice.is_voided ? " is-good" : " is-warn"),
           invoiceHistoryStatus(invoice)),
+        make("span", "einvoice-carrier", invoicePeriodLabel(invoice.invoice_period)),
         make("span", "einvoice-item-count", invoice.item_count + " 筆明細"),
         make("span", "einvoice-carrier", "匯入批次 #" + invoice.import_batch_id)
       );
