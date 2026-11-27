@@ -39,6 +39,9 @@ def test_einvoice_preview_has_clear_action_month_filter_and_pagination():
     assert 'id="einvoice-csv-search-clear"' in invoice_script.text
     assert "function invoiceMatchesSearch(invoice, query)" in invoice_script.text
     assert "invoice.merchantTaxId" in invoice_script.text
+    assert "invoice.date.replace(/-/g, \"\"), " in invoice_script.text
+    assert \"replace(/\\\\s+/g, \\\"\\\")\" in invoice_script.text
+    assert \"replace(/[^\\\\d.-]/g, \\\"\\\")\" in invoice_script.text
     assert "invoice.items.map(item => item.itemName)" in invoice_script.text
     assert 'id="einvoice-csv-month"' in invoice_script.text
     assert 'id="einvoice-csv-page-size"' in invoice_script.text
