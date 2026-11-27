@@ -109,7 +109,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["voided_by"], ["users.id"], ondelete="RESTRICT", name="fk_einvoices_voided_by"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("family_id", "id", name="uq_einvoices_family_id_id"),
-        sa.UniqueConstraint("family_id", "invoice_date", "invoice_number", name="uq_einvoices_family_date_number"),
+        sa.UniqueConstraint("family_id", "invoice_number", name="uq_einvoices_family_number_unique"),
         sa.CheckConstraint("invoice_number ~ '^[A-Z]{2}[0-9]{8}$'", name="ck_einvoices_number_format"),
         sa.CheckConstraint("merchant_tax_id IS NULL OR merchant_tax_id ~ '^[0-9]{8}$'", name="ck_einvoices_tax_id_format"),
         sa.CheckConstraint("total_amount >= 0", name="ck_einvoices_total_nonnegative"),
