@@ -133,6 +133,7 @@ MEMBER_PERMISSIONS = [
 
     "invoices.view",
     "invoices.import",
+    "invoices.void",
 
     "attachments.view",
     "attachments.upload",
