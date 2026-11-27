@@ -157,3 +157,21 @@
   .einvoice-save-row { align-items:stretch; flex-direction:column; }
   .einvoice-save-row button { width:100%; }
 }
+
+
+/* Item-level category selection and reusable suggestion rules. */
+.einvoice-item { align-items:stretch; flex-direction:column; gap:8px; }
+.einvoice-item-main { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+.einvoice-item-category { display:grid; gap:7px; padding:9px 10px; border:1px solid #e2e9df; border-radius:11px; background:#fbfdf9; }
+.einvoice-category-state { color:#718176; font-size:11px; }
+.einvoice-category-state.is-assigned { color:#41734e; font-weight:700; }
+.einvoice-category-state.is-suggested { color:#936b32; font-weight:700; }
+.einvoice-category-controls { display:flex; align-items:center; gap:7px; }
+.einvoice-category-select { flex:1 1 auto; min-width:0; min-height:38px; padding:7px 10px; border:1px solid #d6e1d6; border-radius:9px; background:#fff; color:#315745; font:inherit; font-size:12px; }
+.einvoice-category-save { flex:0 0 auto; min-height:38px; padding:7px 12px; }
+.einvoice-category-remember { display:flex; align-items:center; gap:7px; color:#6e7d70; font-size:11px; }
+.einvoice-category-remember input { accent-color:#648d70; }
+@media(max-width:480px) {
+  .einvoice-category-controls { align-items:stretch; flex-direction:column; }
+  .einvoice-category-save { width:100%; }
+}
