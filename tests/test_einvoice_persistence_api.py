@@ -623,7 +623,12 @@ def test_invoice_posting_supports_deferred_split_payments_and_controlled_void(fa
         headers=headers,
     )
     assert posting_void.status_code == 200, posting_void.text
-    assert posting_void.json()["posting"]["status"] == "voided"
+    voided_posting = posting_void.json()["posting"]
+    assert voided_posting["status"] == "voided"
+    assert voided_posting["paid_amount"] == "0.00"
+    assert voided_posting["remaining_amount"] == "120.50"
+    assert len(voided_posting["payments"]) == 2
+    assert all(payment["is_voided"] is True for payment in voided_posting["payments"])
     with Session(engine) as db:
         active_count = db.scalar(
             select(func.count(TransactionModel.id)).where(
@@ -635,6 +640,34 @@ def test_invoice_posting_supports_deferred_split_payments_and_controlled_void(fa
             )
         )
         assert active_count == 0
+
+    # The same invoice can be corrected and posted again; the old payment and
+    # transaction history remains voided and is not counted toward the new balance.
+    reposted = client.post(
+        f"/einvoices/{invoice_id}/posting?family_id={family_id}",
+        headers=headers,
+        json={"payments": [{
+            "account_id": cash_id,
+            "amount": "120.50",
+            "payment_date": "2026-11-27T14:00:00+08:00",
+        }]},
+    )
+    assert reposted.status_code == 201, reposted.text
+    reposting = reposted.json()["posting"]
+    assert reposting["status"] == "paid"
+    assert reposting["paid_amount"] == "120.50"
+    assert reposting["remaining_amount"] == "0.00"
+    assert len(reposting["payments"]) == 3
+    assert sum(1 for payment in reposting["payments"] if payment["is_voided"]) == 2
+    assert sum(1 for payment in reposting["payments"] if not payment["is_voided"]) == 1
+
+    second_void = client.post(
+        f"/einvoices/{invoice_id}/posting/void?family_id={family_id}&reason=重新入帳測試後再沖銷",
+        headers=headers,
+    )
+    assert second_void.status_code == 200, second_void.text
+    assert second_void.json()["posting"]["paid_amount"] == "0.00"
+    assert all(payment["is_voided"] is True for payment in second_void.json()["posting"]["payments"])
 
     invoice_void_after_posting_void = client.post(
         f"/einvoices/{invoice_id}/void?family_id={family_id}&reason=入帳已先沖銷",
