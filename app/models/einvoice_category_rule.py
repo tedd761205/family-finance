@@ -5,7 +5,6 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
-    ForeignKey,
     ForeignKeyConstraint,
     Index,
     String,
@@ -30,8 +29,8 @@ class EInvoiceCategoryRule(Base):
             ["family_id"], ["families.id"],
             ondelete="RESTRICT", name="fk_einvoice_category_rules_family",
         ),
-        ForeignKey(
-            "categories.id",
+        ForeignKeyConstraint(
+            ["category_id"], ["categories.id"],
             name="fk_einvoice_category_rules_category",
             ondelete="RESTRICT",
         ),
