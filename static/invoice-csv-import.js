@@ -482,6 +482,8 @@
     const clear = document.getElementById("einvoice-csv-clear");
     if (!file) return;
     parsedResult = null;
+    const saveButton = document.getElementById("einvoice-csv-save");
+    if (saveButton) saveButton.disabled = true;
     results.classList.add("hidden");
     clear.disabled = false;
     message.className = "einvoice-message";
