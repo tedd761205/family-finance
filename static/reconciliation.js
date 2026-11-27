@@ -136,6 +136,16 @@
       host.append(makeText("span","tiny muted","已完成於 "+dateLabel(session.completed_at)));
     }
   }
+  function appendInvoicePaymentContext(host,item){
+    if(item?.source_type!=="einvoice_payment")return;
+    const merchant=item.merchant_name||"未提供店家名稱";
+    const invoice=item.invoice_number||"未提供發票號碼";
+    host.append(
+      makeText("p","tiny muted","電子發票付款 · "+merchant+" · "+invoice+" · 發票日 "+dateLabel(item.invoice_date)),
+      makeText("p","tiny muted","本次付款 "+money(item.invoice_payment_amount,item.invoice_currency_code)+" · 發票總額 "+money(item.invoice_total_amount,item.invoice_currency_code)+" · 付款日 "+dateLabel(item.payment_date))
+    );
+  }
+
   function renderReconciliationRows(rows){
     const host=el("reconciliation-rows");
     host.replaceChildren();
@@ -198,6 +208,7 @@
               makeText("p","tiny muted",dateLabel(candidate.transaction_date)+" · "+money(candidate.amount,candidate.currency_code)+" · "+candidate.score+" 分 · "+({high:"高信心",medium:"中信心",low:"低信心"}[candidate.confidence]||candidate.confidence))
             );
             detail.append(makeText("p","tiny muted",(candidate.reasons||[]).join("；")));
+            appendInvoicePaymentContext(detail,candidate);
             if(candidate.ambiguous_across_rows)detail.append(makeText("p","tiny muted","注意：此交易也出現在其他銀行明細的候選清單中。"));
             candidateCard.append(detail,makeButton("確認配對","primary small",()=>createReconciliationMatch(row,candidate.transaction_id,candidate.allocated_amount)));
             group.append(candidateCard);
@@ -246,6 +257,7 @@
         makeText("strong",null,item.description||("正式交易 #"+item.id)),
         makeText("p","tiny muted",dateLabel(item.transaction_date)+" · "+(item.transaction_type==="expense"?"支出":"收入")+" · "+money(item.amount,item.currency_code)+" · 交易 #"+item.id)
       );
+      appendInvoicePaymentContext(detail,item);
       card.append(detail);
       if(activeReconciliationSession?.status==="in_progress"){
         card.append(makeButton("記錄帳務端差異","secondary small",()=>createLedgerOnlyIssue(item)));
