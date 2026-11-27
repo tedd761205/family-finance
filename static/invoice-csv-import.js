@@ -247,14 +247,15 @@
     if (textValues.some(value => normalizeSearchTerm(value).includes(term))) return true;
 
     const numericTerm = term.replace(/[^\d.-]/g, "");
-    if (!numericTerm) return false;
-    const amounts = [
-      formatMoney(invoice.totalCents),
-      String(invoice.totalCents / 100),
-      ...invoice.items.map(item => formatMoney(item.amountCents)),
-      ...invoice.items.map(item => String(item.amountCents / 100))
-    ];
-    return amounts.some(value => normalizeSearchTerm(value).replace(/[^\d.-]/g, "").includes(numericTerm));
+    if (!/^-?\d+(?:\.\d{1,2})?$/.test(numericTerm)) return false;
+    let amountCents;
+    try {
+      amountCents = parseCents(numericTerm);
+    } catch (_) {
+      return false;
+    }
+    const amounts = [invoice.totalCents, ...invoice.items.map(item => item.amountCents)];
+    return amounts.some(amount => amount === amountCents);
   }
 
   function getVisibleInvoices() {
