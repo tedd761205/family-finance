@@ -111,7 +111,7 @@ def test_soft_jade_space_theme_stylesheet_cache_is_refreshed():
         page = client.get("/")
 
     assert page.status_code == 200
-    assert '/static/styles.css?v=20261127-6' in page.text
+    assert '/static/styles.css?v=20261127-7' in page.text
 
 
 def test_soft_jade_theme_keeps_champagne_as_a_small_accent_and_semantic_colors():
@@ -213,3 +213,34 @@ def test_kawaii_workspace_illustrations_keep_controls_and_mobile_layout_readable
     assert 'id="transaction-amount"' in page.text
     assert 'id="transaction-date"' in page.text
     assert 'id="transaction-form"' in page.text
+
+
+def test_prominent_kawaii_mascots_are_visible_on_login_dashboard_and_workspaces():
+    with TestClient(app) as client:
+        page = client.get("/")
+        styles = client.get("/static/styles.css").text
+        mascots = client.get("/static/images/family-finance-kawaii-mascots.svg")
+
+    assert page.status_code == 200
+    assert mascots.status_code == 200
+    assert "家庭理財 Q 版小夥伴" in mascots.text
+    assert 'class="kawaii-intro-art"' in page.text
+    assert 'class="kawaii-dashboard-banner"' in page.text
+    assert "/static/images/family-finance-kawaii-mascots.svg" in page.text
+    assert "/static/images/family-finance-kawaii-mascots.svg" in styles
+    assert ".kawaii-dashboard-banner" in styles
+    assert "#transactions-view > .accounts-heading::after" in styles
+    assert "#bank-reconciliation-view > .accounts-heading::after" in styles
+
+
+def test_prominent_kawaii_mascots_keep_mobile_workspace_controls_readable():
+    with TestClient(app) as client:
+        page = client.get("/")
+        styles = client.get("/static/styles.css").text
+
+    assert page.status_code == 200
+    assert "@media (max-width: 760px)" in styles
+    assert ".kawaii-dashboard-art { max-height: 118px; }" in styles
+    assert "padding-left: 69px" in styles
+    assert 'id="transaction-amount"' in page.text
+    assert 'id="transaction-date"' in page.text
