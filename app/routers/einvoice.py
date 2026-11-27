@@ -1,10 +1,11 @@
 import os
 import re
+import unicodedata
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
-from sqlalchemy import String, cast, exists, or_
+from sqlalchemy import String, cast, exists, or_, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -12,6 +13,8 @@ from app.database import get_db
 from app.dependencies.auth import get_current_user
 from app.dependencies.permissions import require_permission, require_data_scope
 from app.models.einvoice import EInvoice, EInvoiceImportBatch, EInvoiceItem
+from app.models.einvoice_category_rule import EInvoiceCategoryRule
+from app.models.category import Category
 from app.models.user import User
 from app.services.audit_log import add_audit_log
 
@@ -66,6 +69,88 @@ def _safe_filename(value: object) -> str:
     name = str(value or "電子發票.csv").replace("\\", "/").split("/")[-1]
     name = re.sub(r"[\x00-\x1f\x7f]", "", name).strip()
     return (name or "電子發票.csv")[:255]
+
+
+def _normalize_rule_text(value: object) -> str:
+    normalized = unicodedata.normalize("NFKC", str(value or "")).casefold()
+    return " ".join(normalized.split())[:200]
+
+
+def _category_rule_keys(merchant_tax_id: str | None, merchant_name: str, item_name: str) -> tuple[str, str]:
+    tax_id = (merchant_tax_id or "").strip()
+    merchant_key = f"tax:{tax_id}" if tax_id else f"name:{_normalize_rule_text(merchant_name)}"
+    return merchant_key[:210], _normalize_rule_text(item_name)
+
+
+def _require_category_scope(db: Session, user: User, family_id: int, permission: str) -> str:
+    try:
+        _, roles = require_permission(
+            db=db,
+            user_id=user.id,
+            family_id=family_id,
+            permission_code=permission,
+        )
+        return require_data_scope(
+            db=db,
+            roles=roles,
+            family_id=family_id,
+            resource="categories",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+
+
+def _visible_expense_categories(db: Session, family_id: int, user: User, scope: str):
+    query = db.query(Category).filter(
+        Category.category_type == "expense",
+        Category.is_active.is_(True),
+        or_(Category.family_id.is_(None), Category.family_id == family_id),
+    )
+    if scope == "own":
+        query = query.filter(
+            or_(Category.family_id.is_(None), Category.created_by == user.id)
+        )
+    return query.order_by(Category.sort_order.asc(), Category.id.asc())
+
+
+def _invoice_item_suggestions(
+    db: Session,
+    invoice: EInvoice,
+    items: list[EInvoiceItem],
+    user: User,
+    category_scope: str,
+) -> dict[tuple[str, str], tuple[EInvoiceCategoryRule, Category]]:
+    keys = {
+        _category_rule_keys(invoice.merchant_tax_id, invoice.merchant_name, item.item_name)
+        for item in items
+        if item.amount > 0 and not item.category_id
+    }
+    if not keys:
+        return {}
+
+    query = (
+        db.query(EInvoiceCategoryRule, Category)
+        .join(Category, Category.id == EInvoiceCategoryRule.category_id)
+        .filter(
+            EInvoiceCategoryRule.family_id == invoice.family_id,
+            EInvoiceCategoryRule.is_active.is_(True),
+            tuple_(
+                EInvoiceCategoryRule.merchant_key,
+                EInvoiceCategoryRule.item_name_key,
+            ).in_(list(keys)),
+            Category.is_active.is_(True),
+            Category.category_type == "expense",
+            or_(Category.family_id.is_(None), Category.family_id == invoice.family_id),
+        )
+    )
+    if category_scope == "own":
+        query = query.filter(
+            or_(Category.family_id.is_(None), Category.created_by == user.id)
+        )
+    return {
+        (rule.merchant_key, rule.item_name_key): (rule, category)
+        for rule, category in query.all()
+    }
 
 
 def _parse_amount(value: object, label: str, *, allow_negative: bool) -> Decimal:
@@ -216,6 +301,8 @@ def _invoice_detail(invoice: EInvoice, items: list[EInvoiceItem]) -> dict:
             "item_name": item.item_name,
             "amount": str(item.amount),
             "source_line_number": item.source_line_number,
+            "category_id": item.category_id,
+            "category_source": item.category_source,
         }
         for item in items
     ]
@@ -481,6 +568,32 @@ def list_einvoices(
     }
 
 
+@router.get("/categories", summary="查詢可用於發票商品的支出分類")
+def list_einvoice_category_options(
+    family_id: int = Query(..., gt=0),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _require_persistence_enabled()
+    _authorize(db, current_user, family_id, "imports.view")
+    category_scope = _require_category_scope(db, current_user, family_id, "categories.view")
+    categories = _visible_expense_categories(db, family_id, current_user, category_scope).all()
+    return {
+        "success": True,
+        "categories": [
+            {
+                "id": category.id,
+                "name": category.name,
+                "icon": category.icon,
+                "color": category.color,
+                "family_id": category.family_id,
+                "is_system": category.is_system,
+            }
+            for category in categories
+        ],
+    }
+
+
 @router.get("/{invoice_id}", summary="查詢單張家庭發票及商品明細")
 def get_einvoice(
     invoice_id: int,
@@ -502,7 +615,182 @@ def get_einvoice(
         EInvoiceItem.family_id == family_id,
         EInvoiceItem.invoice_id == invoice_id,
     ).order_by(EInvoiceItem.line_number.asc()).all()
-    return {"success": True, "invoice": _invoice_detail(invoice, items)}
+    detail = _invoice_detail(invoice, items)
+    try:
+        category_scope = _require_category_scope(
+            db, current_user, family_id, "categories.view"
+        )
+    except HTTPException:
+        category_scope = None
+
+    category_names = {}
+    suggestions = {}
+    if category_scope:
+        category_ids = {item.category_id for item in items if item.category_id}
+        if category_ids:
+            category_query = db.query(Category).filter(
+                Category.id.in_(category_ids),
+                or_(Category.family_id.is_(None), Category.family_id == family_id),
+            )
+            if category_scope == "own":
+                category_query = category_query.filter(
+                    or_(Category.family_id.is_(None), Category.created_by == current_user.id)
+                )
+            category_names = {category.id: category.name for category in category_query.all()}
+        suggestions = _invoice_item_suggestions(
+            db, invoice, items, current_user, category_scope
+        )
+
+    for item_json, item in zip(detail["items"], items):
+        item_json["category_name"] = category_names.get(item.category_id)
+        if category_scope and not item.category_id and item.amount > 0:
+            merchant_key, item_key = _category_rule_keys(
+                invoice.merchant_tax_id, invoice.merchant_name, item.item_name
+            )
+            suggestion = suggestions.get((merchant_key, item_key))
+            if suggestion:
+                rule, category = suggestion
+                item_json["suggested_category_id"] = category.id
+                item_json["suggested_category_name"] = category.name
+                item_json["suggestion_reason"] = "同店家曾經確認過相同商品的分類"
+            else:
+                item_json["suggested_category_id"] = None
+                item_json["suggested_category_name"] = None
+                item_json["suggestion_reason"] = None
+        else:
+            item_json["suggested_category_id"] = None
+            item_json["suggested_category_name"] = None
+            item_json["suggestion_reason"] = None
+
+    return {"success": True, "invoice": detail}
+
+
+@router.put("/{invoice_id}/items/{item_id}/category", summary="設定發票商品分類並可記住下次建議")
+def update_einvoice_item_category(
+    invoice_id: int,
+    item_id: int,
+    family_id: int = Query(..., gt=0),
+    payload: dict = Body(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _require_persistence_enabled()
+    import_scope = _authorize(db, current_user, family_id, "imports.view")
+    category_scope = _require_category_scope(
+        db, current_user, family_id, "categories.update"
+    )
+
+    invoice = db.query(EInvoice).filter(
+        EInvoice.id == invoice_id,
+        EInvoice.family_id == family_id,
+        EInvoice.is_voided.is_(False),
+    ).with_for_update().first()
+    if invoice is None:
+        raise HTTPException(status_code=404, detail="找不到此家庭發票")
+    _check_created_by_scope(invoice.created_by, current_user, import_scope, "找不到此家庭發票")
+
+    item = db.query(EInvoiceItem).filter(
+        EInvoiceItem.id == item_id,
+        EInvoiceItem.family_id == family_id,
+        EInvoiceItem.invoice_id == invoice_id,
+    ).with_for_update().first()
+    if item is None:
+        raise HTTPException(status_code=404, detail="找不到此發票商品明細")
+    if item.amount <= 0:
+        raise HTTPException(status_code=422, detail="折扣及零元品項不需要指定支出分類")
+
+    raw_category_id = payload.get("category_id") if isinstance(payload, dict) else None
+    remember_rule = payload.get("remember_rule") is True if isinstance(payload, dict) else False
+    category = None
+    if raw_category_id is not None:
+        try:
+            category_id = int(raw_category_id)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="分類資料不正確")
+        category = db.query(Category).filter(
+            Category.id == category_id,
+            Category.is_active.is_(True),
+            Category.category_type == "expense",
+            or_(Category.family_id.is_(None), Category.family_id == family_id),
+        ).first()
+        if category is None:
+            raise HTTPException(status_code=404, detail="找不到可使用的支出分類")
+        if category_scope == "own" and category.family_id is not None and category.created_by != current_user.id:
+            raise HTTPException(status_code=404, detail="找不到可使用的支出分類")
+
+    if remember_rule and category is None:
+        raise HTTPException(status_code=422, detail="請先選擇分類，再記住此商品的分類規則")
+
+    old_category_id = item.category_id
+    item.category_id = category.id if category else None
+    item.category_source = "manual" if category else None
+
+    rule_created = False
+    if remember_rule and category:
+        merchant_key, item_key = _category_rule_keys(
+            invoice.merchant_tax_id, invoice.merchant_name, item.item_name
+        )
+        rule = db.query(EInvoiceCategoryRule).filter(
+            EInvoiceCategoryRule.family_id == family_id,
+            EInvoiceCategoryRule.merchant_key == merchant_key,
+            EInvoiceCategoryRule.item_name_key == item_key,
+        ).with_for_update().first()
+        if rule:
+            rule.category_id = category.id
+            rule.merchant_tax_id = invoice.merchant_tax_id
+            rule.merchant_name = invoice.merchant_name
+            rule.item_name = item.item_name
+            rule.is_active = True
+            rule.updated_by = current_user.id
+        else:
+            rule = EInvoiceCategoryRule(
+                family_id=family_id,
+                merchant_key=merchant_key,
+                merchant_tax_id=invoice.merchant_tax_id,
+                merchant_name=invoice.merchant_name,
+                item_name_key=item_key,
+                item_name=item.item_name,
+                category_id=category.id,
+                is_active=True,
+                created_by=current_user.id,
+                updated_by=current_user.id,
+            )
+            db.add(rule)
+            rule_created = True
+
+    add_audit_log(
+        db,
+        family_id=family_id,
+        actor_user_id=current_user.id,
+        action="update",
+        entity_type="einvoice_item",
+        entity_id=item.id,
+        old_values={"category_id": old_category_id},
+        new_values={
+            "category_id": item.category_id,
+            "category_name": category.name if category else None,
+            "remember_rule": remember_rule,
+            "rule_created": rule_created,
+        },
+        description="更新電子發票商品分類；不會建立或修改正式收支交易",
+    )
+    try:
+        db.commit()
+        db.refresh(item)
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="分類規則已由其他成員同時更新，請重新整理後再試") from exc
+
+    return {
+        "success": True,
+        "message": "商品分類已保存" + ("，並記住下次同店家相同商品的分類建議" if remember_rule else ""),
+        "item": {
+            "id": item.id,
+            "category_id": item.category_id,
+            "category_name": category.name if category else None,
+            "category_source": item.category_source,
+        },
+    }
 
 
 @router.post("/{invoice_id}/void", summary="作廢家庭發票保存紀錄")
