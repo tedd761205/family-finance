@@ -208,6 +208,14 @@ def test_invoice_import_is_persistent_idempotent_searchable_and_audited(invoice_
     assert all_rows.json()["total"] == 3
     assert len({row["invoice_number"] for row in all_rows.json()["invoices"]}) == 3
 
+    by_period = invoice_api_client.get(
+        f"/electronic-invoices?family_id={family_id}&q=202612&limit=100",
+        headers=headers,
+    )
+    assert by_period.status_code == 200
+    assert by_period.json()["total"] == 3
+    assert all(row["invoice_period"] == "202612" for row in by_period.json()["invoices"])
+
     next_period = invoice_api_client.post(
         f"/electronic-invoices/imports?family_id={family_id}",
         headers=headers,
