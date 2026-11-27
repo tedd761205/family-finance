@@ -677,7 +677,7 @@ def test_invoice_posting_rejects_overpayment_and_missing_foreign_exchange_rate(f
     overpaid = client.post(
         f"/einvoices/{invoice_id}/posting/payments?family_id={family_id}",
         headers=headers,
-        json={"payments": [{"account_id": cash.json()["id"], "amount": "20.50",
+        json={"payments": [{"account_id": cash.json()["id"], "amount": "21.00",
                             "payment_date": "2026-11-27T11:00:00+08:00"}]},
     )
     assert overpaid.status_code == 409
