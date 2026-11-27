@@ -155,6 +155,7 @@ def test_invoice_import_is_persistent_idempotent_searchable_and_audited(invoice_
     assert by_item.json()["total"] == 1
     invoice_id = by_item.json()["invoices"][0]["id"]
     assert by_item.json()["invoices"][0]["validation_status"] == "matched"
+    assert by_item.json()["invoices"][0]["invoice_period"] == "202610"
 
     by_tax_id = invoice_api_client.get(
         f"/electronic-invoices?family_id={family_id}&q=12345678",
@@ -206,6 +207,34 @@ def test_invoice_import_is_persistent_idempotent_searchable_and_audited(invoice_
     assert all_rows.status_code == 200
     assert all_rows.json()["total"] == 3
     assert len({row["invoice_number"] for row in all_rows.json()["invoices"]}) == 3
+
+    next_period = invoice_api_client.post(
+        f"/electronic-invoices/imports?family_id={family_id}",
+        headers=headers,
+        json={
+            "source_filename": "2027-01 新期別.csv",
+            "invoices": [
+                sample_invoice(
+                    date="2027-01-05",
+                    number="AB12345678",
+                    merchant_name="全聯新期別",
+                    total_amount="100.00",
+                    items=[{"item_name": "鮮乳", "amount": "100.00"}],
+                )
+            ],
+        },
+    )
+    assert next_period.status_code == 201, next_period.text
+    assert next_period.json()["saved_count"] == 1
+    assert next_period.json()["duplicate_count"] == 0
+
+    next_period_rows = invoice_api_client.get(
+        f"/electronic-invoices?family_id={family_id}&q=AB12345678&limit=100",
+        headers=headers,
+    )
+    assert next_period_rows.status_code == 200
+    assert next_period_rows.json()["total"] == 2
+    assert {row["invoice_period"] for row in next_period_rows.json()["invoices"]} == {"202610", "202702"}
 
     with Session(engine) as db:
         assert db.scalar(
