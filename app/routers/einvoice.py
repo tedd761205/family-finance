@@ -266,8 +266,12 @@ def _invoice_posting_detail(db: Session, posting: EInvoicePosting) -> dict:
         .order_by(EInvoicePayment.payment_date.asc(), EInvoicePayment.id.asc())
         .all()
     )
-    paid_amount = sum(
-        (payment.amount for payment, _account in rows),
+    active_paid_amount = sum(
+        (payment.amount for payment, _account in rows if not payment.is_voided),
+        Decimal("0.00"),
+    )
+    voided_paid_amount = sum(
+        (payment.amount for payment, _account in rows if payment.is_voided),
         Decimal("0.00"),
     )
     return {
@@ -276,8 +280,9 @@ def _invoice_posting_detail(db: Session, posting: EInvoicePosting) -> dict:
         "invoice_id": posting.invoice_id,
         "invoice_amount": str(posting.invoice_amount),
         "invoice_currency_code": posting.invoice_currency_code,
-        "paid_amount": str(paid_amount),
-        "remaining_amount": str(max(Decimal("0.00"), posting.invoice_amount - paid_amount)),
+        "paid_amount": str(active_paid_amount),
+        "remaining_amount": str(max(Decimal("0.00"), posting.invoice_amount - active_paid_amount)),
+        "voided_payment_amount": str(voided_paid_amount),
         "status": posting.status,
         "created_by": posting.created_by,
         "created_at": posting.created_at,
@@ -300,6 +305,10 @@ def _invoice_posting_detail(db: Session, posting: EInvoicePosting) -> dict:
                 "note": payment.note,
                 "created_by": payment.created_by,
                 "created_at": payment.created_at,
+                "is_voided": payment.is_voided,
+                "voided_at": payment.voided_at,
+                "voided_by": payment.voided_by,
+                "void_reason": payment.void_reason,
             }
             for payment, account in rows
         ],
@@ -353,6 +362,7 @@ def _append_invoice_payments(
     existing_paid = db.query(EInvoicePayment).filter(
         EInvoicePayment.family_id == family_id,
         EInvoicePayment.posting_id == posting.id,
+        EInvoicePayment.is_voided.is_(False),
     ).with_for_update().all()
     paid_amount = sum(
         (payment.amount for payment in existing_paid),
@@ -1128,7 +1138,7 @@ def get_invoice_posting(
     return {"success": True, "posting": _invoice_posting_detail(db, posting)}
 
 
-@router.post("/{invoice_id}/posting", status_code=status.HTTP_201_CREATED, summary="建立發票支出入帳，可先記錄未付款")
+@router.post("/{invoice_id}/posting", status_code=status.HTTP_201_CREATED, summary="建立或重新建立發票支出入帳，可先記錄未付款")
 def create_invoice_posting(
     invoice_id: int,
     payload: EInvoicePostingCreate,
@@ -1144,38 +1154,54 @@ def create_invoice_posting(
     account_scope = _authorize_resource(
         db, current_user, family_id, "accounts.view", "accounts"
     )
-    invoice = db.query(EInvoice).filter(
-        EInvoice.id == invoice_id,
-        EInvoice.family_id == family_id,
-    ).with_for_update().first()
-    if invoice is None:
-        raise HTTPException(status_code=404, detail="找不到此家庭發票")
-    _check_created_by_scope(invoice.created_by, current_user, import_scope, "找不到此家庭發票")
-    _check_created_by_scope(invoice.created_by, current_user, transaction_scope, "找不到此家庭發票")
-    if invoice.is_voided:
-        raise HTTPException(status_code=409, detail="已作廢的發票不可入帳")
-    if invoice.is_duplicate or invoice.verification_status == "duplicate":
-        raise HTTPException(status_code=409, detail="疑似重複發票不可入帳，請先確認是否為同一張發票")
-    if invoice.verification_status != "matched":
-        raise HTTPException(status_code=409, detail="發票表頭與商品明細尚未核對一致，請先處理差異再入帳")
-    if invoice.total_amount <= 0:
-        raise HTTPException(status_code=409, detail="零元發票不需要建立支出入帳")
-
     try:
-        existing = _get_invoice_posting(db, family_id, invoice_id, lock=True)
-        if existing is not None:
-            raise HTTPException(status_code=409, detail="此發票已建立入帳紀錄，請使用新增付款功能")
-        posting = EInvoicePosting(
-            family_id=family_id,
-            invoice_id=invoice_id,
-            invoice_amount=invoice.total_amount,
-            invoice_currency_code="TWD",
-            status="unpaid",
-            created_by=current_user.id,
-            updated_by=current_user.id,
-        )
-        db.add(posting)
-        db.flush()
+        invoice = db.query(EInvoice).filter(
+            EInvoice.id == invoice_id,
+            EInvoice.family_id == family_id,
+        ).with_for_update().first()
+        if invoice is None:
+            raise HTTPException(status_code=404, detail="找不到此家庭發票")
+        _check_created_by_scope(invoice.created_by, current_user, import_scope, "找不到此家庭發票")
+        _check_created_by_scope(invoice.created_by, current_user, transaction_scope, "找不到此家庭發票")
+        if invoice.is_voided:
+            raise HTTPException(status_code=409, detail="已作廢的發票不可入帳")
+        if invoice.is_duplicate or invoice.verification_status == "duplicate":
+            raise HTTPException(status_code=409, detail="疑似重複發票不可入帳，請先確認是否為同一張發票")
+        if invoice.verification_status != "matched":
+            raise HTTPException(status_code=409, detail="發票表頭與商品明細尚未核對一致，請先處理差異再入帳")
+        if invoice.total_amount <= 0:
+            raise HTTPException(status_code=409, detail="零元發票不需要建立支出入帳")
+
+        posting = _get_invoice_posting(db, family_id, invoice_id, lock=True)
+        reopened = posting is not None
+        old_values = None
+        if posting is not None:
+            if posting.status != "voided":
+                raise HTTPException(status_code=409, detail="此發票已有有效入帳紀錄，請使用新增付款功能")
+            old_values = {
+                "status": posting.status,
+                "voided_at": posting.voided_at,
+                "voided_by": posting.voided_by,
+                "void_reason": posting.void_reason,
+            }
+            posting.status = "unpaid"
+            posting.voided_at = None
+            posting.voided_by = None
+            posting.void_reason = None
+            posting.updated_by = current_user.id
+        else:
+            posting = EInvoicePosting(
+                family_id=family_id,
+                invoice_id=invoice_id,
+                invoice_amount=invoice.total_amount,
+                invoice_currency_code="TWD",
+                status="unpaid",
+                created_by=current_user.id,
+                updated_by=current_user.id,
+            )
+            db.add(posting)
+            db.flush()
+
         created_payments = _append_invoice_payments(
             db,
             posting=posting,
@@ -1189,26 +1215,34 @@ def create_invoice_posting(
             db,
             family_id=family_id,
             actor_user_id=current_user.id,
-            action="create",
+            action="update" if reopened else "create",
             entity_type="einvoice_posting",
             entity_id=posting.id,
+            old_values=old_values,
             new_values={
                 "invoice_id": invoice.id,
                 "invoice_number": invoice.invoice_number,
                 "invoice_amount": posting.invoice_amount,
                 "invoice_currency_code": posting.invoice_currency_code,
                 "status": posting.status,
+                "reopened_after_void": reopened,
                 "payment_ids": [payment.id for payment in created_payments],
                 "transaction_ids": [payment.transaction_id for payment in created_payments],
             },
-            description="確認電子發票支出入帳；僅實際付款部分建立帳戶交易",
+            description=(
+                "重新建立已沖銷的電子發票入帳；舊付款與交易歷史保留"
+                if reopened
+                else "確認電子發票支出入帳；僅實際付款部分建立帳戶交易"
+            ),
         )
         db.commit()
         db.refresh(posting)
         return {
             "success": True,
             "message": (
-                "發票已確認入帳，尚未付款"
+                "發票已重新入帳，尚未付款"
+                if reopened and not created_payments
+                else "發票已確認入帳，尚未付款"
                 if not created_payments
                 else f"發票入帳完成，新增 {len(created_payments)} 筆帳戶付款"
             ),
@@ -1353,6 +1387,11 @@ def void_invoice_posting(
         for transaction in transactions:
             transaction.is_voided = True
             transaction.voided_at = now
+        for payment in payments:
+            payment.is_voided = True
+            payment.voided_at = now
+            payment.voided_by = current_user.id
+            payment.void_reason = reason.strip()
         posting.status = "voided"
         posting.voided_at = now
         posting.voided_by = current_user.id
