@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 760" preserveAspectRatio="xMidYMin slice" role="presentation" aria-hidden="true">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#dceaf0"/>
+      <stop offset=".58" stop-color="#eef2ed"/>
+      <stop offset="1" stop-color="#f4f4ed"/>
+    </linearGradient>
+    <linearGradient id="lake" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#b9d0d8" stop-opacity=".72"/>
+      <stop offset="1" stop-color="#e2ece8" stop-opacity=".25"/>
+    </linearGradient>
+    <linearGradient id="frontHill" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#a8c7b8"/>
+      <stop offset="1" stop-color="#d4e2d7"/>
+    </linearGradient>
+    <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="white" stop-opacity="1"/>
+      <stop offset=".66" stop-color="white" stop-opacity=".94"/>
+      <stop offset="1" stop-color="white" stop-opacity="0"/>
+    </linearGradient>
+    <mask id="fade-out"><rect width="1920" height="760" fill="url(#fade)"/></mask>
+  </defs>
+  <g mask="url(#fade-out)">
+    <rect width="1920" height="760" fill="url(#sky)"/>
+    <circle cx="1470" cy="166" r="74" fill="#e7d4a7" opacity=".57"/>
+    <circle cx="1470" cy="166" r="106" fill="#f4e7c9" opacity=".22"/>
+    <g fill="#fff" opacity=".48">
+      <path d="M250 154c21-37 76-40 102-7 32-17 77 1 81 39H216c-3-19 11-32 34-32z"/>
+      <path d="M1020 112c17-27 58-29 77-5 25-12 56 3 58 29H997c-1-13 9-24 23-24z"/>
+    </g>
+    <path d="M0 382 190 273 310 336 505 215 666 342 846 246 1016 353 1190 238 1368 344 1530 256 1740 354 1920 266V570H0Z" fill="#c5d6dc" opacity=".76"/>
+    <path d="m0 425 196-104 134 77 174-120 151 131 191-105 147 100 183-126 176 119 181-92 187 105v190H0Z" fill="#d4e0dc" opacity=".88"/>
+    <path d="M0 395c260-31 390 27 627 10 231-17 381-42 617-14 260 31 445 1 676-18v242H0Z" fill="url(#lake)"/>
+    <g fill="none" stroke="#fff" stroke-linecap="round" opacity=".35">
+      <path d="M170 460c150-18 253-10 370-1m112-18c126-12 206-5 317 4m155-26c128-7 229 4 328 15" stroke-width="4"/>
+      <path d="M90 510c120-7 207 0 305 8m438-24c123-6 222 1 327 9m222-3c106-2 183 6 285 18" stroke-width="3"/>
+    </g>
+    <path d="M0 470c210-74 385-56 564-17 202 45 335 31 510-9 212-49 435-61 846 42v274H0Z" fill="#c5d9ce" opacity=".78"/>
+    <path d="M0 548c227-72 411-70 595-25 224 55 382 27 568-22 234-62 468-28 757 62v197H0Z" fill="url(#frontHill)" opacity=".88"/>
+    <path d="M0 626c251-57 413-27 617 16 237 51 450 12 653-31 230-48 448-15 650 44v105H0Z" fill="#e0e9dc" opacity=".92"/>
+    <g fill="#8fb5a3" opacity=".42">
+      <circle cx="210" cy="530" r="8"/><circle cx="225" cy="520" r="12"/><circle cx="240" cy="533" r="7"/>
+      <circle cx="1640" cy="504" r="9"/><circle cx="1657" cy="491" r="13"/><circle cx="1674" cy="506" r="8"/>
+      <circle cx="1770" cy="560" r="7"/><circle cx="1784" cy="550" r="11"/><circle cx="1798" cy="563" r="7"/>
+    </g>
+  </g>
+</svg>
